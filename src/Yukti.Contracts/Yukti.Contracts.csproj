@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Yukti.Contracts</RootNamespace>
+    <!-- Kept in its own project specifically so it can be versioned and
+         distributed independently as a NuGet package for third-party module
+         developers (Persona Raj) — this is THE artifact they reference.
+         (Volume 1 Part V §36.2, Volume 5 §12.7's stricter dependency policy) -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Yukti.Domain\Yukti.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

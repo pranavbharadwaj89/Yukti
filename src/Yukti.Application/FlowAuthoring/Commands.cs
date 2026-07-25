@@ -1,0 +1,92 @@
+using Yukti.Application.Abstractions;
+using Yukti.Domain.FlowAuthoring;
+using Yukti.Domain.ModulePlugin;
+using Yukti.Domain.SharedKernel;
+
+namespace Yukti.Application.FlowAuthoring;
+
+public sealed record CreateFlowCommand(string Name, string? Description, TenantId TenantId, UserId AuthoredBy)
+    : ICommand<FlowId>;
+
+public sealed record AddFlowStepCommand(
+    FlowId FlowId, string StepName, ModuleKind Module, string Action,
+    IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When) : ICommand<bool>;
+
+public sealed record PublishFlowCommand(FlowId FlowId, UserId PublishedBy) : ICommand<FlowPublishResult>;
+
+public sealed class CreateFlowCommandHandler : ICommandHandler<CreateFlowCommand, FlowId>
+{
+    private readonly IFlowRepository _flows;
+    private readonly IUnitOfWorkFactory _uowFactory;
+
+    public CreateFlowCommandHandler(IFlowRepository flows, IUnitOfWorkFactory uowFactory)
+    {
+        _flows = flows;
+        _uowFactory = uowFactory;
+    }
+
+    public async Task<FlowId> Handle(CreateFlowCommand cmd, CancellationToken ct)
+    {
+        var flow = Flow.CreateDraft(cmd.Name, cmd.Description, cmd.TenantId, cmd.AuthoredBy);
+        await _flows.Save(flow, ct);
+        await using var uow = _uowFactory.Create();
+        await uow.Commit(ct);
+        return flow.Id;
+    }
+}
+
+public sealed class AddFlowStepCommandHandler : ICommandHandler<AddFlowStepCommand, bool>
+{
+    private readonly IFlowRepository _flows;
+    private readonly IUnitOfWorkFactory _uowFactory;
+
+    public AddFlowStepCommandHandler(IFlowRepository flows, IUnitOfWorkFactory uowFactory)
+    {
+        _flows = flows;
+        _uowFactory = uowFactory;
+    }
+
+    public async Task<bool> Handle(AddFlowStepCommand cmd, CancellationToken ct)
+    {
+        var flow = await _flows.GetById(cmd.FlowId, ct)
+            ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
+
+        flow.AddStep(cmd.StepName, cmd.Module, cmd.Action, cmd.Params, cmd.SaveAs, cmd.When);
+
+        await _flows.Save(flow, ct);
+        await using var uow = _uowFactory.Create();
+        await uow.Commit(ct);
+        return true;
+    }
+}
+
+public sealed class PublishFlowCommandHandler : ICommandHandler<PublishFlowCommand, FlowPublishResult>
+{
+    private readonly IFlowRepository _flows;
+    private readonly IModuleActionResolver _resolver;
+    private readonly IUnitOfWorkFactory _uowFactory;
+
+    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IUnitOfWorkFactory uowFactory)
+    {
+        _flows = flows;
+        _resolver = resolver;
+        _uowFactory = uowFactory;
+    }
+
+    public async Task<FlowPublishResult> Handle(PublishFlowCommand cmd, CancellationToken ct)
+    {
+        var flow = await _flows.GetById(cmd.FlowId, ct)
+            ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
+
+        var result = flow.Publish(_resolver);
+
+        if (result.Succeeded)
+        {
+            await _flows.Save(flow, ct);
+            await using var uow = _uowFactory.Create();
+            await uow.Commit(ct); // persists state + dispatches raised domain events together
+        }
+
+        return result;
+    }
+}

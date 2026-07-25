@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Yukti.Orchestration</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Yukti.Domain\Yukti.Domain.csproj" />
+    <ProjectReference Include="..\Yukti.Contracts\Yukti.Contracts.csproj" />
+    <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Yukti.Infrastructure.InMemory</RootNamespace>
+    <!-- Temporary, in-memory stand-in for the real EF Core / PostgreSQL
+         Infrastructure layer specified in Volume 1 Part V §32. This project
+         exists so the Domain, Application, and Orchestration layers above
+         are provably runnable end-to-end today, without a database. The
+         real Infrastructure project (Yukti.Infrastructure) replaces this
+         one in a follow-up pass — the repository/UoW INTERFACES this
+         implements are the real, permanent contracts; only this
+         implementation is throwaway. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Yukti.Domain\Yukti.Domain.csproj" />
+    <ProjectReference Include="..\Yukti.Contracts\Yukti.Contracts.csproj" />
+    <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />
+    <ProjectReference Include="..\Yukti.Orchestration\Yukti.Orchestration.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Yukti.Domain</RootNamespace>
+    <!-- Yukti.Domain references nothing else in the solution (Volume 1 Part V §36.3).
+         A project reference to Application, Infrastructure, Api, or Contracts here
+         is a dependency-direction violation (Volume 1 Part VI §40.2). -->
+  </PropertyGroup>
+
+</Project>

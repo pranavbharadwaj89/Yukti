@@ -1,0 +1,62 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{5E2E4AA7-C220-4C4F-B8C9-8804C3EAB15A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Yukti.Domain", "src\Yukti.Domain\Yukti.Domain.csproj", "{E2775E74-1ABC-4F9B-B5AE-F203E026BBDC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Yukti.Contracts", "src\Yukti.Contracts\Yukti.Contracts.csproj", "{CF334C25-13A6-4C5B-BE97-5F410A77D69E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Yukti.Application", "src\Yukti.Application\Yukti.Application.csproj", "{776B6EDB-9D3F-4BCA-920B-B2C5AE2119F5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Yukti.Orchestration", "src\Yukti.Orchestration\Yukti.Orchestration.csproj", "{A50C2B2F-ED27-4B81-86AE-7779249161BA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Yukti.Infrastructure.InMemory", "src\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj", "{3B5060FF-60EB-45BC-923D-9B311C8AA0EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Yukti.Host", "src\Yukti.Host\Yukti.Host.csproj", "{108B0394-1D9A-483D-9E13-F403CFFF1BF3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E2775E74-1ABC-4F9B-B5AE-F203E026BBDC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2775E74-1ABC-4F9B-B5AE-F203E026BBDC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2775E74-1ABC-4F9B-B5AE-F203E026BBDC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2775E74-1ABC-4F9B-B5AE-F203E026BBDC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CF334C25-13A6-4C5B-BE97-5F410A77D69E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CF334C25-13A6-4C5B-BE97-5F410A77D69E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CF334C25-13A6-4C5B-BE97-5F410A77D69E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CF334C25-13A6-4C5B-BE97-5F410A77D69E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{776B6EDB-9D3F-4BCA-920B-B2C5AE2119F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{776B6EDB-9D3F-4BCA-920B-B2C5AE2119F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{776B6EDB-9D3F-4BCA-920B-B2C5AE2119F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{776B6EDB-9D3F-4BCA-920B-B2C5AE2119F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A50C2B2F-ED27-4B81-86AE-7779249161BA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A50C2B2F-ED27-4B81-86AE-7779249161BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A50C2B2F-ED27-4B81-86AE-7779249161BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A50C2B2F-ED27-4B81-86AE-7779249161BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3B5060FF-60EB-45BC-923D-9B311C8AA0EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3B5060FF-60EB-45BC-923D-9B311C8AA0EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3B5060FF-60EB-45BC-923D-9B311C8AA0EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3B5060FF-60EB-45BC-923D-9B311C8AA0EB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{108B0394-1D9A-483D-9E13-F403CFFF1BF3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{108B0394-1D9A-483D-9E13-F403CFFF1BF3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{108B0394-1D9A-483D-9E13-F403CFFF1BF3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{108B0394-1D9A-483D-9E13-F403CFFF1BF3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E2775E74-1ABC-4F9B-B5AE-F203E026BBDC} = {5E2E4AA7-C220-4C4F-B8C9-8804C3EAB15A}
+		{CF334C25-13A6-4C5B-BE97-5F410A77D69E} = {5E2E4AA7-C220-4C4F-B8C9-8804C3EAB15A}
+		{776B6EDB-9D3F-4BCA-920B-B2C5AE2119F5} = {5E2E4AA7-C220-4C4F-B8C9-8804C3EAB15A}
+		{A50C2B2F-ED27-4B81-86AE-7779249161BA} = {5E2E4AA7-C220-4C4F-B8C9-8804C3EAB15A}
+		{3B5060FF-60EB-45BC-923D-9B311C8AA0EB} = {5E2E4AA7-C220-4C4F-B8C9-8804C3EAB15A}
+		{108B0394-1D9A-483D-9E13-F403CFFF1BF3} = {5E2E4AA7-C220-4C4F-B8C9-8804C3EAB15A}
+	EndGlobalSection
+EndGlobal
