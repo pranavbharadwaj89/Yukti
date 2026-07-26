@@ -26,6 +26,20 @@ using Yukti.Orchestration;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ---- Structured logging (FR-LOG) ----
+// ASP.NET Core already wires up Microsoft.Extensions.Logging with a console
+// provider by default — every ILogger<T> constructor dependency below
+// (FlowEngine, RetryFlakeHandler, ModuleDispatcher) resolves through that
+// with zero extra registration. This just swaps the default text formatter
+// for JSON (structured sinks expect one event per line, not columns) and
+// turns scopes on so FlowEngine.Execute's BeginScope(FlowRunId) (FR-LOG-03)
+// actually appears in output instead of being silently dropped.
+builder.Logging.AddJsonConsole(options =>
+{
+    options.IncludeScopes = true;
+    options.UseUtcTimestamp = true;
+});
+
 // ---- JWT signing key ----
 // Generated once at process startup — the same kind of documented,
 // temporary secret-management shortcut as InMemoryCredentialResolver: a

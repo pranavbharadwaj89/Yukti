@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Yukti.Application.Abstractions;
 using Yukti.Application.Execution;
 using Yukti.Application.FlowAuthoring;
@@ -14,6 +15,23 @@ using Yukti.Infrastructure.InMemory.Modules;
 using Yukti.Orchestration;
 
 Console.WriteLine("=== Yukti Backend Core — end-to-end smoke run ===\n");
+
+// ---- Structured logging (FR-LOG) ----
+// Console app has no WebApplicationBuilder to supply this for free, unlike
+// Yukti.Api — built manually, once, and handed to every orchestration
+// component below via ILoggerFactory.CreateLogger<T>(). JSON console (same
+// choice as Yukti.Api) rather than the Simple formatter: Simple's scope
+// rendering just calls ToString() on the scope state, which for a
+// Dictionary prints the type name, not its contents — JSON console
+// serializes each scope key/value properly, so FlowRunId (attached via
+// FlowEngine.Execute's BeginScope, FR-LOG-03) is actually visible per line.
+using var loggerFactory = LoggerFactory.Create(logging => logging
+    .AddJsonConsole(options =>
+    {
+        options.IncludeScopes = true;
+        options.UseUtcTimestamp = true;
+    })
+    .SetMinimumLevel(LogLevel.Debug));
 
 // ---- Composition root (manual — no DI container package needed) ----
 var dispatcher = new InMemoryDomainEventDispatcher();
@@ -35,10 +53,10 @@ var logsModule = new LogsModule();
 moduleRegistry.Register(apiModule);
 moduleRegistry.Register(logsModule);
 
-var moduleDispatcher = new ModuleDispatcher(moduleRegistry);
+var moduleDispatcher = new ModuleDispatcher(moduleRegistry, loggerFactory.CreateLogger<ModuleDispatcher>());
 var variableStore = new VariableStore();
-var retryHandler = new RetryFlakeHandler();
-var flowEngine = new FlowEngine(moduleDispatcher, variableStore, retryHandler, runRepo, uowFactory);
+var retryHandler = new RetryFlakeHandler(loggerFactory.CreateLogger<RetryFlakeHandler>());
+var flowEngine = new FlowEngine(moduleDispatcher, variableStore, retryHandler, runRepo, uowFactory, loggerFactory.CreateLogger<FlowEngine>());
 var credentials = new InMemoryCredentialResolver();
 
 var tenantId = TenantId.New();

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Yukti.Application.Abstractions;
 using Yukti.Contracts;
 using Yukti.Domain.Execution;
@@ -32,21 +33,35 @@ public sealed class FlowEngine
     private readonly IFlowRunRepository _runRepository;
     private readonly IUnitOfWorkFactory _uowFactory;
     private readonly RetryPolicy _defaultRetryPolicy;
+    private readonly ILogger<FlowEngine> _logger;
 
     public FlowEngine(
         IModuleDispatcher dispatcher, IVariableStore variables, IRetryFlakeHandler retryHandler,
-        IFlowRunRepository runRepository, IUnitOfWorkFactory uowFactory, RetryPolicy? defaultRetryPolicy = null)
+        IFlowRunRepository runRepository, IUnitOfWorkFactory uowFactory, ILogger<FlowEngine> logger,
+        RetryPolicy? defaultRetryPolicy = null)
     {
         _dispatcher = dispatcher;
         _variables = variables;
         _retryHandler = retryHandler;
         _runRepository = runRepository;
         _uowFactory = uowFactory;
+        _logger = logger;
         _defaultRetryPolicy = defaultRetryPolicy ?? new RetryPolicy(MaxAttempts: 2, InitialBackoff: TimeSpan.FromMilliseconds(200), BackoffMultiplier: 2.0);
     }
 
     public async Task<FlowRun> Execute(Flow flow, FlowRun run, ICredentialResolver credentials, CancellationToken ct)
     {
+        // FR-LOG-03: every log statement inside this scope — including ones
+        // raised deeper in _dispatcher/_retryHandler — carries FlowRunId
+        // automatically. No call site below threads it through by hand.
+        using var flowRunScope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["FlowRunId"] = run.Id.Value
+        });
+
+        _logger.LogInformation("FlowRun {FlowRunId} starting for flow {FlowId} ({StepCount} steps)",
+            run.Id.Value, flow.Id.Value, flow.Steps.Count);
+
         run.Start();
         await CommitRun(run, ct);
 
@@ -56,6 +71,8 @@ public sealed class FlowEngine
 
             if (!_variables.EvaluateCondition(step.WhenCondition, run.Variables))
             {
+                _logger.LogInformation("Step {StepName} skipped — condition {WhenCondition} was falsy",
+                    step.Name, step.WhenCondition);
                 run.RecordStepResult(StepResult.Skipped(step.Id, step.Name, step.Module, step.Action,
                     $"Condition '{step.WhenCondition}' was falsy."));
                 await CommitRun(run, ct);
@@ -83,6 +100,17 @@ public sealed class FlowEngine
 
             run.RecordStepResult(result);
 
+            // FR-LOG-02: Error only for a genuine failure; a step that
+            // eventually passed after retries is a flake — Warning, not
+            // Error — surfaced by RetryFlakeHandler itself. A clean pass is
+            // routine and logs at Information.
+            if (result.Status == StepStatus.Failed)
+                _logger.LogError("Step {StepName} ({Module}.{Action}) failed: {Error}",
+                    step.Name, step.Module, step.Action, result.Error);
+            else
+                _logger.LogInformation("Step {StepName} ({Module}.{Action}) completed with status {Status}",
+                    step.Name, step.Module, step.Action, result.Status);
+
             if (step.SaveAs is not null)
                 run.BindVariable(step.SaveAs, result.Data);
 
@@ -90,11 +118,17 @@ public sealed class FlowEngine
             await CommitRun(run, ct);
 
             if (result.Status == StepStatus.Failed && !flow.ContinueOnFailure)
+            {
+                _logger.LogWarning("FlowRun {FlowRunId} stopping early — step {StepName} failed and ContinueOnFailure is false",
+                    run.Id.Value, step.Name);
                 break; // fail-fast default (Product Philosophy 4.2)
+            }
         }
 
         run.Complete();
         await CommitRun(run, ct);
+
+        _logger.LogInformation("FlowRun {FlowRunId} finished with status {Status}", run.Id.Value, run.Status);
         return run;
     }
 

@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    FR-LOG-01 / FR-STD-01: every src project gets the Yukti.Analyzers
+    package as a compiler analyzer (not a runtime dependency — hence
+    OutputItemType="Analyzer" + ReferenceOutputAssembly="false"). The
+    analyzer project excludes itself to avoid a self-reference.
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Yukti.Analyzers'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Yukti.Analyzers\Yukti.Analyzers.csproj"
+                       OutputItemType="Analyzer"
+                       ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
