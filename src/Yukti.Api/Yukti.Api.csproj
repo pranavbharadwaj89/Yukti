@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -6,10 +6,18 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Yukti.Api</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <UserSecretsId>6b746e6b-ec5a-4995-a73e-b26cd66270e2</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
+    <!-- Required by the EF Core CLI tooling (dotnet ef migrations, dotnet
+         ef database update) when Yukti.Api is used as the startup project
+         — not used by application code at runtime. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -18,6 +26,7 @@
     <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />
     <ProjectReference Include="..\Yukti.Orchestration\Yukti.Orchestration.csproj" />
     <ProjectReference Include="..\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj" />
+    <ProjectReference Include="..\Yukti.Infrastructure\Yukti.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -39,6 +39,23 @@ public sealed class Role : AggregateRoot<RoleId>
         _permissions = new HashSet<Permission>(permissions);
     }
 
+    // EF Core materialization only. The business constructor above takes
+    // IEnumerable<Permission>, but the mapped Permissions property is
+    // IReadOnlySet<Permission> — close enough for a human, not an exact
+    // type match for EF Core's constructor-parameter binding, which
+    // requires the parameter type to line up with the property it binds
+    // to. This overload also takes the already-materialized Version rather
+    // than always resetting it to 1, so reloading a role whose permissions
+    // were updated (Version bumped via UpdatePermissions) round-trips
+    // correctly instead of silently reverting to Version 1 on every load.
+    private Role(RoleId id, string name, TenantId? tenantId, int version, IReadOnlySet<Permission> permissions) : base(id)
+    {
+        Name = name;
+        TenantId = tenantId;
+        Version = version;
+        _permissions = new HashSet<Permission>(permissions);
+    }
+
     public static Role Create(string name, TenantId? tenantId, IEnumerable<Permission> permissions)
     {
         var role = new Role(RoleId.New(), name, tenantId, permissions);

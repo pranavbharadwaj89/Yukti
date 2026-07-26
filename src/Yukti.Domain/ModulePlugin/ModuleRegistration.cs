@@ -17,6 +17,17 @@ public sealed class ModuleActionEntry : Entity<ModuleActionEntryId>
         Schema = schema;
     }
 
+    // EF Core materialization only — same reasoning as ModuleRegistration's
+    // private constructor below: the public constructor above always mints
+    // a new Id. IsDeprecated/DeprecationNotice aren't constructor params
+    // here (or there) because both have private setters EF can reach via
+    // reflection after construction — no navigation/binding issue for them.
+    private ModuleActionEntry(ModuleActionEntryId id, string actionName, ActionSchema schema) : base(id)
+    {
+        ActionName = actionName;
+        Schema = schema;
+    }
+
     public void Deprecate(string notice)
     {
         IsDeprecated = true;
@@ -57,6 +68,28 @@ public sealed class ModuleRegistration : AggregateRoot<ModuleRegistrationId>
         TenantId = tenantId;
 
         RaiseDomainEvent(new ModuleRegisteredEvent(Id, Kind, Trust, DateTimeOffset.UtcNow));
+    }
+
+    // EF Core materialization only — the public constructor above always
+    // generates a brand-new Id (ModuleRegistrationId.New()) and has no way
+    // to accept a persisted one, which would silently corrupt identity on
+    // every reload from the database. This overload is a strict superset
+    // of the public constructor's bindable parameters (adds id, isActive),
+    // so EF Core's constructor-binding — which prefers the constructor
+    // with the most bindable parameters — picks this one automatically for
+    // reconstruction, while every application code path still goes through
+    // the public constructor above and RegisterAction()/DeprecateAction()/
+    // Deactivate() unchanged. No domain event raised here: reconstructing
+    // existing state is not a new registration.
+    private ModuleRegistration(ModuleRegistrationId id, ModuleKind kind, string displayName, TrustTier trust,
+        string contractVersion, bool isActive, TenantId? tenantId) : base(id)
+    {
+        Kind = kind;
+        DisplayName = displayName;
+        Trust = trust;
+        ContractVersion = contractVersion;
+        IsActive = isActive;
+        TenantId = tenantId;
     }
 
     public void RegisterAction(ActionSchema schema) => _actions.Add(new ModuleActionEntry(schema.ActionName, schema));

@@ -24,12 +24,16 @@ public sealed class FlowStep : Entity<FlowStepId>
     public string? WhenCondition { get; private set; }
     public int Order { get; private set; }
 
+    // "parameters" renamed to "params" so EF Core's constructor binding
+    // (parameter-name-to-property-name, case-insensitive) can materialize
+    // this entity from its mapped Params column — Flow.AddStep calls this
+    // constructor positionally, so the rename has zero effect there.
     public FlowStep(
         FlowStepId id,
         string name,
         ModuleKind module,
         string action,
-        IReadOnlyDictionary<string, object?> parameters,
+        IReadOnlyDictionary<string, object?> @params,
         int order,
         string? saveAs = null,
         string? whenCondition = null) : base(id)
@@ -42,7 +46,7 @@ public sealed class FlowStep : Entity<FlowStepId>
         Name = name;
         Module = module;
         Action = action;
-        Params = parameters;
+        Params = @params;
         Order = order;
         SaveAs = saveAs;
         WhenCondition = whenCondition;

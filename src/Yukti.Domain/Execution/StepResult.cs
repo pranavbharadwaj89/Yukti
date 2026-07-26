@@ -47,6 +47,34 @@ public sealed class StepResult : Entity<StepResultId>
         _retryHistory = retryHistory?.ToList() ?? new List<RetryAttempt>();
     }
 
+    // EF Core materialization only. Two problems the public constructor
+    // above has for reloading a persisted row: it always generates a new
+    // Id (StepResultId.New()), and its retryHistory parameter binds to
+    // RetryHistory — a navigation (owned collection), which EF Core
+    // categorically refuses to bind via constructor ("Navigations to
+    // related entities... cannot be bound"). This overload drops
+    // retryHistory entirely — EF populates _retryHistory separately via
+    // the same field-backed owned-collection materialization it already
+    // uses for FlowRun.Results and Flow.Steps — and adds id, giving EF a
+    // fully bindable, higher-arity constructor it will prefer automatically.
+    private StepResult(
+        StepResultId id, FlowStepId sourceStepId, string stepName, ModuleKind module, string action,
+        StepStatus status, TimeSpan duration, string? message, string? error, object? data, AiAttribution? aiAttribution)
+        : base(id)
+    {
+        SourceStepId = sourceStepId;
+        StepName = stepName;
+        Module = module;
+        Action = action;
+        Status = status;
+        Duration = duration;
+        Message = message;
+        Error = error;
+        Data = data;
+        AiAttribution = aiAttribution;
+        _retryHistory = new List<RetryAttempt>();
+    }
+
     public static StepResult Skipped(FlowStepId sourceStepId, string stepName, ModuleKind module, string action, string reason) =>
         new(sourceStepId, stepName, module, action, StepStatus.Skipped, TimeSpan.Zero, message: reason);
 

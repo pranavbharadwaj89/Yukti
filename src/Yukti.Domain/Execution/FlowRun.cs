@@ -36,16 +36,22 @@ public sealed class FlowRun : AggregateRoot<FlowRunId>
 
     private static readonly RunStatus[] TerminalStatuses = { RunStatus.Passed, RunStatus.Failed, RunStatus.Cancelled };
 
+    // Parameter named to match the Variables property exactly (rather than
+    // the public factory's "initialVariables") so EF Core's constructor
+    // binding — which matches by parameter name, case-insensitively — can
+    // materialize this aggregate straight from a persisted row. Purely a
+    // private-constructor rename; FlowRun.Create's public signature below
+    // is unaffected.
     private FlowRun(FlowRunId id, FlowId flowId, RunTrigger trigger, TenantId tenantId,
-        IReadOnlyDictionary<string, object?>? initialVariables) : base(id)
+        IReadOnlyDictionary<string, object?>? variables) : base(id)
     {
         FlowId = flowId;
         Trigger = trigger;
         TenantId = tenantId;
         Status = RunStatus.Pending;
-        _variables = initialVariables is null
+        _variables = variables is null
             ? new Dictionary<string, object?>()
-            : new Dictionary<string, object?>(initialVariables);
+            : new Dictionary<string, object?>(variables);
     }
 
     public static FlowRun Create(FlowId flowId, RunTrigger trigger, TenantId tenantId,

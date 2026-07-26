@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Yukti.Infrastructure</RootNamespace>
+    <!-- The real, durable Infrastructure layer specified in Volume 1 Part V
+         §32 — EF Core against CockroachDB (Postgres wire-protocol
+         compatible, hence the Npgsql provider). Implements the exact same
+         repository / IUnitOfWorkFactory interfaces as
+         Yukti.Infrastructure.InMemory; Domain, Application, and
+         Orchestration require zero changes (Volume 1 README's own stated
+         plan, confirmed in INIT-YUKTI-BACKEND-001's Assumption A-02). -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Yukti.Domain\Yukti.Domain.csproj" />
+    <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />
+  </ItemGroup>
+
+</Project>

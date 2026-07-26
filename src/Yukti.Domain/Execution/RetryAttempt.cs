@@ -25,4 +25,17 @@ public sealed class RetryAttempt : Entity<RetryAttemptId>
         Error = error;
         AttemptedAt = attemptedAt;
     }
+
+    // EF Core materialization only — see StepResult.cs's private
+    // constructor comment for why: the public constructor above always
+    // mints a new Id and so cannot round-trip a persisted row's actual Id.
+    private RetryAttempt(RetryAttemptId id, int attemptNumber, StepStatus status, TimeSpan duration, string? error, DateTimeOffset attemptedAt)
+        : base(id)
+    {
+        AttemptNumber = attemptNumber;
+        Status = status;
+        Duration = duration;
+        Error = error;
+        AttemptedAt = attemptedAt;
+    }
 }

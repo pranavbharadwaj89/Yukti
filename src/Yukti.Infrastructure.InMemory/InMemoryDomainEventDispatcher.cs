@@ -1,20 +1,15 @@
+using Yukti.Application.Abstractions;
 using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Infrastructure.InMemory;
 
 /// <summary>
-/// Demo-grade stand-in for the real two-tier Event Bus (Volume 1 Part III
-/// §22.2's in-process-plus-outbox design) — this is Tier 1 only (synchronous
-/// in-process dispatch), with no durable relay. Real event consumers
-/// (audit pipeline, report projector) are a follow-up once Infrastructure
-/// is backed by a real database.
+/// Tier 1 in-process dispatcher — IDomainEventDispatcher itself lives in
+/// Yukti.Application.Abstractions now (shared port, so the real EF Core
+/// Infrastructure project can depend on the interface without depending on
+/// this demo project). No durable Tier 2 relay yet; that's a follow-up once
+/// an audit pipeline/report projector actually needs at-least-once delivery.
 /// </summary>
-public interface IDomainEventDispatcher
-{
-    void Subscribe<TEvent>(Action<TEvent> handler) where TEvent : IDomainEvent;
-    void DispatchAll(IReadOnlyList<IDomainEvent> events);
-}
-
 public sealed class InMemoryDomainEventDispatcher : IDomainEventDispatcher
 {
     private readonly Dictionary<Type, List<Action<IDomainEvent>>> _handlers = new();

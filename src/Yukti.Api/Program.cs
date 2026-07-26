@@ -16,6 +16,7 @@ using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
+using Yukti.Infrastructure;
 using Yukti.Infrastructure.InMemory;
 using Yukti.Infrastructure.InMemory.Modules;
 using Yukti.Orchestration;
@@ -55,26 +56,30 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 // ---- Composition root ----
-// Mirrors Yukti.Host's manual wiring — no DI container abstraction needed,
-// only the built-in ASP.NET Core container. All infra here is the same
-// demo-grade in-memory implementation Yukti.Host uses; swapping to a real
-// EF Core + PostgreSQL Yukti.Infrastructure project (once DB access is
-// available) means registering different implementations of the same
-// repository / IUnitOfWorkFactory interfaces here — no other file in this
-// project changes.
+// Real, durable persistence now: AddYuktiInfrastructure registers EF Core
+// repositories + IUnitOfWorkFactory against CockroachDB, replacing every
+// InMemory repository/UoW registration this file previously had — no other
+// file changed to make this swap (exactly the plan the README and
+// INIT-YUKTI-BACKEND-001's Assumption A-02 both call for). The connection
+// string is read from configuration (user-secrets in Development, an env
+// var / real secret store in any other environment) — never hardcoded,
+// never committed.
+var connectionString = builder.Configuration.GetConnectionString("Yukti")
+    ?? throw new InvalidOperationException(
+        "Missing ConnectionStrings:Yukti. Set it via `dotnet user-secrets set \"ConnectionStrings:Yukti\" \"...\"` for local development.");
+builder.Services.AddYuktiInfrastructure(connectionString);
+
+// Domain event dispatch (Tier 1, in-process) is orthogonal to which
+// Infrastructure implementation persists state — kept as-is regardless of
+// InMemory vs. EF Core.
 builder.Services.AddSingleton<InMemoryDomainEventDispatcher>();
 builder.Services.AddSingleton<IDomainEventDispatcher>(sp => sp.GetRequiredService<InMemoryDomainEventDispatcher>());
-builder.Services.AddSingleton<InMemoryUnitOfWorkFactory>();
-builder.Services.AddSingleton<IUnitOfWorkFactory>(sp => sp.GetRequiredService<InMemoryUnitOfWorkFactory>());
 
-builder.Services.AddSingleton<IFlowRepository, InMemoryFlowRepository>();
-builder.Services.AddSingleton<IFlowRunRepository, InMemoryFlowRunRepository>();
-builder.Services.AddSingleton<IModuleRegistrationRepository, InMemoryModuleRegistrationRepository>();
-builder.Services.AddSingleton<IModuleActionResolver, ModuleActionResolver>();
+// Credential resolution has no persistence need yet (Vault-backed
+// resolution is Volume 1 Part III §18.4/Volume 4's follow-up) — still the
+// in-memory stand-in.
 builder.Services.AddSingleton<ICredentialResolver, InMemoryCredentialResolver>();
 
-builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
-builder.Services.AddSingleton<IRoleRepository, InMemoryRoleRepository>();
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService>(_ => new JwtTokenService(signingKey));
 builder.Services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
@@ -92,7 +97,11 @@ builder.Services.AddSingleton<IModuleRegistry>(sp =>
 builder.Services.AddSingleton<IModuleDispatcher, ModuleDispatcher>();
 builder.Services.AddSingleton<IVariableStore, VariableStore>();
 builder.Services.AddSingleton<IRetryFlakeHandler, RetryFlakeHandler>();
-builder.Services.AddSingleton<FlowEngine>();
+// Scoped, not Singleton: FlowEngine now depends on Scoped EF repositories
+// and IUnitOfWorkFactory (a DbContext is not thread-safe / must not
+// outlive one request) — a Singleton FlowEngine holding a Scoped
+// dependency would be a captive-dependency DI error.
+builder.Services.AddScoped<FlowEngine>();
 
 builder.Services.AddScoped<CreateFlowCommandHandler>();
 builder.Services.AddScoped<AddFlowStepCommandHandler>();
@@ -144,6 +153,11 @@ app.UseAuthorization();
 // pattern Yukti.Host's smoke test already uses for module registration.
 // The seeded admin's password is a documented dev-only default, not a
 // secret meant to survive into any real deployment.
+//
+// Idempotent — this now runs against a durable database, so every process
+// restart must find the same rows rather than re-inserting (duplicate
+// emails/kinds would violate the unique constraints and crash startup on
+// the second run).
 RoleId adminRoleId, authorRoleId, runnerRoleId;
 using (var scope = app.Services.CreateScope())
 {
@@ -152,9 +166,9 @@ using (var scope = app.Services.CreateScope())
     var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
     var uowFactory = scope.ServiceProvider.GetRequiredService<IUnitOfWorkFactory>();
 
-    var admin = Role.CreateBaselineAdministrator();
-    var author = Role.CreateBaselineFlowAuthor();
-    var runner = Role.CreateBaselineFlowRunner();
+    var admin = await roles.GetByName("Administrator", null, default) ?? Role.CreateBaselineAdministrator();
+    var author = await roles.GetByName("Flow Author", null, default) ?? Role.CreateBaselineFlowAuthor();
+    var runner = await roles.GetByName("Flow Runner", null, default) ?? Role.CreateBaselineFlowRunner();
     await roles.Save(admin, default);
     await roles.Save(author, default);
     await roles.Save(runner, default);
@@ -162,23 +176,29 @@ using (var scope = app.Services.CreateScope())
     authorRoleId = author.Id;
     runnerRoleId = runner.Id;
 
-    var bootstrapTenant = TenantId.New();
-    var bootstrapAdmin = Yukti.Domain.IdentityAccess.User.Register(
-        "admin@yukti.local", "Bootstrap Administrator", bootstrapTenant, hasher.Hash("ChangeMe123!"));
-    bootstrapAdmin.AssignRole(adminRoleId);
-    await users.Save(bootstrapAdmin, default);
+    var bootstrapAdmin = await users.GetByEmail("admin@yukti.local", default);
+    if (bootstrapAdmin is null)
+    {
+        bootstrapAdmin = Yukti.Domain.IdentityAccess.User.Register(
+            "admin@yukti.local", "Bootstrap Administrator", TenantId.New(), hasher.Hash("ChangeMe123!"));
+        bootstrapAdmin.AssignRole(adminRoleId);
+        await users.Save(bootstrapAdmin, default);
+    }
 
     await using var uow = uowFactory.Create();
     await uow.Commit(default);
 
+    var moduleRegistrations = scope.ServiceProvider.GetRequiredService<IModuleRegistrationRepository>();
     var registerHandler = scope.ServiceProvider.GetRequiredService<RegisterModuleCommandHandler>();
     var apiModule = scope.ServiceProvider.GetRequiredService<ApiModule>();
     var logsModule = scope.ServiceProvider.GetRequiredService<LogsModule>();
 
-    await registerHandler.Handle(new RegisterModuleCommand(
-        ModuleKind.Api, "API Automation", TrustTier.BuiltIn, apiModule.GetSupportedActions(), apiModule.ContractVersion, bootstrapAdmin.Id), default);
-    await registerHandler.Handle(new RegisterModuleCommand(
-        ModuleKind.Logs, "Log Automation", TrustTier.BuiltIn, logsModule.GetSupportedActions(), logsModule.ContractVersion, bootstrapAdmin.Id), default);
+    if (await moduleRegistrations.GetByKind(ModuleKind.Api, null, default) is null)
+        await registerHandler.Handle(new RegisterModuleCommand(
+            ModuleKind.Api, "API Automation", TrustTier.BuiltIn, apiModule.GetSupportedActions(), apiModule.ContractVersion, bootstrapAdmin.Id), default);
+    if (await moduleRegistrations.GetByKind(ModuleKind.Logs, null, default) is null)
+        await registerHandler.Handle(new RegisterModuleCommand(
+            ModuleKind.Logs, "Log Automation", TrustTier.BuiltIn, logsModule.GetSupportedActions(), logsModule.ContractVersion, bootstrapAdmin.Id), default);
 }
 
 const string flowNotFound = "Flow not found.";
