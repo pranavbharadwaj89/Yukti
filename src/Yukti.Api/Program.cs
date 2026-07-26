@@ -56,6 +56,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// ---- CORS ----
+// No browser frontend has existed against this API until now, so no
+// policy existed either — a real gap, since without one no browser-based
+// client on a different origin can call any endpoint at all. Allowed
+// origins are configuration-driven (Cors:AllowedOrigins), defaulting to
+// the two most common local dev server ports; a real deployment sets this
+// via environment/config to the actual frontend origin(s), never "*".
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:5173", "http://localhost:3000" };
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("YuktiCors", policy => policy
+        .WithOrigins(corsOrigins)
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
+
 // ---- Composition root ----
 // Real, durable persistence now: AddYuktiInfrastructure registers EF Core
 // repositories + IUnitOfWorkFactory against CockroachDB, replacing every
@@ -149,6 +166,7 @@ app.Use(async (context, next) =>
     }
 });
 
+app.UseCors("YuktiCors");
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -318,6 +336,16 @@ app.MapPost("/api/roles/{roleId:guid}/permissions", async (
     var newVersion = await handler.Handle(
         new UpdateRolePermissionsCommand(new RoleId(roleId), permissions, principal.GetUserId()), ct);
     return Results.Ok(new { roleId, version = newVersion });
+}).RequireAuthorization().WithTags("Auth");
+
+// Was a real gap: AssignRoleCommand existed in Application with no way to
+// reach it over HTTP — an Administrator had no way to grant another user a
+// role at all via the API.
+app.MapPost("/api/users/{userId:guid}/roles/{roleId:guid}", async (
+    Guid userId, Guid roleId, ClaimsPrincipal principal, AssignRoleCommandHandler handler, CancellationToken ct) =>
+{
+    await handler.Handle(new AssignRoleCommand(new UserId(userId), new RoleId(roleId), principal.GetUserId()), ct);
+    return Results.NoContent();
 }).RequireAuthorization().WithTags("Auth");
 
 // ---- Flow / Run / Module endpoints — all require authentication now ----
