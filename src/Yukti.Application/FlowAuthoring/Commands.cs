@@ -45,12 +45,14 @@ public sealed class AddFlowStepCommandHandler : ICommandHandler<AddFlowStepComma
 {
     private readonly IFlowRepository _flows;
     private readonly IPermissionChecker _permissions;
+    private readonly ITenantGuard _tenantGuard;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public AddFlowStepCommandHandler(IFlowRepository flows, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
+    public AddFlowStepCommandHandler(IFlowRepository flows, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory)
     {
         _flows = flows;
         _permissions = permissions;
+        _tenantGuard = tenantGuard;
         _uowFactory = uowFactory;
     }
 
@@ -60,6 +62,7 @@ public sealed class AddFlowStepCommandHandler : ICommandHandler<AddFlowStepComma
 
         var flow = await _flows.GetById(cmd.FlowId, ct)
             ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
+        _tenantGuard.EnsureAccessible(flow.TenantId); // FR-TENANT-01 Layer 3, redundant with the repository's own tenant filter by design
 
         flow.AddStep(cmd.StepName, cmd.Module, cmd.Action, cmd.Params, cmd.SaveAs, cmd.When);
 
@@ -75,13 +78,15 @@ public sealed class PublishFlowCommandHandler : ICommandHandler<PublishFlowComma
     private readonly IFlowRepository _flows;
     private readonly IModuleActionResolver _resolver;
     private readonly IPermissionChecker _permissions;
+    private readonly ITenantGuard _tenantGuard;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
+    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory)
     {
         _flows = flows;
         _resolver = resolver;
         _permissions = permissions;
+        _tenantGuard = tenantGuard;
         _uowFactory = uowFactory;
     }
 
@@ -91,6 +96,7 @@ public sealed class PublishFlowCommandHandler : ICommandHandler<PublishFlowComma
 
         var flow = await _flows.GetById(cmd.FlowId, ct)
             ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
+        _tenantGuard.EnsureAccessible(flow.TenantId); // FR-TENANT-01 Layer 3
 
         var result = flow.Publish(_resolver);
 

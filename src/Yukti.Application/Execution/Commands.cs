@@ -48,12 +48,14 @@ public sealed class CancelFlowRunCommandHandler : ICommandHandler<CancelFlowRunC
 {
     private readonly IFlowRunRepository _runs;
     private readonly IPermissionChecker _permissions;
+    private readonly ITenantGuard _tenantGuard;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public CancelFlowRunCommandHandler(IFlowRunRepository runs, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
+    public CancelFlowRunCommandHandler(IFlowRunRepository runs, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory)
     {
         _runs = runs;
         _permissions = permissions;
+        _tenantGuard = tenantGuard;
         _uowFactory = uowFactory;
     }
 
@@ -63,6 +65,7 @@ public sealed class CancelFlowRunCommandHandler : ICommandHandler<CancelFlowRunC
 
         var run = await _runs.GetById(cmd.RunId, ct)
             ?? throw new InvalidOperationException($"FlowRun {cmd.RunId} not found.");
+        _tenantGuard.EnsureAccessible(run.TenantId); // FR-TENANT-01 Layer 3
         run.Cancel();
         await _runs.Save(run, ct);
         await using var uow = _uowFactory.Create();

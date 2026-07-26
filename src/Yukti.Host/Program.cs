@@ -73,9 +73,14 @@ await registerHandler.Handle(new RegisterModuleCommand(
 Console.WriteLine("Registered modules: api, logs\n");
 
 // ---- Author a flow: GitHub API chaining + log rule/anomaly checks ----
+// No HTTP context here, so tenant context is a fixed accessor over this
+// smoke test's one tenantId rather than HttpContextTenantAccessor
+// (Yukti.Api's real, JWT-claim-backed implementation).
+var tenantAccessor = new FixedTenantContextAccessor(tenantId);
+var tenantGuard = new TenantGuard(tenantAccessor);
 var createHandler = new CreateFlowCommandHandler(flowRepo, permissions, uowFactory);
-var addStepHandler = new AddFlowStepCommandHandler(flowRepo, permissions, uowFactory);
-var publishHandler = new PublishFlowCommandHandler(flowRepo, resolver, permissions, uowFactory);
+var addStepHandler = new AddFlowStepCommandHandler(flowRepo, permissions, tenantGuard, uowFactory);
+var publishHandler = new PublishFlowCommandHandler(flowRepo, resolver, permissions, tenantGuard, uowFactory);
 
 var flowId = await createHandler.Handle(
     new CreateFlowCommand("Yukti smoke test", "API chaining + log checks", tenantId, userId), default);
@@ -150,3 +155,10 @@ Console.WriteLine($"  Failed:  {completedRun.Results.Count(r => r.Status == Step
 Console.WriteLine($"  Skipped: {completedRun.Results.Count(r => r.Status == StepStatus.Skipped)}");
 Console.WriteLine($"  Flaky:   {completedRun.Results.Count(r => r.IsFlaky)}");
 Console.WriteLine($"\nDuration: {(completedRun.FinishedAt - completedRun.StartedAt)!.Value.TotalMilliseconds:F0}ms");
+
+/// <summary>Host has no HTTP request/JWT — a fixed accessor over the smoke test's one tenant stands in for Yukti.Api's real HttpContextTenantAccessor.</summary>
+sealed class FixedTenantContextAccessor : ITenantContextAccessor
+{
+    public FixedTenantContextAccessor(TenantId tenantId) => CurrentTenantId = tenantId;
+    public TenantId? CurrentTenantId { get; }
+}

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Yukti.Api;
 using Yukti.Application.Abstractions;
@@ -85,6 +86,14 @@ builder.Services.AddSingleton<IJwtTokenService>(_ => new JwtTokenService(signing
 builder.Services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
 builder.Services.AddScoped<IPermissionChecker, PermissionChecker>();
 
+// FR-TENANT-01/02: tenant context sourced only from the authenticated
+// principal's JWT claim (HttpContextTenantAccessor), consumed by every
+// tenant-scoped repository query (Layer 1) and by TenantGuard (Layer 3) —
+// see Repositories.cs and TenantContext.cs for the other two layers.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantContextAccessor, HttpContextTenantAccessor>();
+builder.Services.AddScoped<ITenantGuard, TenantGuard>();
+
 builder.Services.AddSingleton<ApiModule>();
 builder.Services.AddSingleton<LogsModule>();
 builder.Services.AddSingleton<IModuleRegistry>(sp =>
@@ -143,6 +152,28 @@ app.Use(async (context, next) =>
 app.UseAuthentication();
 app.UseAuthorization();
 
+// FR-TENANT-01 Layer 2: sets the session-level Postgres/CockroachDB
+// setting the RLS policies (see the RLS migration) key off, once per
+// request, right after the JWT claims are available and before any
+// endpoint touches the database. Resolves the same Scoped YuktiDbContext
+// instance the repositories for this request will use, so the SET stays
+// in effect for every query in the request — RLS is real database-level
+// enforcement, independent of both the repository filter (Layer 1) and
+// TenantGuard (Layer 3): even a bug in either of those still can't return
+// another tenant's rows once RLS is enabled on the table.
+app.Use(async (context, next) =>
+{
+    var tenantAccessor = context.RequestServices.GetRequiredService<ITenantContextAccessor>();
+    if (tenantAccessor.CurrentTenantId is { } tenantId)
+    {
+        var db = context.RequestServices.GetRequiredService<YuktiDbContext>();
+        await db.Database.OpenConnectionAsync(context.RequestAborted);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.current_tenant_id', {tenantId.Value.ToString()}, false)", context.RequestAborted);
+    }
+    await next();
+});
+
 // ---- Seed baseline roles + built-in modules + one bootstrap admin ----
 // Flow.Publish validates every step's (module, action) against a
 // registered ModuleRegistration (Volume 1 Part II §9.2), and every command
@@ -183,6 +214,18 @@ using (var scope = app.Services.CreateScope())
             "admin@yukti.local", "Bootstrap Administrator", TenantId.New(), hasher.Hash("ChangeMe123!"));
         bootstrapAdmin.AssignRole(adminRoleId);
         await users.Save(bootstrapAdmin, default);
+
+        // The users table's RLS policy (Layer 2) checks writes as well as
+        // reads (FORCE ROW LEVEL SECURITY applies to every command) — with
+        // no authenticated request here, app.current_tenant_id is unset,
+        // so without this the INSERT below would violate the policy's
+        // WITH CHECK. Setting it to the tenant actually being created is
+        // the correct fix, not a bypass: every write, even at startup,
+        // establishes real tenant context rather than skipping RLS for it.
+        var seedDb = scope.ServiceProvider.GetRequiredService<YuktiDbContext>();
+        await seedDb.Database.OpenConnectionAsync();
+        await seedDb.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.current_tenant_id', {bootstrapAdmin.TenantId.Value.ToString()}, false)");
     }
 
     await using var uow = uowFactory.Create();
@@ -286,10 +329,12 @@ flows.MapPost("/", async (CreateFlowRequest req, ClaimsPrincipal principal, Crea
     return Results.Created($"/api/flows/{flowId.Value}", new { flowId = flowId.Value });
 });
 
-flows.MapGet("/{flowId:guid}", async (Guid flowId, IFlowRepository repo, CancellationToken ct) =>
+flows.MapGet("/{flowId:guid}", async (Guid flowId, IFlowRepository repo, ITenantGuard tenantGuard, CancellationToken ct) =>
 {
     var flow = await repo.GetById(new FlowId(flowId), ct);
-    return flow is null ? Results.NotFound(new { error = flowNotFound }) : Results.Ok(FlowResponse.From(flow));
+    if (flow is null) return Results.NotFound(new { error = flowNotFound });
+    tenantGuard.EnsureAccessible(flow.TenantId); // FR-TENANT-01 Layer 3
+    return Results.Ok(FlowResponse.From(flow));
 });
 
 flows.MapPost("/{flowId:guid}/steps", async (Guid flowId, AddStepRequest req, ClaimsPrincipal principal, AddFlowStepCommandHandler handler, CancellationToken ct) =>
@@ -328,12 +373,13 @@ flows.MapPost("/{flowId:guid}/publish", async (Guid flowId, ClaimsPrincipal prin
 // deliberate, temporary simplification analogous to Yukti.Host's smoke test.
 flows.MapPost("/{flowId:guid}/runs", async (
     Guid flowId, TriggerRunRequest? req, ClaimsPrincipal principal,
-    IFlowRepository flowRepo, IFlowRunRepository runRepo,
+    IFlowRepository flowRepo, IFlowRunRepository runRepo, ITenantGuard tenantGuard,
     TriggerFlowRunCommandHandler triggerHandler, FlowEngine engine, ICredentialResolver credentials,
     CancellationToken ct) =>
 {
     var flow = await flowRepo.GetById(new FlowId(flowId), ct);
     if (flow is null) return Results.NotFound(new { error = flowNotFound });
+    tenantGuard.EnsureAccessible(flow.TenantId); // FR-TENANT-01 Layer 3
     if (flow.Status != FlowStatus.Published)
         return Results.BadRequest(new { error = $"Flow is {flow.Status}; only Published flows can be run." });
 
@@ -348,10 +394,12 @@ flows.MapPost("/{flowId:guid}/runs", async (
 
 var runs = app.MapGroup("/api/runs").WithTags("Runs").RequireAuthorization();
 
-runs.MapGet("/{runId:guid}", async (Guid runId, IFlowRunRepository repo, CancellationToken ct) =>
+runs.MapGet("/{runId:guid}", async (Guid runId, IFlowRunRepository repo, ITenantGuard tenantGuard, CancellationToken ct) =>
 {
     var run = await repo.GetById(new FlowRunId(runId), ct);
-    return run is null ? Results.NotFound(new { error = runNotFound }) : Results.Ok(FlowRunResponse.From(run));
+    if (run is null) return Results.NotFound(new { error = runNotFound });
+    tenantGuard.EnsureAccessible(run.TenantId); // FR-TENANT-01 Layer 3
+    return Results.Ok(FlowRunResponse.From(run));
 });
 
 runs.MapPost("/{runId:guid}/cancel", async (Guid runId, ClaimsPrincipal principal, CancelFlowRunCommandHandler handler, CancellationToken ct) =>
