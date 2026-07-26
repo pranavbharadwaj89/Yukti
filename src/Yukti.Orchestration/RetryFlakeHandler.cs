@@ -37,9 +37,12 @@ public sealed class RetryFlakeHandler : IRetryFlakeHandler
                 // clean pass: FR-LOG-02 calls for Warning here specifically,
                 // not Error, since the step ultimately succeeded.
                 if (attempts.Count > 0)
+                {
                     _logger.LogWarning(
                         "Step passed on attempt {AttemptNumber} after {FailedAttempts} prior failed attempt(s) — flaky",
                         attemptNumber, attempts.Count);
+                    OrchestrationTelemetry.FlowRunFlakeDetected.Add(1);
+                }
 
                 return new RetryOutcome(outcome, attempts);
             }

@@ -7,6 +7,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Yukti.Api;
 using Yukti.Application.Abstractions;
 using Yukti.Application.Execution;
@@ -39,6 +42,22 @@ builder.Logging.AddJsonConsole(options =>
     options.IncludeScopes = true;
     options.UseUtcTimestamp = true;
 });
+
+// ---- OpenTelemetry (FR-OBS-01/02) ----
+// AddSource/AddMeter("Yukti.Orchestration") is the only thing that turns
+// FlowEngine's Activity/Meter calls (OrchestrationTelemetry.cs) into real
+// exported traces/metrics — without this registration those calls are
+// harmless no-ops (Activity.StartActivity returns null with no listener).
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("Yukti.Api"))
+    .WithTracing(tracing => tracing
+        .AddSource(Yukti.Orchestration.OrchestrationTelemetry.SourceName)
+        .AddAspNetCoreInstrumentation()
+        .AddConsoleExporter())
+    .WithMetrics(metrics => metrics
+        .AddMeter(Yukti.Orchestration.OrchestrationTelemetry.SourceName)
+        .AddAspNetCoreInstrumentation()
+        .AddConsoleExporter());
 
 // ---- JWT signing key ----
 // Generated once at process startup — the same kind of documented,

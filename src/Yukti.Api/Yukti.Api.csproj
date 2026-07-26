@@ -11,6 +11,16 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
+    <!-- FR-OBS-01/02: exports the Yukti.Orchestration ActivitySource/Meter
+         (OrchestrationTelemetry.cs) as real OpenTelemetry traces/metrics.
+         Console exporter is the demonstrable stand-in for a real OTLP
+         collector, the same documented gap as the Redis-backed rate
+         limiter and CockroachDB elsewhere in this API — swapping in
+         AddOtlpExporter() later needs no change to the instrumentation
+         itself, only this registration. -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.9.0" />
     <!-- Required by the EF Core CLI tooling (dotnet ef migrations, dotnet
          ef database update) when Yukti.Api is used as the startup project
          — not used by application code at runtime. -->

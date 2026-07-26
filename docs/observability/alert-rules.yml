@@ -1,0 +1,69 @@
+# FR-OBS-03 (Volume 1 Part IV §29.6, Volume 4 §7.3): alerting fires on
+# symptom metrics with a defined early-warning margin below the hard NFR
+# threshold, not only at actual breach. Prometheus alerting-rule syntax —
+# no Prometheus/Alertmanager is deployed in this environment (same
+# documented gap as the Redis-backed rate limiter and CockroachDB
+# elsewhere in this repo); this file is the source of truth these rules
+# get loaded from once a real Prometheus instance scrapes Yukti.Api's
+# /metrics endpoint via the OTLP/Prometheus exporter.
+#
+# Every rule below fires BEFORE the hard NFR threshold is breached, at a
+# documented margin, precisely because a page that only fires after the
+# SLO is already broken is a lagging indicator, not an early warning.
+groups:
+  - name: yukti.step-dispatch-latency
+    rules:
+      - alert: StepDispatchLatencyApproachingBudget
+        # Hard threshold: NFR-PERF-1, step-dispatch p95 < 50ms. Warning
+        # margin: 70% of budget (35ms) — gives on-call time to act before
+        # the release-gated SLO in Volume 5 §10 is actually breached.
+        expr: histogram_quantile(0.95, sum(rate(step_dispatch_duration_milliseconds_bucket[5m])) by (le)) > 35
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "step.dispatch.duration p95 is above 35ms (NFR-PERF-1 hard limit is 50ms)"
+          runbook: "docs/specification/product/INIT-YUKTI-BACKEND-001.md#FR-OBS"
+
+      - alert: StepDispatchLatencyBreachingBudget
+        expr: histogram_quantile(0.95, sum(rate(step_dispatch_duration_milliseconds_bucket[5m])) by (le)) > 50
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "step.dispatch.duration p95 has breached NFR-PERF-1's 50ms hard limit"
+
+  - name: yukti.flake-rate
+    rules:
+      - alert: FlakeRateApproachingBudget
+        # Hard threshold: NFR-REL-2, platform flake rate < 0.5%. Warning
+        # margin: 60% of budget (0.3%).
+        expr: |
+          (sum(rate(flow_run_flake_detected_total[1h])) / sum(rate(flow_run_completed_total[1h]))) > 0.003
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flake rate is above 0.3% (NFR-REL-2 hard limit is 0.5%)"
+
+      - alert: FlakeRateBreachingBudget
+        expr: |
+          (sum(rate(flow_run_flake_detected_total[1h])) / sum(rate(flow_run_completed_total[1h]))) > 0.005
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Flake rate has breached NFR-REL-2's 0.5% hard limit"
+
+  - name: yukti.concurrency
+    rules:
+      - alert: ConcurrentExecutionsApproachingScaleTarget
+        # Hard threshold: NFR-SCALE-1, 500 concurrent flow executions.
+        # Warning margin: 80% (400) — headroom to scale out before
+        # dispatch latency starts degrading under load.
+        expr: orchestration_concurrent_executions > 400
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "orchestration.concurrent_executions is above 400 (NFR-SCALE-1 target is 500)"

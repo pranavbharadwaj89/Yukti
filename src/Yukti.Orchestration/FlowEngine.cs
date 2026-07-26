@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Yukti.Application.Abstractions;
 using Yukti.Contracts;
@@ -59,77 +60,113 @@ public sealed class FlowEngine
             ["FlowRunId"] = run.Id.Value
         });
 
-        _logger.LogInformation("FlowRun {FlowRunId} starting for flow {FlowId} ({StepCount} steps)",
-            run.Id.Value, flow.Id.Value, flow.Steps.Count);
+        // FR-OBS-01: one root trace per FlowRun — every step below opens its
+        // own child Activity (System.Diagnostics.Activity automatically
+        // parents a new Activity to whichever one is Activity.Current, which
+        // this one becomes for the duration of the using block).
+        using var runActivity = OrchestrationTelemetry.ActivitySource.StartActivity(
+            "FlowRun.Execute", ActivityKind.Internal);
+        runActivity?.SetTag("flow.run.id", run.Id.Value);
+        runActivity?.SetTag("flow.id", flow.Id.Value);
+        runActivity?.SetTag("flow.tenant.id", run.TenantId.Value);
 
-        run.Start();
-        await CommitRun(run, ct);
-
-        foreach (var step in flow.Steps.OrderBy(s => s.Order))
+        OrchestrationTelemetry.OrchestrationConcurrentExecutions.Add(1);
+        try
         {
-            ct.ThrowIfCancellationRequested();
+            _logger.LogInformation("FlowRun {FlowRunId} starting for flow {FlowId} ({StepCount} steps)",
+                run.Id.Value, flow.Id.Value, flow.Steps.Count);
 
-            if (!_variables.EvaluateCondition(step.WhenCondition, run.Variables))
-            {
-                _logger.LogInformation("Step {StepName} skipped — condition {WhenCondition} was falsy",
-                    step.Name, step.WhenCondition);
-                run.RecordStepResult(StepResult.Skipped(step.Id, step.Name, step.Module, step.Action,
-                    $"Condition '{step.WhenCondition}' was falsy."));
-                await CommitRun(run, ct);
-                continue;
-            }
-
-            var interpolatedParams = _variables.Interpolate(step.Params, run.Variables);
-            var execCtx = new ExecutionContext
-            {
-                RunId = run.Id,
-                Variables = run.Variables,
-                Credentials = credentials,
-                RunCancellation = ct
-            };
-
-            var retryOutcome = await _retryHandler.ExecuteWithRetry(
-                innerCt => _dispatcher.Dispatch(step.Module, step.Action, interpolatedParams, execCtx, innerCt),
-                _defaultRetryPolicy, ct);
-
-            var result = new StepResult(
-                step.Id, step.Name, step.Module, step.Action,
-                retryOutcome.FinalOutcome.Status, TimeSpan.Zero,
-                retryOutcome.FinalOutcome.Message, retryOutcome.FinalOutcome.Error, retryOutcome.FinalOutcome.Data,
-                retryOutcome.FinalOutcome.AiAttribution, retryOutcome.Attempts);
-
-            run.RecordStepResult(result);
-
-            // FR-LOG-02: Error only for a genuine failure; a step that
-            // eventually passed after retries is a flake — Warning, not
-            // Error — surfaced by RetryFlakeHandler itself. A clean pass is
-            // routine and logs at Information.
-            if (result.Status == StepStatus.Failed)
-                _logger.LogError("Step {StepName} ({Module}.{Action}) failed: {Error}",
-                    step.Name, step.Module, step.Action, result.Error);
-            else
-                _logger.LogInformation("Step {StepName} ({Module}.{Action}) completed with status {Status}",
-                    step.Name, step.Module, step.Action, result.Status);
-
-            if (step.SaveAs is not null)
-                run.BindVariable(step.SaveAs, result.Data);
-
-            // Commit THIS step's result now, before dispatching the next step.
+            run.Start();
             await CommitRun(run, ct);
 
-            if (result.Status == StepStatus.Failed && !flow.ContinueOnFailure)
+            foreach (var step in flow.Steps.OrderBy(s => s.Order))
             {
-                _logger.LogWarning("FlowRun {FlowRunId} stopping early — step {StepName} failed and ContinueOnFailure is false",
-                    run.Id.Value, step.Name);
-                break; // fail-fast default (Product Philosophy 4.2)
+                ct.ThrowIfCancellationRequested();
+
+                if (!_variables.EvaluateCondition(step.WhenCondition, run.Variables))
+                {
+                    _logger.LogInformation("Step {StepName} skipped — condition {WhenCondition} was falsy",
+                        step.Name, step.WhenCondition);
+                    run.RecordStepResult(StepResult.Skipped(step.Id, step.Name, step.Module, step.Action,
+                        $"Condition '{step.WhenCondition}' was falsy."));
+                    await CommitRun(run, ct);
+                    continue;
+                }
+
+                using var stepActivity = OrchestrationTelemetry.ActivitySource.StartActivity(
+                    "FlowStep.Execute", ActivityKind.Internal);
+                stepActivity?.SetTag("flow.step.name", step.Name);
+                stepActivity?.SetTag("flow.step.module", step.Module.Value);
+                stepActivity?.SetTag("flow.step.action", step.Action);
+
+                var interpolatedParams = _variables.Interpolate(step.Params, run.Variables);
+                var execCtx = new ExecutionContext
+                {
+                    RunId = run.Id,
+                    Variables = run.Variables,
+                    Credentials = credentials,
+                    RunCancellation = ct
+                };
+
+                var dispatchStopwatch = Stopwatch.StartNew();
+                var retryOutcome = await _retryHandler.ExecuteWithRetry(
+                    innerCt => _dispatcher.Dispatch(step.Module, step.Action, interpolatedParams, execCtx, innerCt),
+                    _defaultRetryPolicy, ct);
+                dispatchStopwatch.Stop();
+
+                var result = new StepResult(
+                    step.Id, step.Name, step.Module, step.Action,
+                    retryOutcome.FinalOutcome.Status, TimeSpan.Zero,
+                    retryOutcome.FinalOutcome.Message, retryOutcome.FinalOutcome.Error, retryOutcome.FinalOutcome.Data,
+                    retryOutcome.FinalOutcome.AiAttribution, retryOutcome.Attempts);
+
+                OrchestrationTelemetry.StepDispatchDuration.Record(dispatchStopwatch.Elapsed.TotalMilliseconds,
+                    new KeyValuePair<string, object?>("module", step.Module.Value),
+                    new KeyValuePair<string, object?>("action", step.Action),
+                    new KeyValuePair<string, object?>("status", result.Status.ToString()));
+                stepActivity?.SetTag("flow.step.status", result.Status.ToString());
+
+                run.RecordStepResult(result);
+
+                // FR-LOG-02: Error only for a genuine failure; a step that
+                // eventually passed after retries is a flake — Warning, not
+                // Error — surfaced by RetryFlakeHandler itself. A clean pass is
+                // routine and logs at Information.
+                if (result.Status == StepStatus.Failed)
+                    _logger.LogError("Step {StepName} ({Module}.{Action}) failed: {Error}",
+                        step.Name, step.Module, step.Action, result.Error);
+                else
+                    _logger.LogInformation("Step {StepName} ({Module}.{Action}) completed with status {Status}",
+                        step.Name, step.Module, step.Action, result.Status);
+
+                if (step.SaveAs is not null)
+                    run.BindVariable(step.SaveAs, result.Data);
+
+                // Commit THIS step's result now, before dispatching the next step.
+                await CommitRun(run, ct);
+
+                if (result.Status == StepStatus.Failed && !flow.ContinueOnFailure)
+                {
+                    _logger.LogWarning("FlowRun {FlowRunId} stopping early — step {StepName} failed and ContinueOnFailure is false",
+                        run.Id.Value, step.Name);
+                    break; // fail-fast default (Product Philosophy 4.2)
+                }
             }
+
+            run.Complete();
+            await CommitRun(run, ct);
+
+            OrchestrationTelemetry.FlowRunCompleted.Add(1,
+                new KeyValuePair<string, object?>("status", run.Status.ToString()));
+            runActivity?.SetTag("flow.run.status", run.Status.ToString());
+
+            _logger.LogInformation("FlowRun {FlowRunId} finished with status {Status}", run.Id.Value, run.Status);
+            return run;
         }
-
-        run.Complete();
-        await CommitRun(run, ct);
-
-        _logger.LogInformation("FlowRun {FlowRunId} finished with status {Status}", run.Id.Value, run.Status);
-        return run;
+        finally
+        {
+            OrchestrationTelemetry.OrchestrationConcurrentExecutions.Add(-1);
+        }
     }
 
     private async Task CommitRun(FlowRun run, CancellationToken ct)
