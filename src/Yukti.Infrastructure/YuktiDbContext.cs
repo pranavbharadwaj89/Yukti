@@ -24,6 +24,7 @@ public sealed class YuktiDbContext : DbContext
     public DbSet<ModuleRegistration> ModuleRegistrations => Set<ModuleRegistration>();
     public DbSet<Yukti.Domain.IdentityAccess.User> Users => Set<Yukti.Domain.IdentityAccess.User>();
     public DbSet<Role> Roles => Set<Role>();
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,5 +33,13 @@ public sealed class YuktiDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ModuleRegistrationConfiguration());
         modelBuilder.ApplyConfiguration(new FlowConfiguration());
         modelBuilder.ApplyConfiguration(new FlowRunConfiguration());
+
+        // FR-API-02's dedup table — not a domain aggregate, configured
+        // inline rather than via its own IEntityTypeConfiguration file.
+        modelBuilder.Entity<IdempotencyRecord>(e =>
+        {
+            e.ToTable("idempotency_keys");
+            e.HasKey(r => new { r.TenantId, r.Key });
+        });
     }
 }

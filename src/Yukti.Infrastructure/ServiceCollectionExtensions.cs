@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRoleRepository, EfRoleRepository>();
         services.AddScoped<IModuleActionResolver, EfModuleActionResolver>();
         services.AddScoped<IUnitOfWorkFactory, EfUnitOfWorkFactory>();
+        services.AddScoped<IIdempotencyStore, EfIdempotencyStore>();
 
         return services;
     }
