@@ -1,4 +1,6 @@
 using Yukti.Application.Abstractions;
+using Yukti.Application.IdentityAccess;
+using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
 
@@ -12,16 +14,20 @@ public sealed record RegisterModuleCommand(
 public sealed class RegisterModuleCommandHandler : ICommandHandler<RegisterModuleCommand, ModuleRegistrationId>
 {
     private readonly IModuleRegistrationRepository _registrations;
+    private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public RegisterModuleCommandHandler(IModuleRegistrationRepository registrations, IUnitOfWorkFactory uowFactory)
+    public RegisterModuleCommandHandler(IModuleRegistrationRepository registrations, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
     {
         _registrations = registrations;
+        _permissions = permissions;
         _uowFactory = uowFactory;
     }
 
     public async Task<ModuleRegistrationId> Handle(RegisterModuleCommand cmd, CancellationToken ct)
     {
+        await _permissions.EnsurePermission(cmd.RegisteredBy, Permission.ModuleManage, ct);
+
         var registration = new ModuleRegistration(cmd.Kind, cmd.DisplayName, cmd.Trust, cmd.ContractVersion, cmd.TenantId);
         foreach (var action in cmd.Actions)
             registration.RegisterAction(action);

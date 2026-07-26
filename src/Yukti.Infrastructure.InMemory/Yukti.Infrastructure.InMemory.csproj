@@ -16,6 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Yukti.Domain\Yukti.Domain.csproj" />
     <ProjectReference Include="..\Yukti.Contracts\Yukti.Contracts.csproj" />
     <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />

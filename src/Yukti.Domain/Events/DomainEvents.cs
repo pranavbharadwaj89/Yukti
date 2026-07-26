@@ -53,3 +53,22 @@ public sealed record ModuleRegisteredEvent(
 public sealed record ModuleDeprecatedActionEvent(
     ModuleRegistrationId RegistrationId, string ActionName, string Notice, DateTimeOffset OccurredAt
 ) : IDomainEvent;
+
+// Identity & Access context events (Volume 1 Part IV §25).
+
+public sealed record UserRegisteredEvent(
+    UserId UserId, string Email, TenantId TenantId, DateTimeOffset OccurredAt
+) : IDomainEvent;
+
+public sealed record UserRoleAssignedEvent(
+    UserId UserId, RoleId RoleId, DateTimeOffset OccurredAt
+) : IDomainEvent;
+
+public sealed record RoleCreatedEvent(
+    RoleId RoleId, string Name, TenantId? TenantId, int Version, DateTimeOffset OccurredAt
+) : IDomainEvent;
+
+/// <summary>Feeds FR-AUTHZ-04's mid-session revocation guarantee — a consumer could invalidate cached tokens/sessions on sight of this event, though PermissionChecker's always-live-lookup design doesn't itself depend on that.</summary>
+public sealed record RolePermissionsUpdatedEvent(
+    RoleId RoleId, int NewVersion, DateTimeOffset OccurredAt
+) : IDomainEvent;

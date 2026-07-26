@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Yukti.Application.Abstractions;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
+using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
 
@@ -60,6 +61,47 @@ public sealed class InMemoryModuleRegistrationRepository : IModuleRegistrationRe
     public Task Save(ModuleRegistration registration, CancellationToken ct)
     {
         _uowFactory.StageSave(() => _store[registration.Id.Value] = registration, registration);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class InMemoryUserRepository : IUserRepository
+{
+    private readonly ConcurrentDictionary<Guid, User> _store = new();
+    private readonly InMemoryUnitOfWorkFactory _uowFactory;
+
+    public InMemoryUserRepository(InMemoryUnitOfWorkFactory uowFactory) => _uowFactory = uowFactory;
+
+    public Task<User?> GetById(UserId id, CancellationToken ct) =>
+        Task.FromResult(_store.TryGetValue(id.Value, out var user) ? user : null);
+
+    public Task<User?> GetByEmail(string email, CancellationToken ct) =>
+        Task.FromResult(_store.Values.FirstOrDefault(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase)));
+
+    public Task Save(User user, CancellationToken ct)
+    {
+        _uowFactory.StageSave(() => _store[user.Id.Value] = user, user);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class InMemoryRoleRepository : IRoleRepository
+{
+    private readonly ConcurrentDictionary<Guid, Role> _store = new();
+    private readonly InMemoryUnitOfWorkFactory _uowFactory;
+
+    public InMemoryRoleRepository(InMemoryUnitOfWorkFactory uowFactory) => _uowFactory = uowFactory;
+
+    public Task<Role?> GetById(RoleId id, CancellationToken ct) =>
+        Task.FromResult(_store.TryGetValue(id.Value, out var role) ? role : null);
+
+    public Task<Role?> GetByName(string name, TenantId? tenantId, CancellationToken ct) =>
+        Task.FromResult(_store.Values.FirstOrDefault(r =>
+            r.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && r.TenantId == tenantId));
+
+    public Task Save(Role role, CancellationToken ct)
+    {
+        _uowFactory.StageSave(() => _store[role.Id.Value] = role, role);
         return Task.CompletedTask;
     }
 }

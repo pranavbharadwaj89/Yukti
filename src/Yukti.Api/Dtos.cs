@@ -77,3 +77,12 @@ public sealed record ActionSchemaResponse(string ActionName, string? Description
 
 /// <summary>Backs FR-ORCH-7's introspection requirement — a flow-authoring GUI renders purely from this, with zero hardcoded per-module knowledge.</summary>
 public sealed record ModuleResponse(string Kind, string DisplayName, string Trust, string ContractVersion, IReadOnlyList<ActionSchemaResponse> Actions);
+
+// ---- Auth (Volume 1 Part IV §24-25) ----
+
+public sealed record RegisterRequest(string Email, string Password, string DisplayName);
+public sealed record LoginRequest(string Email, string Password);
+public sealed record RefreshRequest(string RefreshToken);
+public sealed record UpdateRolePermissionsRequest(IReadOnlyList<string> Permissions);
+
+public sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAt, string RefreshToken);

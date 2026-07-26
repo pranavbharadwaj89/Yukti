@@ -29,3 +29,17 @@ public interface IModuleRegistrationRepository
     Task<ModuleRegistration?> GetByKind(ModuleKind kind, TenantId? tenantId, CancellationToken ct);
     Task Save(ModuleRegistration registration, CancellationToken ct);
 }
+
+public interface IUserRepository
+{
+    Task<Yukti.Domain.IdentityAccess.User?> GetById(UserId id, CancellationToken ct);
+    Task<Yukti.Domain.IdentityAccess.User?> GetByEmail(string email, CancellationToken ct);
+    Task Save(Yukti.Domain.IdentityAccess.User user, CancellationToken ct);
+}
+
+public interface IRoleRepository
+{
+    Task<Yukti.Domain.IdentityAccess.Role?> GetById(RoleId id, CancellationToken ct);
+    Task<Yukti.Domain.IdentityAccess.Role?> GetByName(string name, TenantId? tenantId, CancellationToken ct);
+    Task Save(Yukti.Domain.IdentityAccess.Role role, CancellationToken ct);
+}

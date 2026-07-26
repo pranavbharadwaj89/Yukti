@@ -1,5 +1,7 @@
 using Yukti.Application.Abstractions;
+using Yukti.Application.IdentityAccess;
 using Yukti.Domain.FlowAuthoring;
+using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
 
@@ -10,23 +12,27 @@ public sealed record CreateFlowCommand(string Name, string? Description, TenantI
 
 public sealed record AddFlowStepCommand(
     FlowId FlowId, string StepName, ModuleKind Module, string Action,
-    IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When) : ICommand<bool>;
+    IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When, UserId RequestedBy) : ICommand<bool>;
 
 public sealed record PublishFlowCommand(FlowId FlowId, UserId PublishedBy) : ICommand<FlowPublishResult>;
 
 public sealed class CreateFlowCommandHandler : ICommandHandler<CreateFlowCommand, FlowId>
 {
     private readonly IFlowRepository _flows;
+    private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public CreateFlowCommandHandler(IFlowRepository flows, IUnitOfWorkFactory uowFactory)
+    public CreateFlowCommandHandler(IFlowRepository flows, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
     {
         _flows = flows;
+        _permissions = permissions;
         _uowFactory = uowFactory;
     }
 
     public async Task<FlowId> Handle(CreateFlowCommand cmd, CancellationToken ct)
     {
+        await _permissions.EnsurePermission(cmd.AuthoredBy, Permission.FlowCreate, ct);
+
         var flow = Flow.CreateDraft(cmd.Name, cmd.Description, cmd.TenantId, cmd.AuthoredBy);
         await _flows.Save(flow, ct);
         await using var uow = _uowFactory.Create();
@@ -38,16 +44,20 @@ public sealed class CreateFlowCommandHandler : ICommandHandler<CreateFlowCommand
 public sealed class AddFlowStepCommandHandler : ICommandHandler<AddFlowStepCommand, bool>
 {
     private readonly IFlowRepository _flows;
+    private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public AddFlowStepCommandHandler(IFlowRepository flows, IUnitOfWorkFactory uowFactory)
+    public AddFlowStepCommandHandler(IFlowRepository flows, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
     {
         _flows = flows;
+        _permissions = permissions;
         _uowFactory = uowFactory;
     }
 
     public async Task<bool> Handle(AddFlowStepCommand cmd, CancellationToken ct)
     {
+        await _permissions.EnsurePermission(cmd.RequestedBy, Permission.FlowEdit, ct);
+
         var flow = await _flows.GetById(cmd.FlowId, ct)
             ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
 
@@ -64,17 +74,21 @@ public sealed class PublishFlowCommandHandler : ICommandHandler<PublishFlowComma
 {
     private readonly IFlowRepository _flows;
     private readonly IModuleActionResolver _resolver;
+    private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IUnitOfWorkFactory uowFactory)
+    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
     {
         _flows = flows;
         _resolver = resolver;
+        _permissions = permissions;
         _uowFactory = uowFactory;
     }
 
     public async Task<FlowPublishResult> Handle(PublishFlowCommand cmd, CancellationToken ct)
     {
+        await _permissions.EnsurePermission(cmd.PublishedBy, Permission.FlowPublish, ct);
+
         var flow = await _flows.GetById(cmd.FlowId, ct)
             ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
 
