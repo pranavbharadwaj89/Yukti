@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Yukti.Worker</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UserSecretsId>6b746e6b-ec5a-4995-a73e-b26cd66270e2</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <!-- Same StackExchange.Redis dependency RedisTriggerLock needs — no
+         SignalR here, so the plain client package, not
+         Microsoft.AspNetCore.SignalR.StackExchangeRedis (Yukti.Api's
+         SignalR hub/backplane has no reason to exist in this process;
+         FR-RT stays entirely in Yukti.Api). -->
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Yukti.Domain\Yukti.Domain.csproj" />
+    <ProjectReference Include="..\Yukti.Contracts\Yukti.Contracts.csproj" />
+    <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />
+    <ProjectReference Include="..\Yukti.Orchestration\Yukti.Orchestration.csproj" />
+    <ProjectReference Include="..\Yukti.Infrastructure\Yukti.Infrastructure.csproj" />
+    <ProjectReference Include="..\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj" />
+  </ItemGroup>
+
+</Project>

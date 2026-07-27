@@ -57,21 +57,37 @@ public sealed record UpdateRolePermissionsCommand(RoleId RoleId, IReadOnlySet<Pe
 public sealed class RegisterUserCommandHandler : AuditableCommandHandler<RegisterUserCommand, UserId>
 {
     private readonly IUserRepository _users;
+    private readonly IAuthBypassUserLookup _authBypass;
+    private readonly ITenantSessionInitializer _tenantSession;
     private readonly IPasswordHasher _hasher;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public RegisterUserCommandHandler(IUserRepository users, IPasswordHasher hasher, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+    public RegisterUserCommandHandler(IUserRepository users, IAuthBypassUserLookup authBypass,
+        ITenantSessionInitializer tenantSession, IPasswordHasher hasher,
+        IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
         : base(audit, tenantAccessor)
     {
         _users = users;
+        _authBypass = authBypass;
+        _tenantSession = tenantSession;
         _hasher = hasher;
         _uowFactory = uowFactory;
     }
 
     protected override async Task<UserId> HandleCore(RegisterUserCommand cmd, CancellationToken ct)
     {
-        if (await _users.GetByEmail(cmd.Email, ct) is not null)
+        // FR-TENANT-01/FR-DB-02 fallout: the duplicate-email check must see
+        // across tenants — there is no tenant context yet for a brand-new
+        // self-registration, and users' RLS policy has no permissive
+        // branch for that (see IAuthBypassUserLookup's doc comment).
+        if (await _authBypass.GetByEmail(cmd.Email, ct) is not null)
             throw new DomainException($"Email '{cmd.Email}' is already registered.");
+
+        // This request is minting cmd.TenantId itself — no JWT-derived
+        // middleware has set app.current_tenant_id for it yet, so without
+        // this, the INSERT below fails RLS's WITH CHECK (see
+        // ITenantSessionInitializer's doc comment).
+        await _tenantSession.EstablishTenantContext(cmd.TenantId, ct);
 
         var user = User.Register(cmd.Email, cmd.DisplayName, cmd.TenantId, _hasher.Hash(cmd.Password));
         user.AssignRole(cmd.InitialRoleId);

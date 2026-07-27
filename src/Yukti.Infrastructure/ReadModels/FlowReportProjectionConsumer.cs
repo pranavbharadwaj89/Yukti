@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Yukti.Application.Abstractions;
 using Yukti.Domain.Events;
 
@@ -8,21 +9,28 @@ namespace Yukti.Infrastructure.ReadModels;
 /// FlowReportReadModel — upserts by FlowRunId (the row's own primary key),
 /// never a blind insert, so at-least-once redelivery from the outbox
 /// relay produces the same end state, not duplicate/inconsistent rows.
+///
+/// Looks the FlowRun up via a direct, untenanted DbContext query rather
+/// than IFlowRunRepository: this consumer runs inside the outbox relay's
+/// background scope, which has no ambient tenant (no HttpContext, no JWT)
+/// to satisfy IFlowRunRepository's own tenant filter — using it here meant
+/// the lookup always returned null and this projection silently never
+/// wrote a single row. The Tier 2 relay is legitimately cross-tenant by
+/// design (one relay processes every tenant's events), so bypassing the
+/// per-tenant filter here is correct, not a shortcut.
 /// </summary>
 public sealed class FlowReportProjectionConsumer : ITier2EventConsumer<FlowRunCompletedEvent>
 {
     private readonly YuktiDbContext _context;
-    private readonly IFlowRunRepository _runs;
 
-    public FlowReportProjectionConsumer(YuktiDbContext context, IFlowRunRepository runs)
+    public FlowReportProjectionConsumer(YuktiDbContext context)
     {
         _context = context;
-        _runs = runs;
     }
 
     public async Task Handle(FlowRunCompletedEvent domainEvent, CancellationToken ct)
     {
-        var run = await _runs.GetById(domainEvent.RunId, ct);
+        var run = await _context.FlowRuns.FirstOrDefaultAsync(r => r.Id == domainEvent.RunId, ct);
         if (run is null)
             return; // run was somehow removed between the event firing and this projection — nothing to report on
 

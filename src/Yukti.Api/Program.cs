@@ -190,6 +190,14 @@ var connectionString = builder.Configuration.GetConnectionString("YuktiRuntime")
         "Missing ConnectionStrings:YuktiRuntime/Yukti. Set one via `dotnet user-secrets set \"ConnectionStrings:Yukti\" \"...\"` for local development.");
 builder.Services.AddYuktiInfrastructure(connectionString);
 
+// FR-TENANT-01/FR-DB-02 fallout: login/self-registration/startup seeding
+// all need to find a user by email before any tenant context exists —
+// RLS on the users table has no permissive branch for that, so this
+// bypasses it via yukti_worker (falls back to the regular connection
+// string in environments that haven't set up the split roles yet).
+var bypassConnectionString = builder.Configuration.GetConnectionString("YuktiWorker") ?? connectionString;
+builder.Services.AddSingleton<IAuthBypassUserLookup>(_ => new EfAuthBypassUserLookup(bypassConnectionString));
+
 // Domain event dispatch (Tier 1, in-process) is orthogonal to which
 // Infrastructure implementation persists state — kept as-is regardless of
 // InMemory vs. EF Core.
@@ -216,19 +224,13 @@ builder.Services.AddSingleton<IDomainEventDispatcher>(sp => sp.GetRequiredServic
 // in-memory stand-in.
 builder.Services.AddSingleton<ICredentialResolver, InMemoryCredentialResolver>();
 
-// FR-SCHED: same "no persistence need yet" category as ICredentialResolver
-// above — see InMemoryTriggerRepository's doc comment for why (no domain
-// events to flush, and durable EF persistence is a follow-up). Singleton:
-// this is the trigger store's only backing instance for the process's
-// lifetime, same as InMemoryDomainEventDispatcher.
-builder.Services.AddSingleton<ITriggerRepository, InMemoryTriggerRepository>();
-builder.Services.AddSingleton<ITriggerLock, RedisTriggerLock>();
-builder.Services.AddHostedService<SchedulerHostedService>();
-
-// FR-EVT-01/FR-CQRS-02: Tier 2 outbox relay + its one registered consumer.
-builder.Services.AddScoped<ITier2EventConsumer<FlowRunCompletedEvent>, FlowReportProjectionConsumer>();
-builder.Services.AddHostedService<OutboxRelayHostedService>();
-builder.Services.AddHostedService<TrendAggregateBatchJob>();
+// FR-OPS-01: the Scheduler (FR-SCHED), outbox relay (FR-EVT-01), and trend
+// batch job (FR-CQRS-03) now run in the separate Yukti.Worker deployable —
+// see its Program.cs — not in this HTTP-serving process. Yukti.Api keeps
+// only what an inbound HTTP request needs: the SignalR hub/backplane above
+// (FR-RT stays here — it's push-to-connected-client, not a background job)
+// and the trend read endpoint below (a query against TrendAggregateReadModel,
+// the table Yukti.Worker's batch job writes into).
 
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService>(_ => new JwtTokenService(signingKey));
@@ -367,7 +369,8 @@ using (var scope = app.Services.CreateScope())
     authorRoleId = author.Id;
     runnerRoleId = runner.Id;
 
-    var bootstrapAdmin = await users.GetByEmail("admin@yukti.local", default);
+    var authBypass = scope.ServiceProvider.GetRequiredService<IAuthBypassUserLookup>();
+    var bootstrapAdmin = await authBypass.GetByEmail("admin@yukti.local", default);
     if (bootstrapAdmin is null)
     {
         bootstrapAdmin = Yukti.Domain.IdentityAccess.User.Register(
@@ -432,10 +435,10 @@ auth.MapPost("/register", async (RegisterRequest req, RegisterUserCommandHandler
 });
 
 auth.MapPost("/login", async (
-    LoginRequest req, HttpContext context, IUserRepository users, IRoleRepository roleRepo,
+    LoginRequest req, HttpContext context, IAuthBypassUserLookup authBypass, IRoleRepository roleRepo,
     IPasswordHasher hasher, IJwtTokenService jwt, IRefreshTokenStore refreshTokens, CancellationToken ct) =>
 {
-    var user = await users.GetByEmail(req.Email, ct);
+    var user = await authBypass.GetByEmail(req.Email, ct);
     if (user is null || !hasher.Verify(req.Password, user.PasswordHash))
         return ProblemResults.Unauthorized(context, invalidCredentials);
 

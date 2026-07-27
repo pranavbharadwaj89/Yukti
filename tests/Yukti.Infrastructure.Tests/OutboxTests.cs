@@ -56,7 +56,6 @@ public sealed class FlowReportProjectionConsumerTests
         var options = new DbContextOptionsBuilder<YuktiDbContext>().UseNpgsql(connectionString).Options;
 
         var tenantId = TenantId.New();
-        var tenantAccessor = new FixedTenantContextAccessor(tenantId);
 
         await using var seed = new YuktiDbContext(options);
         await seed.Database.OpenConnectionAsync();
@@ -71,8 +70,7 @@ public sealed class FlowReportProjectionConsumerTests
 
         var evt = new FlowRunCompletedEvent(run.Id, RunStatus.Passed, 1, 0, 0, TimeSpan.FromSeconds(1), DateTimeOffset.UtcNow);
 
-        var runs = new EfFlowRunRepository(seed, tenantAccessor);
-        var consumer = new FlowReportProjectionConsumer(seed, runs);
+        var consumer = new FlowReportProjectionConsumer(seed);
 
         // Redeliver the same event twice — simulates the outbox relay's
         // at-least-once guarantee under a crash/retry.

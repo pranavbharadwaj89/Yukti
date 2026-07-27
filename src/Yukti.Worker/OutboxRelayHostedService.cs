@@ -3,7 +3,7 @@ using Yukti.Application.Abstractions;
 using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure;
 
-namespace Yukti.Api;
+namespace Yukti.Worker;
 
 /// <summary>
 /// FR-EVT-01's Tier 2 relay: polls outbox_messages for unprocessed rows,

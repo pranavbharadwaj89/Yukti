@@ -3,7 +3,7 @@ using Yukti.Domain.Execution;
 using Yukti.Infrastructure;
 using Yukti.Infrastructure.ReadModels;
 
-namespace Yukti.Api;
+namespace Yukti.Worker;
 
 /// <summary>
 /// FR-CQRS-03: recomputes TrendAggregateReadModel per tenant on a fixed
