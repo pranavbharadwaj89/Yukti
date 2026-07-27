@@ -174,9 +174,20 @@ builder.Services.AddRateLimiter(options =>
 // string is read from configuration (user-secrets in Development, an env
 // var / real secret store in any other environment) — never hardcoded,
 // never committed.
-var connectionString = builder.Configuration.GetConnectionString("Yukti")
+//
+// FR-AUDIT-03: the app's RUNTIME connection uses "yukti_app", a distinct,
+// non-owner role with only SELECT/INSERT on audit_entries (no
+// UPDATE/DELETE) — see the AddYuktiAppRuntimeRole migration. "Yukti"
+// (the original, owner-privileged connection as "pranav") is what
+// `dotnet ef database update` still uses to run migrations, since DDL /
+// RLS policy creation needs owner privileges yukti_app deliberately
+// doesn't have. Falls back to ConnectionStrings:Yukti if
+// ConnectionStrings:YuktiRuntime isn't configured, so this doesn't break
+// any environment that hasn't set up the split role yet.
+var connectionString = builder.Configuration.GetConnectionString("YuktiRuntime")
+    ?? builder.Configuration.GetConnectionString("Yukti")
     ?? throw new InvalidOperationException(
-        "Missing ConnectionStrings:Yukti. Set it via `dotnet user-secrets set \"ConnectionStrings:Yukti\" \"...\"` for local development.");
+        "Missing ConnectionStrings:YuktiRuntime/Yukti. Set one via `dotnet user-secrets set \"ConnectionStrings:Yukti\" \"...\"` for local development.");
 builder.Services.AddYuktiInfrastructure(connectionString);
 
 // Domain event dispatch (Tier 1, in-process) is orthogonal to which
