@@ -9,6 +9,17 @@ namespace Yukti.Application.Abstractions;
 public interface IUnitOfWork : IAsyncDisposable
 {
     Task Commit(CancellationToken ct);
+
+    // FR-OPS-03 fallout: AuditableCommandHandler now stages a command's own
+    // outcome and commits it in the SAME round trip as its business state
+    // (merging what used to be two separate SaveChangesAsync calls) — but
+    // that means if HandleCore staged a partial mutation before throwing
+    // (e.g. loaded-and-mutated-in-place aggregate via EF's own change
+    // tracking), that partial state must not be swept up into the
+    // failure-path commit alongside the failure's own audit entry. This is
+    // the one exception to "no exposed Rollback" above: discarding
+    // everything staged so far, never committing it.
+    void DiscardStaged();
 }
 
 /// <summary>

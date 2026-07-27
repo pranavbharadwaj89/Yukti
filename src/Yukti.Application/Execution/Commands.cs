@@ -24,14 +24,12 @@ public sealed class TriggerFlowRunCommandHandler : AuditableCommandHandler<Trigg
 {
     private readonly IFlowRunRepository _runs;
     private readonly IPermissionChecker _permissions;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public TriggerFlowRunCommandHandler(IFlowRunRepository runs, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _runs = runs;
         _permissions = permissions;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<FlowRunId> HandleCore(TriggerFlowRunCommand cmd, CancellationToken ct)
@@ -40,8 +38,7 @@ public sealed class TriggerFlowRunCommandHandler : AuditableCommandHandler<Trigg
 
         var run = FlowRun.Create(cmd.FlowId, cmd.Trigger, cmd.TenantId, cmd.VariableOverrides);
         await _runs.Save(run, ct);
-        await using var uow = _uowFactory.Create();
-        await uow.Commit(ct);
+        // FR-OPS-03: no commit here — see CreateFlowCommandHandler's comment.
         return run.Id;
     }
 }
@@ -51,15 +48,13 @@ public sealed class CancelFlowRunCommandHandler : AuditableCommandHandler<Cancel
     private readonly IFlowRunRepository _runs;
     private readonly IPermissionChecker _permissions;
     private readonly ITenantGuard _tenantGuard;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public CancelFlowRunCommandHandler(IFlowRunRepository runs, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _runs = runs;
         _permissions = permissions;
         _tenantGuard = tenantGuard;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<bool> HandleCore(CancelFlowRunCommand cmd, CancellationToken ct)
@@ -71,8 +66,7 @@ public sealed class CancelFlowRunCommandHandler : AuditableCommandHandler<Cancel
         _tenantGuard.EnsureAccessible(run.TenantId); // FR-TENANT-01 Layer 3
         run.Cancel();
         await _runs.Save(run, ct);
-        await using var uow = _uowFactory.Create();
-        await uow.Commit(ct);
+        // FR-OPS-03: no commit here — see CreateFlowCommandHandler's comment.
         return true;
     }
 }

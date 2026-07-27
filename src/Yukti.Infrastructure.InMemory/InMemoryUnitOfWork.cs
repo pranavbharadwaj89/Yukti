@@ -14,16 +14,16 @@ namespace Yukti.Infrastructure.InMemory;
 public sealed class InMemoryUnitOfWork : IUnitOfWork
 {
     private readonly List<Action> _pendingSaves;
+    private readonly List<IHasDomainEvents> _trackedAggregates;
     private readonly Action<IReadOnlyList<IDomainEvent>> _dispatchEvents;
-    private readonly Func<IReadOnlyList<IDomainEvent>> _collectEvents;
 
     internal InMemoryUnitOfWork(
         List<Action> pendingSaves,
-        Func<IReadOnlyList<IDomainEvent>> collectEvents,
+        List<IHasDomainEvents> trackedAggregates,
         Action<IReadOnlyList<IDomainEvent>> dispatchEvents)
     {
         _pendingSaves = pendingSaves;
-        _collectEvents = collectEvents;
+        _trackedAggregates = trackedAggregates;
         _dispatchEvents = dispatchEvents;
     }
 
@@ -32,10 +32,27 @@ public sealed class InMemoryUnitOfWork : IUnitOfWork
         foreach (var save in _pendingSaves)
             save();
 
-        var events = _collectEvents();
+        var events = _trackedAggregates.SelectMany(a => a.DomainEvents).ToList();
+        foreach (var aggregate in _trackedAggregates)
+            aggregate.ClearDomainEvents();
         _dispatchEvents(events);
 
         return Task.CompletedTask;
+    }
+
+    // FR-OPS-03 fallout: see IUnitOfWork.DiscardStaged's doc comment.
+    // Clears both this instance's own snapshot lists — pending saves AND
+    // the aggregates snapshot itself, not just the events already raised
+    // on them — so a Commit() called afterward (to flush just a
+    // failure-path audit entry) neither replays an abandoned mutation nor
+    // dispatches a domain event an abandoned operation happened to have
+    // already raised before it failed.
+    public void DiscardStaged()
+    {
+        _pendingSaves.Clear();
+        foreach (var aggregate in _trackedAggregates)
+            aggregate.ClearDomainEvents();
+        _trackedAggregates.Clear();
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -66,13 +83,7 @@ public sealed class InMemoryUnitOfWorkFactory : IUnitOfWorkFactory
 
         return new InMemoryUnitOfWork(
             savesSnapshot,
-            collectEvents: () =>
-            {
-                var events = aggregatesSnapshot.SelectMany(a => a.DomainEvents).ToList();
-                foreach (var aggregate in aggregatesSnapshot)
-                    aggregate.ClearDomainEvents();
-                return events;
-            },
+            aggregatesSnapshot,
             dispatchEvents: events => _dispatcher.DispatchAll(events));
     }
 }

@@ -16,14 +16,12 @@ public sealed class RegisterModuleCommandHandler : AuditableCommandHandler<Regis
 {
     private readonly IModuleRegistrationRepository _registrations;
     private readonly IPermissionChecker _permissions;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public RegisterModuleCommandHandler(IModuleRegistrationRepository registrations, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _registrations = registrations;
         _permissions = permissions;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<ModuleRegistrationId> HandleCore(RegisterModuleCommand cmd, CancellationToken ct)
@@ -35,8 +33,7 @@ public sealed class RegisterModuleCommandHandler : AuditableCommandHandler<Regis
             registration.RegisterAction(action);
 
         await _registrations.Save(registration, ct);
-        await using var uow = _uowFactory.Create();
-        await uow.Commit(ct);
+        // FR-OPS-03: no commit here — see CreateFlowCommandHandler's comment.
         return registration.Id;
     }
 }

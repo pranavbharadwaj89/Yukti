@@ -127,15 +127,17 @@ builder.Services.AddCors(options =>
 });
 
 // ---- Rate limiting (FR-API-04) ----
-// Tenant-scoped sliding window for authenticated endpoints; IP-scoped for
-// the unauthenticated auth endpoints (login/register — brute-force
-// protection before any tenant identity exists to key off). In-memory,
-// single-process only, via .NET's built-in RateLimiter middleware — the FR
-// calls for a Redis-backed mechanism shared across horizontally-scaled
-// instances, which needs an actual Redis deployment this environment
-// doesn't have. Structured so swapping to a Redis-backed partitioned
-// limiter later is a store change, not a redesign: the partition key
-// (tenant id / remote IP) and policy shape stay the same.
+// Tenant-scoped for authenticated endpoints; IP-scoped for the
+// unauthenticated auth endpoints (login/register — brute-force protection
+// before any tenant identity exists to key off). Redis-backed via the same
+// dedicated "yukti-redis" instance the trigger lock/SignalR backplane use
+// (registered as IConnectionMultiplexer later in this file — resolved here
+// through context.RequestServices, not a direct reference, since this
+// lambda runs per-request after the DI container is fully built, not at
+// registration time) — every horizontally-scaled Yukti.Api instance now
+// shares the same counters, closing the real gap the previous in-memory
+// SlidingWindowRateLimiter left (correct alone, blind to every other
+// replica).
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -143,25 +145,17 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("PerTenant", context =>
     {
         var tenant = context.User.FindFirst("tenant")?.Value ?? "anonymous";
-        return RateLimitPartition.GetSlidingWindowLimiter(tenant, _ => new SlidingWindowRateLimiterOptions
-        {
-            PermitLimit = 100,
-            Window = TimeSpan.FromSeconds(10),
-            SegmentsPerWindow = 5,
-            QueueLimit = 0,
-        });
+        var redis = context.RequestServices.GetRequiredService<IConnectionMultiplexer>();
+        return RateLimitPartition.Get(tenant, _ => new RedisFixedWindowRateLimiter(
+            redis, $"yukti:ratelimit:tenant:{tenant}", permitLimit: 100, window: TimeSpan.FromSeconds(10)));
     });
 
     options.AddPolicy("PerIp", context =>
     {
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return RateLimitPartition.GetSlidingWindowLimiter(ip, _ => new SlidingWindowRateLimiterOptions
-        {
-            PermitLimit = 10,
-            Window = TimeSpan.FromMinutes(1),
-            SegmentsPerWindow = 4,
-            QueueLimit = 0,
-        });
+        var redis = context.RequestServices.GetRequiredService<IConnectionMultiplexer>();
+        return RateLimitPartition.Get(ip, _ => new RedisFixedWindowRateLimiter(
+            redis, $"yukti:ratelimit:ip:{ip}", permitLimit: 10, window: TimeSpan.FromMinutes(1)));
     });
 });
 

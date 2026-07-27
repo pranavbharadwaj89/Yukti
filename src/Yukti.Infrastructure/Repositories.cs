@@ -151,6 +151,11 @@ public sealed class EfRoleRepository : IRoleRepository
         _context.Roles.FirstOrDefaultAsync(
             r => r.Id == id && (r.TenantId == null || r.TenantId == _tenant.CurrentTenantId), ct);
 
+    public async Task<IReadOnlyList<Role>> GetByIds(IReadOnlyList<RoleId> ids, CancellationToken ct) =>
+        await _context.Roles
+            .Where(r => ids.Contains(r.Id) && (r.TenantId == null || r.TenantId == _tenant.CurrentTenantId))
+            .ToListAsync(ct);
+
     public Task<Role?> GetByName(string name, TenantId? tenantId, CancellationToken ct) =>
         _context.Roles.FirstOrDefaultAsync(r => r.Name == name && r.TenantId == tenantId, ct);
 

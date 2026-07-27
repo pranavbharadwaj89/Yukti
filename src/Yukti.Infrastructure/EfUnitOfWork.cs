@@ -59,6 +59,8 @@ public sealed class EfUnitOfWork : IUnitOfWork
             _dispatcher.DispatchAll(events);
     }
 
+    public void DiscardStaged() => _context.ChangeTracker.Clear();
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 

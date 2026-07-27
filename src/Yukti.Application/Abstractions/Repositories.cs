@@ -40,6 +40,12 @@ public interface IUserRepository
 public interface IRoleRepository
 {
     Task<Yukti.Domain.IdentityAccess.Role?> GetById(RoleId id, CancellationToken ct);
+    // FR-OPS-03 fallout: PermissionChecker previously fetched a user's roles
+    // one round trip at a time in a foreach loop — a genuine N+1, not just
+    // a style nit, once round-trip count is the difference between meeting
+    // and missing the dispatch-latency budget. One query for every role a
+    // user holds, checked in memory afterward.
+    Task<IReadOnlyList<Yukti.Domain.IdentityAccess.Role>> GetByIds(IReadOnlyList<RoleId> ids, CancellationToken ct);
     Task<Yukti.Domain.IdentityAccess.Role?> GetByName(string name, TenantId? tenantId, CancellationToken ct);
     Task Save(Yukti.Domain.IdentityAccess.Role role, CancellationToken ct);
 }

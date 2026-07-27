@@ -3,6 +3,7 @@ using Yukti.Application.Abstractions;
 using Yukti.Application.Auditing;
 using Yukti.Domain.Auditing;
 using Yukti.Domain.SharedKernel;
+using Yukti.Infrastructure.InMemory;
 
 namespace Yukti.Orchestration.Tests;
 
@@ -30,8 +31,8 @@ public sealed record SampleCommand(string Name, [property: SensitiveValue] strin
 public sealed class SampleCommandHandler : AuditableCommandHandler<SampleCommand, int>
 {
     private readonly bool _shouldFail;
-    public SampleCommandHandler(IAuditRepository audit, ITenantContextAccessor tenantAccessor, bool shouldFail = false)
-        : base(audit, tenantAccessor) => _shouldFail = shouldFail;
+    public SampleCommandHandler(IAuditRepository audit, ITenantContextAccessor tenantAccessor, IUnitOfWorkFactory uowFactory, bool shouldFail = false)
+        : base(audit, tenantAccessor, uowFactory) => _shouldFail = shouldFail;
 
     protected override Task<int> HandleCore(SampleCommand command, CancellationToken ct) =>
         _shouldFail ? throw new InvalidOperationException("deliberate failure") : Task.FromResult(command.Name.Length);
@@ -53,7 +54,8 @@ public sealed class AuditableCommandHandlerTests
     {
         var audit = new CapturingAuditRepository();
         var tenantId = TenantId.New();
-        var handler = new SampleCommandHandler(audit, new FixedTenantContextAccessor(tenantId));
+        var uowFactory = new InMemoryUnitOfWorkFactory(new InMemoryDomainEventDispatcher());
+        var handler = new SampleCommandHandler(audit, new FixedTenantContextAccessor(tenantId), uowFactory);
 
         var result = await handler.Handle(new SampleCommand("alice", "secret"), CancellationToken.None);
 
@@ -70,7 +72,8 @@ public sealed class AuditableCommandHandlerTests
     public async Task Failing_HandleCore_still_appends_a_failed_audit_entry_and_rethrows()
     {
         var audit = new CapturingAuditRepository();
-        var handler = new SampleCommandHandler(audit, new FixedTenantContextAccessor(TenantId.New()), shouldFail: true);
+        var uowFactory = new InMemoryUnitOfWorkFactory(new InMemoryDomainEventDispatcher());
+        var handler = new SampleCommandHandler(audit, new FixedTenantContextAccessor(TenantId.New()), uowFactory, shouldFail: true);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             handler.Handle(new SampleCommand("alice", "secret"), CancellationToken.None));

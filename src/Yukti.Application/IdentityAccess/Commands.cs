@@ -35,12 +35,11 @@ public sealed class PermissionChecker : IPermissionChecker
         var user = await _users.GetById(userId, ct)
             ?? throw new ForbiddenException($"User {userId} does not exist.");
 
-        foreach (var roleId in user.RoleIds)
-        {
-            var role = await _roles.GetById(roleId, ct);
-            if (role is not null && role.Has(required))
-                return;
-        }
+        // FR-OPS-03: one round trip for every role the user holds, not one
+        // round trip per role — see IRoleRepository.GetByIds' doc comment.
+        var roles = await _roles.GetByIds(user.RoleIds.ToList(), ct);
+        if (roles.Any(role => role.Has(required)))
+            return;
 
         throw new ForbiddenException($"User {userId} lacks required permission '{required}'.");
     }
@@ -60,18 +59,16 @@ public sealed class RegisterUserCommandHandler : AuditableCommandHandler<Registe
     private readonly IAuthBypassUserLookup _authBypass;
     private readonly ITenantSessionInitializer _tenantSession;
     private readonly IPasswordHasher _hasher;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public RegisterUserCommandHandler(IUserRepository users, IAuthBypassUserLookup authBypass,
         ITenantSessionInitializer tenantSession, IPasswordHasher hasher,
         IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _users = users;
         _authBypass = authBypass;
         _tenantSession = tenantSession;
         _hasher = hasher;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<UserId> HandleCore(RegisterUserCommand cmd, CancellationToken ct)
@@ -86,15 +83,18 @@ public sealed class RegisterUserCommandHandler : AuditableCommandHandler<Registe
         // This request is minting cmd.TenantId itself — no JWT-derived
         // middleware has set app.current_tenant_id for it yet, so without
         // this, the INSERT below fails RLS's WITH CHECK (see
-        // ITenantSessionInitializer's doc comment).
+        // ITenantSessionInitializer's doc comment). A real round trip of
+        // its own (raw SQL, not part of the change-tracked commit below) —
+        // unavoidable for self-registration specifically, since no tenant
+        // exists yet for the JWT-claim-based per-request middleware to have
+        // set this from.
         await _tenantSession.EstablishTenantContext(cmd.TenantId, ct);
 
         var user = User.Register(cmd.Email, cmd.DisplayName, cmd.TenantId, _hasher.Hash(cmd.Password));
         user.AssignRole(cmd.InitialRoleId);
 
         await _users.Save(user, ct);
-        await using var uow = _uowFactory.Create();
-        await uow.Commit(ct);
+        // FR-OPS-03: no commit here — see CreateFlowCommandHandler's comment.
         return user.Id;
     }
 }
@@ -103,14 +103,12 @@ public sealed class AssignRoleCommandHandler : AuditableCommandHandler<AssignRol
 {
     private readonly IUserRepository _users;
     private readonly IPermissionChecker _permissions;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public AssignRoleCommandHandler(IUserRepository users, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _users = users;
         _permissions = permissions;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<bool> HandleCore(AssignRoleCommand cmd, CancellationToken ct)
@@ -122,8 +120,7 @@ public sealed class AssignRoleCommandHandler : AuditableCommandHandler<AssignRol
         user.AssignRole(cmd.RoleId);
 
         await _users.Save(user, ct);
-        await using var uow = _uowFactory.Create();
-        await uow.Commit(ct);
+        // FR-OPS-03: no commit here — see CreateFlowCommandHandler's comment.
         return true;
     }
 }
@@ -132,14 +129,12 @@ public sealed class UpdateRolePermissionsCommandHandler : AuditableCommandHandle
 {
     private readonly IRoleRepository _roles;
     private readonly IPermissionChecker _permissions;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public UpdateRolePermissionsCommandHandler(IRoleRepository roles, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _roles = roles;
         _permissions = permissions;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<int> HandleCore(UpdateRolePermissionsCommand cmd, CancellationToken ct)
@@ -151,8 +146,7 @@ public sealed class UpdateRolePermissionsCommandHandler : AuditableCommandHandle
         role.UpdatePermissions(cmd.Permissions);
 
         await _roles.Save(role, ct);
-        await using var uow = _uowFactory.Create();
-        await uow.Commit(ct);
+        // FR-OPS-03: no commit here — see CreateFlowCommandHandler's comment.
         return role.Version;
     }
 }

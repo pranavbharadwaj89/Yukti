@@ -95,6 +95,13 @@ public sealed class InMemoryRoleRepository : IRoleRepository
     public Task<Role?> GetById(RoleId id, CancellationToken ct) =>
         Task.FromResult(_store.TryGetValue(id.Value, out var role) ? role : null);
 
+    public Task<IReadOnlyList<Role>> GetByIds(IReadOnlyList<RoleId> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Role>>(ids
+            .Select(id => _store.TryGetValue(id.Value, out var role) ? role : null)
+            .Where(r => r is not null)
+            .Cast<Role>()
+            .ToList());
+
     public Task<Role?> GetByName(string name, TenantId? tenantId, CancellationToken ct) =>
         Task.FromResult(_store.Values.FirstOrDefault(r =>
             r.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && r.TenantId == tenantId));

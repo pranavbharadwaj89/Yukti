@@ -62,12 +62,18 @@ await using var provider = services.BuildServiceProvider();
 
 Console.WriteLine($"FR-OPS-03 dispatch-latency benchmark — {concurrency} concurrent TriggerFlowRunCommand dispatches");
 
-// Warms the Npgsql connection pool before the timed run: a cold pool's
-// first-connection SSL handshake to CockroachDB Cloud (ap-south-1, a real
-// cross-region TLS round trip) would otherwise dominate the very requests
-// this benchmark exists to measure, the same way a production deployment's
-// pool is already warm by the time it takes real traffic.
-await Task.WhenAll(Enumerable.Range(0, Math.Min(20, concurrency)).Select(async _ =>
+// Warms the Npgsql connection pool before the timed run — ALL `concurrency`
+// connections, not a fixed small sample: a fresh physical connection's TLS
+// handshake to CockroachDB Cloud (ap-south-1, a real cross-region round
+// trip — measured directly at ~250-330ms, versus ~24ms for a query on an
+// already-open connection) dominates any request unlucky enough to draw a
+// still-cold connection from the pool. Warming fewer than `concurrency`
+// connections here just means the timed run below pays that handshake cost
+// instead, which is exactly the confound this warmup exists to remove —
+// the same way a production deployment's pool is already warm by the time
+// it takes real traffic, not paying per-connection handshake cost on the
+// critical path of a live request.
+await Task.WhenAll(Enumerable.Range(0, concurrency).Select(async _ =>
 {
     using var warmupScope = provider.CreateScope();
     var warmupInit = warmupScope.ServiceProvider.GetRequiredService<ITenantSessionInitializer>();

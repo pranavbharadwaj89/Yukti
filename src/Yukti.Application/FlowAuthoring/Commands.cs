@@ -21,14 +21,12 @@ public sealed class CreateFlowCommandHandler : AuditableCommandHandler<CreateFlo
 {
     private readonly IFlowRepository _flows;
     private readonly IPermissionChecker _permissions;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public CreateFlowCommandHandler(IFlowRepository flows, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _flows = flows;
         _permissions = permissions;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<FlowId> HandleCore(CreateFlowCommand cmd, CancellationToken ct)
@@ -37,8 +35,8 @@ public sealed class CreateFlowCommandHandler : AuditableCommandHandler<CreateFlo
 
         var flow = Flow.CreateDraft(cmd.Name, cmd.Description, cmd.TenantId, cmd.AuthoredBy);
         await _flows.Save(flow, ct);
-        await using var uow = _uowFactory.Create();
-        await uow.Commit(ct);
+        // FR-OPS-03: no commit here — AuditableCommandHandler.Handle commits
+        // this alongside the audit entry, once, after HandleCore returns.
         return flow.Id;
     }
 }
@@ -48,15 +46,13 @@ public sealed class AddFlowStepCommandHandler : AuditableCommandHandler<AddFlowS
     private readonly IFlowRepository _flows;
     private readonly IPermissionChecker _permissions;
     private readonly ITenantGuard _tenantGuard;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public AddFlowStepCommandHandler(IFlowRepository flows, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _flows = flows;
         _permissions = permissions;
         _tenantGuard = tenantGuard;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<bool> HandleCore(AddFlowStepCommand cmd, CancellationToken ct)
@@ -70,8 +66,7 @@ public sealed class AddFlowStepCommandHandler : AuditableCommandHandler<AddFlowS
         flow.AddStep(cmd.StepName, cmd.Module, cmd.Action, cmd.Params, cmd.SaveAs, cmd.When);
 
         await _flows.Save(flow, ct);
-        await using var uow = _uowFactory.Create();
-        await uow.Commit(ct);
+        // FR-OPS-03: no commit here — see CreateFlowCommandHandler's comment.
         return true;
     }
 }
@@ -82,16 +77,14 @@ public sealed class PublishFlowCommandHandler : AuditableCommandHandler<PublishF
     private readonly IModuleActionResolver _resolver;
     private readonly IPermissionChecker _permissions;
     private readonly ITenantGuard _tenantGuard;
-    private readonly IUnitOfWorkFactory _uowFactory;
 
     public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
-        : base(audit, tenantAccessor)
+        : base(audit, tenantAccessor, uowFactory)
     {
         _flows = flows;
         _resolver = resolver;
         _permissions = permissions;
         _tenantGuard = tenantGuard;
-        _uowFactory = uowFactory;
     }
 
     protected override async Task<FlowPublishResult> HandleCore(PublishFlowCommand cmd, CancellationToken ct)
@@ -104,12 +97,11 @@ public sealed class PublishFlowCommandHandler : AuditableCommandHandler<PublishF
 
         var result = flow.Publish(_resolver);
 
+        // FR-OPS-03: no commit here even when Succeeded — the outer
+        // wrapper commits (staged state if Succeeded, nothing but the
+        // audit entry otherwise) exactly once either way.
         if (result.Succeeded)
-        {
             await _flows.Save(flow, ct);
-            await using var uow = _uowFactory.Create();
-            await uow.Commit(ct); // persists state + dispatches raised domain events together
-        }
 
         return result;
     }
