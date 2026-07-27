@@ -16,9 +16,17 @@ public sealed class RunProgressHub : Hub
 {
     public static string GroupNameFor(Guid flowRunId) => $"run-{flowRunId}";
 
-    public Task JoinRun(Guid flowRunId, CancellationToken ct) =>
-        Groups.AddToGroupAsync(Context.ConnectionId, GroupNameFor(flowRunId), ct);
+    // No trailing CancellationToken parameter, deliberately: SignalR only
+    // auto-injects one for *streaming* hub methods. On a regular
+    // invocation it counts as a client-supplied argument, so a client
+    // calling JoinRun(runId) fails the arity check with
+    // "Invocation provides 1 argument(s) but target expects 2" — found
+    // live, testing this hub from a real browser client for the first
+    // time (YUKTI003's trailing-CancellationToken rule doesn't apply to
+    // hub methods for exactly this reason).
+    public Task JoinRun(Guid flowRunId) =>
+        Groups.AddToGroupAsync(Context.ConnectionId, GroupNameFor(flowRunId), Context.ConnectionAborted);
 
-    public Task LeaveRun(Guid flowRunId, CancellationToken ct) =>
-        Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupNameFor(flowRunId), ct);
+    public Task LeaveRun(Guid flowRunId) =>
+        Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupNameFor(flowRunId), Context.ConnectionAborted);
 }

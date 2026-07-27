@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Yukti.Application.Abstractions;
 using Yukti.Domain.IdentityAccess;
+using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Infrastructure;
 
@@ -25,5 +26,11 @@ public sealed class EfAuthBypassUserLookup : IAuthBypassUserLookup
     {
         await using var context = new YuktiDbContext(_options);
         return await context.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
+    }
+
+    public async Task<User?> GetById(UserId id, CancellationToken ct)
+    {
+        await using var context = new YuktiDbContext(_options);
+        return await context.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
     }
 }

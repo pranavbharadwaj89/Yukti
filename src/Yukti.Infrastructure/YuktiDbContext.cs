@@ -48,7 +48,13 @@ public sealed class YuktiDbContext : DbContext
         foreach (var entry in ChangeTracker.Entries<StepResult>())
         {
             if (entry.State != EntityState.Added) continue;
-            var flowRunId = (Guid)entry.Property("FlowRunId").CurrentValue!;
+            // Found live via the frontend build (a real POST /runs against
+            // FlowEngine.Execute, never exercised end-to-end since this
+            // shadow property was added): the shadow FK's CLR type matches
+            // the owning FlowRun.Id's value-converter type (FlowRunId), not
+            // the raw Guid underneath it — casting straight to Guid threw
+            // InvalidCastException on every single step ever executed.
+            var flowRunId = ((FlowRunId)entry.Property("FlowRunId").CurrentValue!).Value;
             if (flowRunTenantsById.TryGetValue(flowRunId, out var tenantId))
                 entry.Property("TenantId").CurrentValue = tenantId;
         }

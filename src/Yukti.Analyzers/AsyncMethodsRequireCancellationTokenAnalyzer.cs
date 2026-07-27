@@ -62,6 +62,18 @@ public sealed class AsyncMethodsRequireCancellationTokenAnalyzer : DiagnosticAna
         if (symbol is null || !IsTaskReturning(symbol.ReturnType))
             return;
 
+        // SignalR hub methods physically cannot take one: the framework
+        // only auto-injects a CancellationToken for *streaming* hub
+        // methods, so on a regular invocation it's counted as a
+        // client-supplied argument and every call fails the arity check
+        // ("Invocation provides 1 argument(s) but target expects 2") —
+        // found live, calling RunProgressHub.JoinRun from a browser.
+        // Hub methods use Context.ConnectionAborted instead, which is the
+        // same cancellation signal by another name, so the FR's intent
+        // still holds where the literal rule can't apply.
+        if (IsSignalRHubMethod(symbol))
+            return;
+
         var parameters = method.ParameterList.Parameters;
         var lastParam = parameters.Count > 0 ? parameters[parameters.Count - 1] : (ParameterSyntax?)null;
         var lastParamType = lastParam is not null
@@ -72,6 +84,16 @@ public sealed class AsyncMethodsRequireCancellationTokenAnalyzer : DiagnosticAna
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, method.Identifier.GetLocation(), symbol.Name));
+    }
+
+    private static bool IsSignalRHubMethod(IMethodSymbol method)
+    {
+        for (var type = method.ContainingType?.BaseType; type is not null; type = type.BaseType)
+        {
+            if (type.Name == "Hub" && type.ContainingNamespace?.ToDisplayString() == "Microsoft.AspNetCore.SignalR")
+                return true;
+        }
+        return false;
     }
 
     private static bool IsTaskReturning(ITypeSymbol returnType)

@@ -1,4 +1,5 @@
 using Yukti.Domain.IdentityAccess;
+using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Application.Abstractions;
 
@@ -20,4 +21,13 @@ namespace Yukti.Application.Abstractions;
 public interface IAuthBypassUserLookup
 {
     Task<User?> GetByEmail(string email, CancellationToken ct);
+
+    // FR-AUTH-02 fallout, found live via the frontend build: POST
+    // /auth/refresh consumes the refresh token (which has no tenant
+    // context to key off, same as login/registration) and then looked the
+    // user up by ID via the ordinary RLS-enforced IUserRepository — which
+    // filters by an ambient tenant that, on this anonymous endpoint,
+    // never exists. Every refresh silently 401'd with "Invalid email or
+    // password" regardless of a genuinely valid, unexpired token.
+    Task<User?> GetById(UserId id, CancellationToken ct);
 }

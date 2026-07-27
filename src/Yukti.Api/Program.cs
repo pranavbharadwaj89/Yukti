@@ -106,6 +106,25 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30),
         };
+        // FR-RT-01: SignalR's browser transports (WebSocket/SSE) can't set
+        // a custom Authorization header, so the JS client sends the token
+        // as an ?access_token= query parameter instead — which the JWT
+        // bearer handler ignores by default. Found live, testing a real
+        // browser client against RunProgressHub for the first time this
+        // hub has ever been exercised outside a server-to-server test:
+        // every negotiate attempt failed pre-flight, this hub was never
+        // actually reachable from a browser before. Scoped to hub paths
+        // only — ordinary REST endpoints keep using the header.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                    context.Token = accessToken;
+                return Task.CompletedTask;
+            },
+        };
     });
 builder.Services.AddAuthorization();
 
@@ -206,7 +225,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 // FR-RT-01: live progress push. FR-RT-03: the Redis backplane below is
 // what makes an event raised on one Yukti.Api instance reach a client
 // connected to another — see RunProgressHub's own doc comment.
-builder.Services.AddSignalR()
+builder.Services.AddSignalR(options => options.EnableDetailedErrors = builder.Environment.IsDevelopment())
     .AddStackExchangeRedis(redisConnectionString, options =>
         options.Configuration.ChannelPrefix = RedisChannel.Literal("yukti-signalr"));
 
@@ -449,14 +468,20 @@ auth.MapPost("/login", async (
 });
 
 auth.MapPost("/refresh", async (
-    RefreshRequest req, HttpContext context, IRefreshTokenStore refreshTokens, IUserRepository users, IRoleRepository roleRepo,
+    RefreshRequest req, HttpContext context, IRefreshTokenStore refreshTokens, IAuthBypassUserLookup authBypass, IRoleRepository roleRepo,
     IJwtTokenService jwt, CancellationToken ct) =>
 {
     var userId = await refreshTokens.Consume(req.RefreshToken, ct);
     if (userId is null)
         return ProblemResults.Unauthorized(context, "Refresh token is invalid, expired, or already used.");
 
-    var user = await users.GetById(userId.Value, ct);
+    // Found live via the frontend build: this endpoint is anonymous (no
+    // JWT yet, that's the whole point of refreshing one) — the ordinary
+    // RLS-enforced IUserRepository.GetById filters by an ambient tenant
+    // that never exists here, so it always returned null and refresh
+    // always 401'd, on every account, regardless of token validity. Same
+    // bypass IAuthBypassUserLookup.GetByEmail already uses for login.
+    var user = await authBypass.GetById(userId.Value, ct);
     if (user is null)
         return ProblemResults.Unauthorized(context, invalidCredentials);
 
