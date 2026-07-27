@@ -2,6 +2,7 @@ using Xunit;
 using Yukti.Application.Abstractions;
 using Yukti.Application.Auditing;
 using Yukti.Domain.Auditing;
+using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Orchestration.Tests;
 
@@ -18,12 +19,19 @@ internal sealed class CapturingAuditRepository : IAuditRepository
     }
 }
 
+internal sealed class FixedTenantContextAccessor : ITenantContextAccessor
+{
+    public FixedTenantContextAccessor(TenantId? tenantId) => CurrentTenantId = tenantId;
+    public TenantId? CurrentTenantId { get; }
+}
+
 public sealed record SampleCommand(string Name, [property: SensitiveValue] string Secret) : ICommand<int>;
 
 public sealed class SampleCommandHandler : AuditableCommandHandler<SampleCommand, int>
 {
     private readonly bool _shouldFail;
-    public SampleCommandHandler(IAuditRepository audit, bool shouldFail = false) : base(audit) => _shouldFail = shouldFail;
+    public SampleCommandHandler(IAuditRepository audit, ITenantContextAccessor tenantAccessor, bool shouldFail = false)
+        : base(audit, tenantAccessor) => _shouldFail = shouldFail;
 
     protected override Task<int> HandleCore(SampleCommand command, CancellationToken ct) =>
         _shouldFail ? throw new InvalidOperationException("deliberate failure") : Task.FromResult(command.Name.Length);
@@ -44,7 +52,8 @@ public sealed class AuditableCommandHandlerTests
     public async Task Successful_HandleCore_appends_one_succeeded_audit_entry()
     {
         var audit = new CapturingAuditRepository();
-        var handler = new SampleCommandHandler(audit);
+        var tenantId = TenantId.New();
+        var handler = new SampleCommandHandler(audit, new FixedTenantContextAccessor(tenantId));
 
         var result = await handler.Handle(new SampleCommand("alice", "secret"), CancellationToken.None);
 
@@ -53,6 +62,7 @@ public sealed class AuditableCommandHandlerTests
         Assert.True(entry.Succeeded);
         Assert.Null(entry.FailureReason);
         Assert.Equal(nameof(SampleCommand), entry.CommandType);
+        Assert.Equal(tenantId, entry.TenantId);
         Assert.Equal("***REDACTED***", entry.Metadata["Secret"]);
     }
 
@@ -60,7 +70,7 @@ public sealed class AuditableCommandHandlerTests
     public async Task Failing_HandleCore_still_appends_a_failed_audit_entry_and_rethrows()
     {
         var audit = new CapturingAuditRepository();
-        var handler = new SampleCommandHandler(audit, shouldFail: true);
+        var handler = new SampleCommandHandler(audit, new FixedTenantContextAccessor(TenantId.New()), shouldFail: true);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             handler.Handle(new SampleCommand("alice", "secret"), CancellationToken.None));

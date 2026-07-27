@@ -26,8 +26,8 @@ public sealed class TriggerFlowRunCommandHandler : AuditableCommandHandler<Trigg
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public TriggerFlowRunCommandHandler(IFlowRunRepository runs, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public TriggerFlowRunCommandHandler(IFlowRunRepository runs, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _runs = runs;
         _permissions = permissions;
@@ -53,8 +53,8 @@ public sealed class CancelFlowRunCommandHandler : AuditableCommandHandler<Cancel
     private readonly ITenantGuard _tenantGuard;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public CancelFlowRunCommandHandler(IFlowRunRepository runs, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public CancelFlowRunCommandHandler(IFlowRunRepository runs, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _runs = runs;
         _permissions = permissions;

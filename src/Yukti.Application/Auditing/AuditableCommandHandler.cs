@@ -21,21 +21,27 @@ public abstract class AuditableCommandHandler<TCommand, TResult> : ICommandHandl
     where TCommand : ICommand<TResult>
 {
     private readonly IAuditRepository _audit;
+    private readonly ITenantContextAccessor _tenantAccessor;
 
-    protected AuditableCommandHandler(IAuditRepository audit) => _audit = audit;
+    protected AuditableCommandHandler(IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+    {
+        _audit = audit;
+        _tenantAccessor = tenantAccessor;
+    }
 
     public async Task<TResult> Handle(TCommand command, CancellationToken ct)
     {
         var metadata = AuditMetadataBuilder.Capture(command);
+        var tenantId = _tenantAccessor.CurrentTenantId;
         try
         {
             var result = await HandleCore(command, ct);
-            await _audit.Append(AuditEntry.Capture(typeof(TCommand).Name, succeeded: true, failureReason: null, metadata), ct);
+            await _audit.Append(AuditEntry.Capture(typeof(TCommand).Name, tenantId, succeeded: true, failureReason: null, metadata), ct);
             return result;
         }
         catch (Exception ex)
         {
-            await _audit.Append(AuditEntry.Capture(typeof(TCommand).Name, succeeded: false, ex.Message, metadata), ct);
+            await _audit.Append(AuditEntry.Capture(typeof(TCommand).Name, tenantId, succeeded: false, ex.Message, metadata), ct);
             throw;
         }
     }

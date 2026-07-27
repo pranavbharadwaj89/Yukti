@@ -23,8 +23,8 @@ public sealed class CreateFlowCommandHandler : AuditableCommandHandler<CreateFlo
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public CreateFlowCommandHandler(IFlowRepository flows, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public CreateFlowCommandHandler(IFlowRepository flows, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _flows = flows;
         _permissions = permissions;
@@ -50,8 +50,8 @@ public sealed class AddFlowStepCommandHandler : AuditableCommandHandler<AddFlowS
     private readonly ITenantGuard _tenantGuard;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public AddFlowStepCommandHandler(IFlowRepository flows, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public AddFlowStepCommandHandler(IFlowRepository flows, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _flows = flows;
         _permissions = permissions;
@@ -84,8 +84,8 @@ public sealed class PublishFlowCommandHandler : AuditableCommandHandler<PublishF
     private readonly ITenantGuard _tenantGuard;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _flows = flows;
         _resolver = resolver;

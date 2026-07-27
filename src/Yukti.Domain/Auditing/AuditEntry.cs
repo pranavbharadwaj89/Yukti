@@ -15,23 +15,30 @@ public sealed class AuditEntry
 {
     public AuditEntryId Id { get; }
     public string CommandType { get; }
+    // FR-DB-02: nullable because not every command runs with tenant context
+    // established yet (e.g. RegisterUserCommand's self-registration mints
+    // a brand-new TenantId as part of the command itself, and process-
+    // startup seeding runs with no HTTP request at all) — RLS's own policy
+    // handles NULL the same permissive way roles/module_registrations do.
+    public TenantId? TenantId { get; }
     public bool Succeeded { get; }
     public string? FailureReason { get; }
     public IReadOnlyDictionary<string, object?> Metadata { get; }
     public DateTimeOffset OccurredAt { get; }
 
-    private AuditEntry(AuditEntryId id, string commandType, bool succeeded, string? failureReason,
+    private AuditEntry(AuditEntryId id, string commandType, TenantId? tenantId, bool succeeded, string? failureReason,
         IReadOnlyDictionary<string, object?> metadata, DateTimeOffset occurredAt)
     {
         Id = id;
         CommandType = commandType;
+        TenantId = tenantId;
         Succeeded = succeeded;
         FailureReason = failureReason;
         Metadata = metadata;
         OccurredAt = occurredAt;
     }
 
-    public static AuditEntry Capture(string commandType, bool succeeded, string? failureReason,
+    public static AuditEntry Capture(string commandType, TenantId? tenantId, bool succeeded, string? failureReason,
         IReadOnlyDictionary<string, object?> metadata) =>
-        new(AuditEntryId.New(), commandType, succeeded, failureReason, metadata, DateTimeOffset.UtcNow);
+        new(AuditEntryId.New(), commandType, tenantId, succeeded, failureReason, metadata, DateTimeOffset.UtcNow);
 }

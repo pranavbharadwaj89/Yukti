@@ -60,8 +60,8 @@ public sealed class RegisterUserCommandHandler : AuditableCommandHandler<Registe
     private readonly IPasswordHasher _hasher;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public RegisterUserCommandHandler(IUserRepository users, IPasswordHasher hasher, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public RegisterUserCommandHandler(IUserRepository users, IPasswordHasher hasher, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _users = users;
         _hasher = hasher;
@@ -89,8 +89,8 @@ public sealed class AssignRoleCommandHandler : AuditableCommandHandler<AssignRol
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public AssignRoleCommandHandler(IUserRepository users, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public AssignRoleCommandHandler(IUserRepository users, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _users = users;
         _permissions = permissions;
@@ -118,8 +118,8 @@ public sealed class UpdateRolePermissionsCommandHandler : AuditableCommandHandle
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public UpdateRolePermissionsCommandHandler(IRoleRepository roles, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public UpdateRolePermissionsCommandHandler(IRoleRepository roles, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _roles = roles;
         _permissions = permissions;

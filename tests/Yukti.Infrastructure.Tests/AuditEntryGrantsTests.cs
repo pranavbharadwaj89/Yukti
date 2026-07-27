@@ -50,7 +50,7 @@ public sealed class AuditEntryGrantsTests
         var options = new DbContextOptionsBuilder<YuktiDbContext>().UseNpgsql(connectionString).Options;
         await using var context = new YuktiDbContext(options);
 
-        var entry = AuditEntry.Capture("SmokeTestCommand", succeeded: true, failureReason: null,
+        var entry = AuditEntry.Capture("SmokeTestCommand", tenantId: null, succeeded: true, failureReason: null,
             new Dictionary<string, object?> { ["Note"] = "AuditEntryGrantsTests seed row" });
         context.Add(entry);
         await context.SaveChangesAsync();

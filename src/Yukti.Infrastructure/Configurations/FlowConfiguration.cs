@@ -26,8 +26,12 @@ public sealed class FlowConfiguration : IEntityTypeConfiguration<Flow>
 
         // FlowId + Version together identify one immutable published
         // version (§9.2's core invariant) — a family can have many rows,
-        // one per version, never mutated once Published.
-        builder.HasIndex(f => new { f.FamilyId, f.Version });
+        // one per version, never mutated once Published. FR-DB-03: every
+        // composite index on a multi-tenant table leads with tenant_id —
+        // TenantId goes first even though FamilyId/Version is the
+        // conceptual key, so the index is actually useful under RLS's
+        // per-tenant filtering instead of scanning across tenants first.
+        builder.HasIndex(f => new { f.TenantId, f.FamilyId, f.Version });
 
         builder.Property(f => f.DeclaredVariables)
             .HasConversion(JsonValueConverters.Dictionary)

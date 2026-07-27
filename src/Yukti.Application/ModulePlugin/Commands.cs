@@ -18,8 +18,8 @@ public sealed class RegisterModuleCommandHandler : AuditableCommandHandler<Regis
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public RegisterModuleCommandHandler(IModuleRegistrationRepository registrations, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
-        : base(audit)
+    public RegisterModuleCommandHandler(IModuleRegistrationRepository registrations, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+        : base(audit, tenantAccessor)
     {
         _registrations = registrations;
         _permissions = permissions;
