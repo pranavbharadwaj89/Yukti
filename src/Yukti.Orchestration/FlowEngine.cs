@@ -89,7 +89,15 @@ public sealed class FlowEngine
                         step.Name, step.WhenCondition);
                     run.RecordStepResult(StepResult.Skipped(step.Id, step.Name, step.Module, step.Action,
                         $"Condition '{step.WhenCondition}' was falsy."));
-                    await CommitRun(run, ct);
+                    // FR-OPS-02: CancellationToken.None, deliberately not ct
+                    // — this outcome is already decided; a shutdown token
+                    // that fired while evaluating the condition must not
+                    // make EF's SaveChangesAsync throw before it durably
+                    // records that decision (see the commit below for the
+                    // same reasoning, which is what FR-OPS-02 actually
+                    // requires: the current step's result survives a
+                    // mid-step shutdown request).
+                    await CommitRun(run, CancellationToken.None);
                     continue;
                 }
 
@@ -142,8 +150,13 @@ public sealed class FlowEngine
                 if (step.SaveAs is not null)
                     run.BindVariable(step.SaveAs, result.Data);
 
-                // Commit THIS step's result now, before dispatching the next step.
-                await CommitRun(run, ct);
+                // Commit THIS step's result now, before dispatching the next
+                // step. CancellationToken.None, not ct — FR-OPS-02's actual
+                // guarantee ("current step completes and commits before the
+                // process exits") only holds if a shutdown token that fired
+                // during this step's execution can't also abort the commit
+                // of its own just-finished result.
+                await CommitRun(run, CancellationToken.None);
 
                 if (result.Status == StepStatus.Failed && !flow.ContinueOnFailure)
                 {

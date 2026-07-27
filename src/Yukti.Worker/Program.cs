@@ -58,6 +58,7 @@ builder.Services.AddHostedService<SchedulerHostedService>();
 builder.Services.AddScoped<ITier2EventConsumer<FlowRunCompletedEvent>, FlowReportProjectionConsumer>();
 builder.Services.AddHostedService<OutboxRelayHostedService>();
 builder.Services.AddHostedService<TrendAggregateBatchJob>();
+builder.Services.AddHostedService<TablePartitioningMonitorHostedService>();
 
 var host = builder.Build();
 host.Run();

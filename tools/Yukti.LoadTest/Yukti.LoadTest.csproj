@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UserSecretsId>6b746e6b-ec5a-4995-a73e-b26cd66270e2</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Yukti.Domain\Yukti.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Yukti.Application\Yukti.Application.csproj" />
+    <ProjectReference Include="..\..\src\Yukti.Infrastructure\Yukti.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj" />
+  </ItemGroup>
+
+</Project>

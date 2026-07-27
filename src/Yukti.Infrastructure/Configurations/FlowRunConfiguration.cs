@@ -27,6 +27,15 @@ public sealed class FlowRunConfiguration : IEntityTypeConfiguration<FlowRun>
         builder.Property(r => r.StartedAt);
         builder.Property(r => r.FinishedAt);
 
+        // FR-OPS-04 prep: leads with TenantId so a future
+        // `ALTER INDEX ... PARTITION BY LIST/RANGE` at the 5M-row threshold
+        // is a pure operational action against an index that already
+        // exists, not a schema change (CockroachDB partitions an index, not
+        // an arbitrary column set — verified live: PARTITION BY against the
+        // bare PK_flow_runs index fails with "declared partition columns
+        // do not match first columns in index being partitioned").
+        builder.HasIndex(r => new { r.TenantId, r.StartedAt });
+
         builder.Property(r => r.Variables)
             .HasConversion(JsonValueConverters.Dictionary)
             .HasColumnName("variables")
@@ -38,6 +47,19 @@ public sealed class FlowRunConfiguration : IEntityTypeConfiguration<FlowRun>
             results.ToTable("step_results");
             results.WithOwner().HasForeignKey("FlowRunId");
             results.HasKey(s => s.Id);
+
+            // Denormalized from the owning FlowRun.TenantId — not part of
+            // the StepResult domain entity (it has no independent tenant
+            // concept of its own), populated at save time by
+            // YuktiDbContext.SyncStepResultTenantIds. Exists so step_results
+            // can carry its own RLS policy (it previously had none — a real
+            // gap: FlowRun's RLS/repository filter protected list/read
+            // access, but nothing at the DB level protected this table
+            // directly) and its own TenantId-leading partitioning index
+            // (FR-OPS-04 — see flow_runs' index above for why partitioning
+            // needs one).
+            results.Property<Guid>("TenantId");
+            results.HasIndex("TenantId");
             results.Property(s => s.Id).HasConversion(id => id.Value, v => new StepResultId(v));
             results.Property(s => s.SourceStepId).HasConversion(id => id.Value, v => new FlowStepId(v));
             results.Property(s => s.StepName).IsRequired();

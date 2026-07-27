@@ -22,6 +22,38 @@ public sealed class YuktiDbContext : DbContext
 {
     public YuktiDbContext(DbContextOptions<YuktiDbContext> options) : base(options) { }
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        SyncStepResultTenantIds();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        SyncStepResultTenantIds();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    // FR-OPS-04 prep: step_results.TenantId is a shadow property (see
+    // FlowRunConfiguration's doc comment) — StepResult itself has no tenant
+    // concept, so nothing else ever sets it. New StepResults are always
+    // added to an already-tracked FlowRun (FlowEngine loads the aggregate
+    // via IFlowRunRepository before mutating it), so that FlowRun's
+    // TenantId is reliably available here at save time.
+    private void SyncStepResultTenantIds()
+    {
+        var flowRunTenantsById = ChangeTracker.Entries<FlowRun>()
+            .ToDictionary(e => e.Entity.Id.Value, e => e.Entity.TenantId.Value);
+
+        foreach (var entry in ChangeTracker.Entries<StepResult>())
+        {
+            if (entry.State != EntityState.Added) continue;
+            var flowRunId = (Guid)entry.Property("FlowRunId").CurrentValue!;
+            if (flowRunTenantsById.TryGetValue(flowRunId, out var tenantId))
+                entry.Property("TenantId").CurrentValue = tenantId;
+        }
+    }
+
     public DbSet<Flow> Flows => Set<Flow>();
     public DbSet<FlowRun> FlowRuns => Set<FlowRun>();
     public DbSet<ModuleRegistration> ModuleRegistrations => Set<ModuleRegistration>();
