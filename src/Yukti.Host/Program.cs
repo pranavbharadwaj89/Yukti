@@ -53,7 +53,7 @@ var logsModule = new LogsModule();
 moduleRegistry.Register(apiModule);
 moduleRegistry.Register(logsModule);
 
-var moduleDispatcher = new ModuleDispatcher(moduleRegistry, loggerFactory.CreateLogger<ModuleDispatcher>());
+var moduleDispatcher = new ModuleDispatcher(moduleRegistry, moduleRepo, new ModuleExecutionStrategySelector(), loggerFactory.CreateLogger<ModuleDispatcher>());
 var variableStore = new VariableStore();
 var retryHandler = new RetryFlakeHandler(loggerFactory.CreateLogger<RetryFlakeHandler>());
 var flowEngine = new FlowEngine(moduleDispatcher, variableStore, retryHandler, runRepo, uowFactory, loggerFactory.CreateLogger<FlowEngine>());

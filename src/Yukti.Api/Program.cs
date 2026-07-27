@@ -194,7 +194,11 @@ builder.Services.AddSingleton<IModuleRegistry>(sp =>
     registry.Register(sp.GetRequiredService<LogsModule>());
     return registry;
 });
-builder.Services.AddSingleton<IModuleDispatcher, ModuleDispatcher>();
+// Scoped, not Singleton: ModuleDispatcher now depends on the Scoped EF
+// IModuleRegistrationRepository (FR-PLUGIN-04's trust-tier lookup) — same
+// captive-dependency reasoning as FlowEngine below.
+builder.Services.AddScoped<IModuleDispatcher, ModuleDispatcher>();
+builder.Services.AddSingleton<IModuleExecutionStrategySelector, ModuleExecutionStrategySelector>();
 builder.Services.AddSingleton<IVariableStore, VariableStore>();
 builder.Services.AddSingleton<IRetryFlakeHandler, RetryFlakeHandler>();
 // Scoped, not Singleton: FlowEngine now depends on Scoped EF repositories

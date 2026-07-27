@@ -34,7 +34,8 @@ public sealed class FlowRunLoggingTests
         var registry = new ModuleRegistry();
         registry.Register(module);
 
-        var moduleDispatcher = new ModuleDispatcher(registry, loggerFactory.CreateLogger<ModuleDispatcher>());
+        var moduleRegistrations = new InMemoryModuleRegistrationRepository(uowFactory);
+        var moduleDispatcher = new ModuleDispatcher(registry, moduleRegistrations, new ModuleExecutionStrategySelector(), loggerFactory.CreateLogger<ModuleDispatcher>());
         var variableStore = new VariableStore();
         var retryHandler = new RetryFlakeHandler(loggerFactory.CreateLogger<RetryFlakeHandler>());
         var engine = new FlowEngine(moduleDispatcher, variableStore, retryHandler, runRepo, uowFactory,

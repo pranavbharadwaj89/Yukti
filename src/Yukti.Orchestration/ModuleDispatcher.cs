@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Yukti.Application.Abstractions;
 using Yukti.Contracts;
 using Yukti.Domain.ModulePlugin;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
@@ -6,19 +7,30 @@ using ExecutionContext = Yukti.Contracts.ExecutionContext;
 namespace Yukti.Orchestration;
 
 /// <summary>
-/// In-process dispatch only, for this session's scope. The trust-tiered
-/// selection between InProcessExecutionStrategy and SandboxedExecutionStrategy
-/// (Volume 1 Part III §18.5) is deferred to a follow-up pass once
-/// marketplace/Community-tier modules are in scope.
+/// FR-PLUGIN-04: routes every dispatch through the trust-tiered strategy
+/// (InProcessExecutionStrategy for Built-in/Verified, SandboxedExecutionStrategy
+/// for Community) matching the module's registered TrustTier, instead of
+/// always calling target.Run directly. Trust tier is looked up with
+/// tenantId: null (the global/built-in registration scope) — every module
+/// registered in this codebase today is Built-in, so this is correct as
+/// far as it's exercised; genuinely tenant-scoped Community-tier module
+/// resolution is part of the same Q-01-blocked follow-up as
+/// SandboxedExecutionStrategy itself (see its doc comment), not a gap
+/// introduced here.
 /// </summary>
 public sealed class ModuleDispatcher : IModuleDispatcher
 {
     private readonly IModuleRegistry _registry;
+    private readonly IModuleRegistrationRepository _registrations;
+    private readonly IModuleExecutionStrategySelector _strategySelector;
     private readonly ILogger<ModuleDispatcher> _logger;
 
-    public ModuleDispatcher(IModuleRegistry registry, ILogger<ModuleDispatcher> logger)
+    public ModuleDispatcher(IModuleRegistry registry, IModuleRegistrationRepository registrations,
+        IModuleExecutionStrategySelector strategySelector, ILogger<ModuleDispatcher> logger)
     {
         _registry = registry;
+        _registrations = registrations;
+        _strategySelector = strategySelector;
         _logger = logger;
     }
 
@@ -44,6 +56,10 @@ public sealed class ModuleDispatcher : IModuleDispatcher
             return StepOutcome.Failed($"Module '{module}' does not support action '{action}'.");
         }
 
-        return await target.Run(action, parameters, ctx, ct);
+        var registration = await _registrations.GetByKind(module, tenantId: null, ct);
+        var trust = registration?.Trust ?? TrustTier.BuiltIn;
+        var strategy = _strategySelector.SelectFor(trust);
+
+        return await strategy.Execute(target, action, parameters, ctx, ct);
     }
 }
