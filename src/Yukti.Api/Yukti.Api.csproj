@@ -21,6 +21,13 @@
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.0" />
     <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.9.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.9.0" />
+    <!-- FR-SCHED-03/FR-RT-03: real cross-instance coordination — a
+         distributed trigger lock and the SignalR backplane both need a
+         shared backend, not the in-process stand-ins used everywhere
+         else in this repo without one deployed. Both point at the same
+         Redis instance, disambiguated by key prefix / channel prefix so
+         they never collide with unrelated data already in that Redis. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="8.0.11" />
     <!-- Required by the EF Core CLI tooling (dotnet ef migrations, dotnet
          ef database update) when Yukti.Api is used as the startup project
          — not used by application code at runtime. -->

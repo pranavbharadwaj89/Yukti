@@ -11,7 +11,9 @@ using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using StackExchange.Redis;
 using Yukti.Api;
+using Role = Yukti.Domain.IdentityAccess.Role; // disambiguates from StackExchange.Redis.Role
 using Yukti.Application.Abstractions;
 using Yukti.Application.Execution;
 using Yukti.Application.FlowAuthoring;
@@ -180,9 +182,20 @@ builder.Services.AddYuktiInfrastructure(connectionString);
 // Domain event dispatch (Tier 1, in-process) is orthogonal to which
 // Infrastructure implementation persists state — kept as-is regardless of
 // InMemory vs. EF Core.
-// FR-RT-01: live progress push — see RunProgressHub's own doc comment for
-// FR-RT-03's Redis-backplane gap.
-builder.Services.AddSignalR();
+// FR-SCHED-03/FR-RT-03: dedicated Redis instance for the distributed
+// trigger lock and the SignalR backplane — configurable via
+// ConnectionStrings:Redis, defaulting to the local "yukti-redis" Docker
+// container (port 6380) provisioned specifically for this project — not
+// shared with any other project's Redis instance.
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6380";
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+
+// FR-RT-01: live progress push. FR-RT-03: the Redis backplane below is
+// what makes an event raised on one Yukti.Api instance reach a client
+// connected to another — see RunProgressHub's own doc comment.
+builder.Services.AddSignalR()
+    .AddStackExchangeRedis(redisConnectionString, options =>
+        options.Configuration.ChannelPrefix = RedisChannel.Literal("yukti-signalr"));
 
 builder.Services.AddSingleton<InMemoryDomainEventDispatcher>();
 builder.Services.AddSingleton<IDomainEventDispatcher>(sp => sp.GetRequiredService<InMemoryDomainEventDispatcher>());
@@ -198,7 +211,7 @@ builder.Services.AddSingleton<ICredentialResolver, InMemoryCredentialResolver>()
 // this is the trigger store's only backing instance for the process's
 // lifetime, same as InMemoryDomainEventDispatcher.
 builder.Services.AddSingleton<ITriggerRepository, InMemoryTriggerRepository>();
-builder.Services.AddSingleton<ITriggerLock, InMemoryTriggerLock>();
+builder.Services.AddSingleton<ITriggerLock, RedisTriggerLock>();
 builder.Services.AddHostedService<SchedulerHostedService>();
 
 // FR-EVT-01/FR-CQRS-02: Tier 2 outbox relay + its one registered consumer.

@@ -8,12 +8,9 @@ namespace Yukti.Api;
 /// is no "subscribe to everything" method on this hub at all.
 ///
 /// FR-RT-03: horizontal scaling of multiple Yukti.Api instances needs a
-/// Redis-backed SignalR backplane (AddStackExchangeRedis) so an event
-/// raised on worker A reaches a client connected via worker B — not
-/// deployed in this environment, the same documented category of gap as
-/// the Redis-backed rate limiter and distributed trigger lock elsewhere
-/// in this repo. Single-instance operation (this environment's actual
-/// deployment shape) works correctly without it.
+/// Redis-backed SignalR backplane (AddStackExchangeRedis, wired in
+/// Program.cs against the dedicated "yukti-redis" container) so an event
+/// raised on worker A reaches a client connected via worker B.
 /// </summary>
 public sealed class RunProgressHub : Hub
 {
