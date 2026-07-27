@@ -38,12 +38,23 @@ public sealed class EfUnitOfWork : IUnitOfWork
             .Where(a => a.DomainEvents.Count > 0)
             .ToList();
 
+        var events = trackedAggregates.SelectMany(a => a.DomainEvents).ToList();
+
+        // FR-EVT-01's Tier 2 write: one outbox row per event, added to the
+        // SAME change-tracked SaveChangesAsync call as the aggregate state
+        // below — this is what makes "state committed, event never
+        // durably recorded" unreachable, not two separate calls that
+        // could fail independently.
+        foreach (var domainEvent in events)
+            _context.Add(OutboxMessage.From(domainEvent));
+
         await _context.SaveChangesAsync(ct);
 
-        var events = trackedAggregates.SelectMany(a => a.DomainEvents).ToList();
         foreach (var aggregate in trackedAggregates)
             aggregate.ClearDomainEvents();
 
+        // Tier 1: synchronous in-process dispatch, unchanged from before —
+        // SignalR live-progress subscribes only this (FR-EVT-03).
         if (events.Count > 0)
             _dispatcher.DispatchAll(events);
     }

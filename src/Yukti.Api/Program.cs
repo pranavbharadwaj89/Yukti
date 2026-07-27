@@ -17,6 +17,7 @@ using Yukti.Application.FlowAuthoring;
 using Yukti.Application.IdentityAccess;
 using Yukti.Application.ModulePlugin;
 using Yukti.Contracts;
+using Yukti.Domain.Events;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
@@ -25,6 +26,7 @@ using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure;
 using Yukti.Infrastructure.InMemory;
 using Yukti.Infrastructure.InMemory.Modules;
+using Yukti.Infrastructure.ReadModels;
 using Yukti.Orchestration;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -180,6 +182,10 @@ builder.Services.AddSingleton<ICredentialResolver, InMemoryCredentialResolver>()
 builder.Services.AddSingleton<ITriggerRepository, InMemoryTriggerRepository>();
 builder.Services.AddSingleton<ITriggerLock, InMemoryTriggerLock>();
 builder.Services.AddHostedService<SchedulerHostedService>();
+
+// FR-EVT-01/FR-CQRS-02: Tier 2 outbox relay + its one registered consumer.
+builder.Services.AddScoped<ITier2EventConsumer<FlowRunCompletedEvent>, FlowReportProjectionConsumer>();
+builder.Services.AddHostedService<OutboxRelayHostedService>();
 
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService>(_ => new JwtTokenService(signingKey));
