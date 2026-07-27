@@ -31,12 +31,12 @@ public static class ProblemResults
     }
 
     /// <summary>Used by the global exception-handling middleware, which has no minimal-API IResult pipeline to return into.</summary>
-    public static async Task WriteAsync(HttpContext context, int status, string title, string detail)
+    public static async Task WriteAsync(HttpContext context, int status, string title, string detail, CancellationToken ct)
     {
         var problem = new ProblemDetails { Status = status, Title = title, Detail = detail };
         problem.Extensions["correlationId"] = context.TraceIdentifier;
         context.Response.StatusCode = status;
         context.Response.ContentType = "application/problem+json";
-        await context.Response.WriteAsJsonAsync(problem);
+        await context.Response.WriteAsJsonAsync(problem, ct);
     }
 }

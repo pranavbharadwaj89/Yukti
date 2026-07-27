@@ -232,11 +232,11 @@ app.Use(async (context, next) =>
     }
     catch (ForbiddenException ex)
     {
-        await ProblemResults.WriteAsync(context, StatusCodes.Status403Forbidden, "Forbidden", ex.Message);
+        await ProblemResults.WriteAsync(context, StatusCodes.Status403Forbidden, "Forbidden", ex.Message, context.RequestAborted);
     }
     catch (DomainException ex)
     {
-        await ProblemResults.WriteAsync(context, StatusCodes.Status400BadRequest, "Bad Request", ex.Message);
+        await ProblemResults.WriteAsync(context, StatusCodes.Status400BadRequest, "Bad Request", ex.Message, context.RequestAborted);
     }
 });
 
