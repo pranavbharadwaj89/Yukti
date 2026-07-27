@@ -186,6 +186,7 @@ builder.Services.AddHostedService<SchedulerHostedService>();
 // FR-EVT-01/FR-CQRS-02: Tier 2 outbox relay + its one registered consumer.
 builder.Services.AddScoped<ITier2EventConsumer<FlowRunCompletedEvent>, FlowReportProjectionConsumer>();
 builder.Services.AddHostedService<OutboxRelayHostedService>();
+builder.Services.AddHostedService<TrendAggregateBatchJob>();
 
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService>(_ => new JwtTokenService(signingKey));
@@ -459,6 +460,12 @@ flows.MapPost("/", async (CreateFlowRequest req, ClaimsPrincipal principal, Crea
     return Results.Created($"{apiV1}/flows/{flowId.Value}", new { flowId = flowId.Value });
 });
 
+// FR-CQRS-01: reads the same flows table any write above just landed in —
+// no separate synced copy, so "read your own writes" holds with zero lag
+// by construction, not by a freshness guarantee bolted on afterward.
+flows.MapGet("/", async (ClaimsPrincipal principal, IFlowSummaryQuery query, CancellationToken ct) =>
+    Results.Ok(await query.ListByTenant(principal.GetTenantId(), ct)));
+
 flows.MapGet("/{flowId:guid}", async (Guid flowId, HttpContext context, IFlowRepository repo, ITenantGuard tenantGuard, CancellationToken ct) =>
 {
     var flow = await repo.GetById(new FlowId(flowId), ct);
@@ -584,6 +591,15 @@ app.MapGet($"{apiV1}/modules", async (IModuleRegistry registry, IModuleRegistrat
     }
     return Results.Ok(responses);
 }).WithTags("Modules").RequireAuthorization().RequireRateLimiting("PerTenant");
+
+// FR-CQRS-03: staleness (LastUpdatedAt) is part of the payload, not
+// something callers have to separately infer.
+app.MapGet($"{apiV1}/trends", async (ClaimsPrincipal principal, YuktiDbContext db, CancellationToken ct) =>
+{
+    var trend = await db.Set<Yukti.Infrastructure.ReadModels.TrendAggregateReadModel>()
+        .FirstOrDefaultAsync(t => t.TenantId == principal.GetTenantId(), ct);
+    return trend is null ? Results.NoContent() : Results.Ok(trend);
+}).WithTags("Trends").RequireAuthorization().RequireRateLimiting("PerTenant");
 
 app.MapGet("/", () => Results.Ok(new { service = "Yukti.Api", status = "running" }));
 

@@ -31,6 +31,7 @@ public sealed class YuktiDbContext : DbContext
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<FlowReportReadModel> FlowReports => Set<FlowReportReadModel>();
+    public DbSet<TrendAggregateReadModel> TrendAggregates => Set<TrendAggregateReadModel>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -73,6 +74,14 @@ public sealed class YuktiDbContext : DbContext
             e.Property(r => r.TenantId).HasConversion(id => id.Value, v => new TenantId(v));
             e.Property(r => r.FinalStatus).HasConversion<string>();
             e.HasIndex(r => r.TenantId); // FR-DB-03: tenant_id leads (alone here — only column besides the PK worth indexing on)
+        });
+
+        // FR-CQRS-03's batch-recomputed read model — one row per tenant, TenantId is its own PK.
+        modelBuilder.Entity<TrendAggregateReadModel>(e =>
+        {
+            e.ToTable("trend_aggregates");
+            e.HasKey(r => r.TenantId);
+            e.Property(r => r.TenantId).HasConversion(id => id.Value, v => new TenantId(v));
         });
     }
 }

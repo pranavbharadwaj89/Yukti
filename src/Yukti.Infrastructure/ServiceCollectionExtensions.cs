@@ -29,6 +29,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWorkFactory, EfUnitOfWorkFactory>();
         services.AddScoped<IIdempotencyStore, EfIdempotencyStore>();
         services.AddScoped<IAuditRepository, EfAuditRepository>();
+        services.AddScoped<IFlowSummaryQuery, EfFlowSummaryQuery>();
 
         return services;
     }
