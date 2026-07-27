@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/* FR-STACK-03/FR-CL-01: Yukti's own design tokens — Tailwind's theme below
+   only ever references these, never a hardcoded hex. Same visual language
+   as this session's PRD-status artifact (deep slate neutrals, one teal
+   accent, monospace for technical labels) so Yukti's own tooling reads as
+   one product, not two unrelated skins.
+   FR-UX-01: dark is the default ground; :root[data-theme] overrides in
+   both directions so the in-app theme toggle always wins over the OS
+   preference. */
+:root {
+  --yukti-bg: #0e1416;
+  --yukti-surface: #141c1f;
+  --yukti-surface-2: #1c262a;
+  --yukti-border: #2a363a;
+  --yukti-ink: #e7eef0;
+  --yukti-ink-dim: #9aaab0;
+  --yukti-accent: #5ab4d1;
+  --yukti-accent-ink: #08151a;
+  --yukti-accent-soft: #173038;
+
+  --yukti-success: #4cbe7d;
+  --yukti-success-soft: #173225;
+  --yukti-warning: #e0a83e;
+  --yukti-warning-soft: #2e2510;
+  --yukti-danger: #e2695a;
+  --yukti-danger-soft: #301917;
+  --yukti-info: #5ab4d1;
+  --yukti-info-soft: #173038;
+
+  --yukti-focus-ring: #5ab4d1;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --yukti-bg: #f4f6f7;
+    --yukti-surface: #ffffff;
+    --yukti-surface-2: #e9edee;
+    --yukti-border: #d3dadc;
+    --yukti-ink: #172023;
+    --yukti-ink-dim: #55636a;
+    --yukti-accent: #1c6e8c;
+    --yukti-accent-ink: #ffffff;
+    --yukti-accent-soft: #dcebf0;
+
+    --yukti-success: #2e8b57;
+    --yukti-success-soft: #e3f1e9;
+    --yukti-warning: #b8862b;
+    --yukti-warning-soft: #f6ecd8;
+    --yukti-danger: #c24a3d;
+    --yukti-danger-soft: #fbe7e4;
+    --yukti-info: #1c6e8c;
+    --yukti-info-soft: #dcebf0;
+  }
+}
+
+:root[data-theme="dark"] {
+  --yukti-bg: #0e1416;
+  --yukti-surface: #141c1f;
+  --yukti-surface-2: #1c262a;
+  --yukti-border: #2a363a;
+  --yukti-ink: #e7eef0;
+  --yukti-ink-dim: #9aaab0;
+  --yukti-accent: #5ab4d1;
+  --yukti-accent-ink: #08151a;
+  --yukti-accent-soft: #173038;
+  --yukti-success: #4cbe7d;
+  --yukti-success-soft: #173225;
+  --yukti-warning: #e0a83e;
+  --yukti-warning-soft: #2e2510;
+  --yukti-danger: #e2695a;
+  --yukti-danger-soft: #301917;
+  --yukti-info: #5ab4d1;
+  --yukti-info-soft: #173038;
+}
+
+:root[data-theme="light"] {
+  --yukti-bg: #f4f6f7;
+  --yukti-surface: #ffffff;
+  --yukti-surface-2: #e9edee;
+  --yukti-border: #d3dadc;
+  --yukti-ink: #172023;
+  --yukti-ink-dim: #55636a;
+  --yukti-accent: #1c6e8c;
+  --yukti-accent-ink: #ffffff;
+  --yukti-accent-soft: #dcebf0;
+  --yukti-success: #2e8b57;
+  --yukti-success-soft: #e3f1e9;
+  --yukti-warning: #b8862b;
+  --yukti-warning-soft: #f6ecd8;
+  --yukti-danger: #c24a3d;
+  --yukti-danger-soft: #fbe7e4;
+  --yukti-info: #1c6e8c;
+  --yukti-info-soft: #dcebf0;
+}
+
+/* FR-PHIL-03/FR-UX-01: high-contrast variant — larger contrast ratios
+   between ink/bg and a border that's always visible, not merely themed. */
+:root[data-theme="high-contrast"] {
+  --yukti-bg: #000000;
+  --yukti-surface: #0a0a0a;
+  --yukti-surface-2: #171717;
+  --yukti-border: #6b6b6b;
+  --yukti-ink: #ffffff;
+  --yukti-ink-dim: #d4d4d4;
+  --yukti-accent: #7cd6f2;
+  --yukti-accent-ink: #000000;
+  --yukti-accent-soft: #003a47;
+  --yukti-success: #6ee8a0;
+  --yukti-success-soft: #04331a;
+  --yukti-warning: #ffcf5c;
+  --yukti-warning-soft: #3d2900;
+  --yukti-danger: #ff9284;
+  --yukti-danger-soft: #440e08;
+  --yukti-info: #7cd6f2;
+  --yukti-info-soft: #003a47;
+}
+
+@theme {
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-bg: var(--yukti-bg);
+  --color-surface: var(--yukti-surface);
+  --color-surface-2: var(--yukti-surface-2);
+  --color-border: var(--yukti-border);
+  --color-ink: var(--yukti-ink);
+  --color-ink-dim: var(--yukti-ink-dim);
+  --color-accent: var(--yukti-accent);
+  --color-accent-ink: var(--yukti-accent-ink);
+  --color-accent-soft: var(--yukti-accent-soft);
+  --color-success: var(--yukti-success);
+  --color-success-soft: var(--yukti-success-soft);
+  --color-warning: var(--yukti-warning);
+  --color-warning-soft: var(--yukti-warning-soft);
+  --color-danger: var(--yukti-danger);
+  --color-danger-soft: var(--yukti-danger-soft);
+  --color-info: var(--yukti-info);
+  --color-info-soft: var(--yukti-info-soft);
+}
+
+* {
+  border-color: var(--yukti-border);
+}
+
+body {
+  margin: 0;
+  background: var(--yukti-bg);
+  color: var(--yukti-ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--yukti-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
