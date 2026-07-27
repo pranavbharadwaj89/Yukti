@@ -72,3 +72,14 @@ public readonly record struct AuditEntryId(Guid Value)
 {
     public static AuditEntryId New() => new(Guid.NewGuid());
 }
+
+public readonly record struct TriggerId(Guid Value)
+{
+    public static TriggerId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString();
+}
+
+public readonly record struct OutboxMessageId(Guid Value)
+{
+    public static OutboxMessageId New() => new(Guid.NewGuid());
+}

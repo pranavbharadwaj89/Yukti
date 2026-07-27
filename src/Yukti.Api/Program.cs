@@ -172,6 +172,15 @@ builder.Services.AddSingleton<IDomainEventDispatcher>(sp => sp.GetRequiredServic
 // in-memory stand-in.
 builder.Services.AddSingleton<ICredentialResolver, InMemoryCredentialResolver>();
 
+// FR-SCHED: same "no persistence need yet" category as ICredentialResolver
+// above — see InMemoryTriggerRepository's doc comment for why (no domain
+// events to flush, and durable EF persistence is a follow-up). Singleton:
+// this is the trigger store's only backing instance for the process's
+// lifetime, same as InMemoryDomainEventDispatcher.
+builder.Services.AddSingleton<ITriggerRepository, InMemoryTriggerRepository>();
+builder.Services.AddSingleton<ITriggerLock, InMemoryTriggerLock>();
+builder.Services.AddHostedService<SchedulerHostedService>();
+
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService>(_ => new JwtTokenService(signingKey));
 builder.Services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
