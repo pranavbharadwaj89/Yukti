@@ -1,4 +1,6 @@
 using Yukti.Application.Abstractions;
+using Yukti.Application.Auditing;
+using Yukti.Domain.Auditing;
 using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.SharedKernel;
 
@@ -44,27 +46,29 @@ public sealed class PermissionChecker : IPermissionChecker
     }
 }
 
-public sealed record RegisterUserCommand(string Email, string Password, string DisplayName, TenantId TenantId, RoleId InitialRoleId)
+public sealed record RegisterUserCommand(
+    string Email, [property: SensitiveValue] string Password, string DisplayName, TenantId TenantId, RoleId InitialRoleId)
     : ICommand<UserId>;
 
 public sealed record AssignRoleCommand(UserId UserId, RoleId RoleId, UserId AssignedBy) : ICommand<bool>;
 
 public sealed record UpdateRolePermissionsCommand(RoleId RoleId, IReadOnlySet<Permission> Permissions, UserId UpdatedBy) : ICommand<int>;
 
-public sealed class RegisterUserCommandHandler : ICommandHandler<RegisterUserCommand, UserId>
+public sealed class RegisterUserCommandHandler : AuditableCommandHandler<RegisterUserCommand, UserId>
 {
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _hasher;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public RegisterUserCommandHandler(IUserRepository users, IPasswordHasher hasher, IUnitOfWorkFactory uowFactory)
+    public RegisterUserCommandHandler(IUserRepository users, IPasswordHasher hasher, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
+        : base(audit)
     {
         _users = users;
         _hasher = hasher;
         _uowFactory = uowFactory;
     }
 
-    public async Task<UserId> Handle(RegisterUserCommand cmd, CancellationToken ct)
+    protected override async Task<UserId> HandleCore(RegisterUserCommand cmd, CancellationToken ct)
     {
         if (await _users.GetByEmail(cmd.Email, ct) is not null)
             throw new DomainException($"Email '{cmd.Email}' is already registered.");
@@ -79,20 +83,21 @@ public sealed class RegisterUserCommandHandler : ICommandHandler<RegisterUserCom
     }
 }
 
-public sealed class AssignRoleCommandHandler : ICommandHandler<AssignRoleCommand, bool>
+public sealed class AssignRoleCommandHandler : AuditableCommandHandler<AssignRoleCommand, bool>
 {
     private readonly IUserRepository _users;
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public AssignRoleCommandHandler(IUserRepository users, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
+    public AssignRoleCommandHandler(IUserRepository users, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
+        : base(audit)
     {
         _users = users;
         _permissions = permissions;
         _uowFactory = uowFactory;
     }
 
-    public async Task<bool> Handle(AssignRoleCommand cmd, CancellationToken ct)
+    protected override async Task<bool> HandleCore(AssignRoleCommand cmd, CancellationToken ct)
     {
         await _permissions.EnsurePermission(cmd.AssignedBy, Permission.UserManage, ct);
 
@@ -107,20 +112,21 @@ public sealed class AssignRoleCommandHandler : ICommandHandler<AssignRoleCommand
     }
 }
 
-public sealed class UpdateRolePermissionsCommandHandler : ICommandHandler<UpdateRolePermissionsCommand, int>
+public sealed class UpdateRolePermissionsCommandHandler : AuditableCommandHandler<UpdateRolePermissionsCommand, int>
 {
     private readonly IRoleRepository _roles;
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public UpdateRolePermissionsCommandHandler(IRoleRepository roles, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
+    public UpdateRolePermissionsCommandHandler(IRoleRepository roles, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
+        : base(audit)
     {
         _roles = roles;
         _permissions = permissions;
         _uowFactory = uowFactory;
     }
 
-    public async Task<int> Handle(UpdateRolePermissionsCommand cmd, CancellationToken ct)
+    protected override async Task<int> HandleCore(UpdateRolePermissionsCommand cmd, CancellationToken ct)
     {
         await _permissions.EnsurePermission(cmd.UpdatedBy, Permission.UserManage, ct);
 

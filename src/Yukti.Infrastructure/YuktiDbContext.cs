@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Yukti.Domain.Auditing;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
@@ -25,6 +26,7 @@ public sealed class YuktiDbContext : DbContext
     public DbSet<Yukti.Domain.IdentityAccess.User> Users => Set<Yukti.Domain.IdentityAccess.User>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +35,7 @@ public sealed class YuktiDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ModuleRegistrationConfiguration());
         modelBuilder.ApplyConfiguration(new FlowConfiguration());
         modelBuilder.ApplyConfiguration(new FlowRunConfiguration());
+        modelBuilder.ApplyConfiguration(new AuditEntryConfiguration());
 
         // FR-API-02's dedup table — not a domain aggregate, configured
         // inline rather than via its own IEntityTypeConfiguration file.

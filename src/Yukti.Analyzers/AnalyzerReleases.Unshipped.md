@@ -5,3 +5,4 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
+YUKTI002 | Auditing | Error | NoUnauditedCommandHandlerAnalyzer, [FR-AUDIT-01](../../docs/specification/product/INIT-YUKTI-BACKEND-001.md)

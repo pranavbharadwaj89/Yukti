@@ -1,4 +1,5 @@
 using Yukti.Application.Abstractions;
+using Yukti.Application.Auditing;
 using Yukti.Application.IdentityAccess;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
@@ -16,20 +17,21 @@ public sealed record AddFlowStepCommand(
 
 public sealed record PublishFlowCommand(FlowId FlowId, UserId PublishedBy) : ICommand<FlowPublishResult>;
 
-public sealed class CreateFlowCommandHandler : ICommandHandler<CreateFlowCommand, FlowId>
+public sealed class CreateFlowCommandHandler : AuditableCommandHandler<CreateFlowCommand, FlowId>
 {
     private readonly IFlowRepository _flows;
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public CreateFlowCommandHandler(IFlowRepository flows, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
+    public CreateFlowCommandHandler(IFlowRepository flows, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
+        : base(audit)
     {
         _flows = flows;
         _permissions = permissions;
         _uowFactory = uowFactory;
     }
 
-    public async Task<FlowId> Handle(CreateFlowCommand cmd, CancellationToken ct)
+    protected override async Task<FlowId> HandleCore(CreateFlowCommand cmd, CancellationToken ct)
     {
         await _permissions.EnsurePermission(cmd.AuthoredBy, Permission.FlowCreate, ct);
 
@@ -41,14 +43,15 @@ public sealed class CreateFlowCommandHandler : ICommandHandler<CreateFlowCommand
     }
 }
 
-public sealed class AddFlowStepCommandHandler : ICommandHandler<AddFlowStepCommand, bool>
+public sealed class AddFlowStepCommandHandler : AuditableCommandHandler<AddFlowStepCommand, bool>
 {
     private readonly IFlowRepository _flows;
     private readonly IPermissionChecker _permissions;
     private readonly ITenantGuard _tenantGuard;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public AddFlowStepCommandHandler(IFlowRepository flows, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory)
+    public AddFlowStepCommandHandler(IFlowRepository flows, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
+        : base(audit)
     {
         _flows = flows;
         _permissions = permissions;
@@ -56,7 +59,7 @@ public sealed class AddFlowStepCommandHandler : ICommandHandler<AddFlowStepComma
         _uowFactory = uowFactory;
     }
 
-    public async Task<bool> Handle(AddFlowStepCommand cmd, CancellationToken ct)
+    protected override async Task<bool> HandleCore(AddFlowStepCommand cmd, CancellationToken ct)
     {
         await _permissions.EnsurePermission(cmd.RequestedBy, Permission.FlowEdit, ct);
 
@@ -73,7 +76,7 @@ public sealed class AddFlowStepCommandHandler : ICommandHandler<AddFlowStepComma
     }
 }
 
-public sealed class PublishFlowCommandHandler : ICommandHandler<PublishFlowCommand, FlowPublishResult>
+public sealed class PublishFlowCommandHandler : AuditableCommandHandler<PublishFlowCommand, FlowPublishResult>
 {
     private readonly IFlowRepository _flows;
     private readonly IModuleActionResolver _resolver;
@@ -81,7 +84,8 @@ public sealed class PublishFlowCommandHandler : ICommandHandler<PublishFlowComma
     private readonly ITenantGuard _tenantGuard;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory)
+    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
+        : base(audit)
     {
         _flows = flows;
         _resolver = resolver;
@@ -90,7 +94,7 @@ public sealed class PublishFlowCommandHandler : ICommandHandler<PublishFlowComma
         _uowFactory = uowFactory;
     }
 
-    public async Task<FlowPublishResult> Handle(PublishFlowCommand cmd, CancellationToken ct)
+    protected override async Task<FlowPublishResult> HandleCore(PublishFlowCommand cmd, CancellationToken ct)
     {
         await _permissions.EnsurePermission(cmd.PublishedBy, Permission.FlowPublish, ct);
 

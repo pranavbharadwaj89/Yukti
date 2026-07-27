@@ -58,6 +58,7 @@ var variableStore = new VariableStore();
 var retryHandler = new RetryFlakeHandler(loggerFactory.CreateLogger<RetryFlakeHandler>());
 var flowEngine = new FlowEngine(moduleDispatcher, variableStore, retryHandler, runRepo, uowFactory, loggerFactory.CreateLogger<FlowEngine>());
 var credentials = new InMemoryCredentialResolver();
+var auditRepository = new InMemoryAuditRepository(); // FR-AUDIT: every command handler below is AuditableCommandHandler now
 
 var tenantId = TenantId.New();
 
@@ -82,7 +83,7 @@ dispatcher.Subscribe<Yukti.Domain.Events.StepCompletedEvent>(evt =>
 });
 
 // ---- Register modules (Application layer, backs Flow.Publish's validation) ----
-var registerHandler = new RegisterModuleCommandHandler(moduleRepo, permissions, uowFactory);
+var registerHandler = new RegisterModuleCommandHandler(moduleRepo, permissions, uowFactory, auditRepository);
 await registerHandler.Handle(new RegisterModuleCommand(
     ModuleKind.Api, "API Automation", TrustTier.BuiltIn, apiModule.GetSupportedActions(), apiModule.ContractVersion, userId), default);
 await registerHandler.Handle(new RegisterModuleCommand(
@@ -96,9 +97,9 @@ Console.WriteLine("Registered modules: api, logs\n");
 // (Yukti.Api's real, JWT-claim-backed implementation).
 var tenantAccessor = new FixedTenantContextAccessor(tenantId);
 var tenantGuard = new TenantGuard(tenantAccessor);
-var createHandler = new CreateFlowCommandHandler(flowRepo, permissions, uowFactory);
-var addStepHandler = new AddFlowStepCommandHandler(flowRepo, permissions, tenantGuard, uowFactory);
-var publishHandler = new PublishFlowCommandHandler(flowRepo, resolver, permissions, tenantGuard, uowFactory);
+var createHandler = new CreateFlowCommandHandler(flowRepo, permissions, uowFactory, auditRepository);
+var addStepHandler = new AddFlowStepCommandHandler(flowRepo, permissions, tenantGuard, uowFactory, auditRepository);
+var publishHandler = new PublishFlowCommandHandler(flowRepo, resolver, permissions, tenantGuard, uowFactory, auditRepository);
 
 var flowId = await createHandler.Handle(
     new CreateFlowCommand("Yukti smoke test", "API chaining + log checks", tenantId, userId), default);
@@ -158,7 +159,7 @@ if (!publishResult.Succeeded)
 }
 
 // ---- Trigger and execute the run ----
-var triggerHandler = new TriggerFlowRunCommandHandler(runRepo, permissions, uowFactory);
+var triggerHandler = new TriggerFlowRunCommandHandler(runRepo, permissions, uowFactory, auditRepository);
 var runId = await triggerHandler.Handle(new TriggerFlowRunCommand(flowId, RunTrigger.Api, null, tenantId, userId), default);
 
 Console.WriteLine($"\n▶ Executing FlowRun {runId}\n");

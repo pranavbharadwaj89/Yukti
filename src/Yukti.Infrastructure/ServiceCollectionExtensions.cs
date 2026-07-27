@@ -28,6 +28,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IModuleActionResolver, EfModuleActionResolver>();
         services.AddScoped<IUnitOfWorkFactory, EfUnitOfWorkFactory>();
         services.AddScoped<IIdempotencyStore, EfIdempotencyStore>();
+        services.AddScoped<IAuditRepository, EfAuditRepository>();
 
         return services;
     }

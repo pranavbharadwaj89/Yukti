@@ -1,4 +1,5 @@
 using Yukti.Application.Abstractions;
+using Yukti.Application.Auditing;
 using Yukti.Application.IdentityAccess;
 using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.ModulePlugin;
@@ -11,20 +12,21 @@ public sealed record RegisterModuleCommand(
     IReadOnlyList<ActionSchema> Actions, string ContractVersion, UserId RegisteredBy, TenantId? TenantId = null)
     : ICommand<ModuleRegistrationId>;
 
-public sealed class RegisterModuleCommandHandler : ICommandHandler<RegisterModuleCommand, ModuleRegistrationId>
+public sealed class RegisterModuleCommandHandler : AuditableCommandHandler<RegisterModuleCommand, ModuleRegistrationId>
 {
     private readonly IModuleRegistrationRepository _registrations;
     private readonly IPermissionChecker _permissions;
     private readonly IUnitOfWorkFactory _uowFactory;
 
-    public RegisterModuleCommandHandler(IModuleRegistrationRepository registrations, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory)
+    public RegisterModuleCommandHandler(IModuleRegistrationRepository registrations, IPermissionChecker permissions, IUnitOfWorkFactory uowFactory, IAuditRepository audit)
+        : base(audit)
     {
         _registrations = registrations;
         _permissions = permissions;
         _uowFactory = uowFactory;
     }
 
-    public async Task<ModuleRegistrationId> Handle(RegisterModuleCommand cmd, CancellationToken ct)
+    protected override async Task<ModuleRegistrationId> HandleCore(RegisterModuleCommand cmd, CancellationToken ct)
     {
         await _permissions.EnsurePermission(cmd.RegisteredBy, Permission.ModuleManage, ct);
 
