@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Metrics;
@@ -30,6 +31,19 @@ using Yukti.Infrastructure.ReadModels;
 using Yukti.Orchestration;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// FR-OPS-02: graceful shutdown drains in-flight FlowRun execution to the
+// next step boundary before the process exits. This already works
+// architecturally — flows.MapPost("/runs") passes context.RequestAborted
+// into FlowEngine.Execute, whose loop only calls
+// ct.ThrowIfCancellationRequested() once per step iteration (never
+// mid-step, per its own doc comment on the incremental-commit design) —
+// so a SIGTERM mid-step lets that step finish and commit, then stops
+// before dispatching the next one. The default 5s host shutdown timeout
+// is too short for that to reliably happen before ASP.NET Core aborts
+// the connection outright; this gives every in-flight step room to reach
+// its natural boundary first.
+builder.Host.ConfigureHostOptions(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
 // ---- Structured logging (FR-LOG) ----
 // ASP.NET Core already wires up Microsoft.Extensions.Logging with a console
@@ -166,6 +180,10 @@ builder.Services.AddYuktiInfrastructure(connectionString);
 // Domain event dispatch (Tier 1, in-process) is orthogonal to which
 // Infrastructure implementation persists state — kept as-is regardless of
 // InMemory vs. EF Core.
+// FR-RT-01: live progress push — see RunProgressHub's own doc comment for
+// FR-RT-03's Redis-backplane gap.
+builder.Services.AddSignalR();
+
 builder.Services.AddSingleton<InMemoryDomainEventDispatcher>();
 builder.Services.AddSingleton<IDomainEventDispatcher>(sp => sp.GetRequiredService<InMemoryDomainEventDispatcher>());
 
@@ -234,6 +252,11 @@ builder.Services.AddScoped<AssignRoleCommandHandler>();
 builder.Services.AddScoped<UpdateRolePermissionsCommandHandler>();
 
 var app = builder.Build();
+
+// FR-RT-01: wires Tier 1 domain events straight to SignalR groups —
+// see RunProgressBridge's own doc comment for why this is Tier 1 only.
+RunProgressBridge.Wire(app.Services.GetRequiredService<InMemoryDomainEventDispatcher>(),
+    app.Services.GetRequiredService<IHubContext<RunProgressHub>>());
 
 // ---- Global exception -> RFC 7807 mapping (FR-API-03) ----
 // Keeps every endpoint below free of repeated try/catch for the two
@@ -600,6 +623,12 @@ app.MapGet($"{apiV1}/trends", async (ClaimsPrincipal principal, YuktiDbContext d
         .FirstOrDefaultAsync(t => t.TenantId == principal.GetTenantId(), ct);
     return trend is null ? Results.NoContent() : Results.Ok(trend);
 }).WithTags("Trends").RequireAuthorization().RequireRateLimiting("PerTenant");
+
+// FR-RT-01/02: clients call JoinRun(flowRunId) after connecting, then
+// GET /api/v1/runs/{runId} once for full current state (the catch-up
+// fetch FR-RT-02 requires on every reconnect) before trusting any
+// subsequently pushed event.
+app.MapHub<RunProgressHub>("/hubs/run-progress").RequireAuthorization();
 
 app.MapGet("/", () => Results.Ok(new { service = "Yukti.Api", status = "running" }));
 
