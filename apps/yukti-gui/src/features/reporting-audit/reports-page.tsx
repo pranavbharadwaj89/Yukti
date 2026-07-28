@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { trendsApi } from "@/services/api-client";
 import { Card, Spinner } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/feedback";
 
 // FR-FEAT-07/FR-CQRS-03: staleness is part of the payload, not inferred —
 // LastUpdatedAt is always shown alongside the numbers it describes.
@@ -14,8 +15,8 @@ export function ReportsPage() {
   if (!trend) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="font-mono text-xl text-ink">Reports</h1>
-        <Card className="p-6 text-sm text-ink-dim">No trend data yet for this tenant.</Card>
+        <h1 className="text-h1 text-ink">Reports</h1>
+        <EmptyState title="No trend data yet" description="Run a flow to start populating this tenant's trends." />
       </div>
     );
   }

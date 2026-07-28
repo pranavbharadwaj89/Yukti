@@ -137,6 +137,64 @@
   --color-danger-soft: var(--yukti-danger-soft);
   --color-info: var(--yukti-info);
   --color-info-soft: var(--yukti-info-soft);
+
+  /* UI_Component_Spec.md Part 1 type scale, mapped onto Yukti's own font
+     stacks (never the spec's literal Inter/JetBrains Mono — kept per
+     FR-CL-01's one-owned-token-layer rule). Tailwind's default spacing
+     scale (0.25rem/4px steps) already equals the spec's xs..4xl exactly, so
+     no separate spacing tokens are added. */
+  --text-h1: 28px;
+  --text-h1--line-height: 36px;
+  --text-h1--font-weight: 700;
+  --text-h2: 24px;
+  --text-h2--line-height: 32px;
+  --text-h2--font-weight: 600;
+  --text-h3: 20px;
+  --text-h3--line-height: 28px;
+  --text-h3--font-weight: 600;
+  --text-h4: 16px;
+  --text-h4--line-height: 24px;
+  --text-h4--font-weight: 600;
+  --text-body-lg: 16px;
+  --text-body-lg--line-height: 24px;
+  --text-body: 14px;
+  --text-body--line-height: 21px;
+  --text-body-sm: 12px;
+  --text-body-sm--line-height: 18px;
+  --text-caption: 11px;
+  --text-caption--line-height: 16px;
+
+  /* Part 1 radius scale — overrides Tailwind's defaults so existing
+     rounded-md/rounded-lg/rounded-full classes (already used throughout)
+     pick up the spec's values with no markup changes. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Part 1 shadow scale — elevation stays neutral black across all three
+     themes (dark/light/high-contrast) since it reads as depth, not surface
+     color; the focus ring shadow keeps deriving from --yukti-accent so it
+     still tracks the active theme. */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.05);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 10px 10px -5px rgb(0 0 0 / 0.04);
+}
+
+.shadow-focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--yukti-accent) 20%, transparent);
+}
+
+/* Part 4 "Indeterminate Progress" — animated stripe, used by ProgressBar
+   (components/ui/feedback.tsx) when no percentage is known yet. */
+@keyframes progress-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
 }
 
 * {

@@ -2,49 +2,72 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { flowsApi, ApiError } from "@/services/api-client";
-import { flowStatusLabel } from "@/services/types";
-import { Button, Card, Dialog, Input, StatusPill } from "@/components/ui/primitives";
+import { flowStatusLabel, type FlowSummary } from "@/services/types";
+import { Button, Dialog, Input, StatusPill } from "@/components/ui/primitives";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { useToastStore } from "@/store/toast-store";
 
 // FR-FEAT-02 (Project Explorer) is [NEW-DOMAIN], blocked on Q-01 — this is
-// a flat flow list instead, the closest available today.
+// a flat flow list instead, the closest available today. Rendered through
+// DataTable (UI_Component_Spec.md Part 3 §1) rather than a plain <ul>: gets
+// sortable columns and pagination for free once flow counts grow.
 export function FlowsPage() {
   const [createOpen, setCreateOpen] = useState(false);
+  const navigate = useNavigate();
   const flowsQuery = useQuery({ queryKey: ["flows"], queryFn: flowsApi.list });
+
+  const columns: Column<FlowSummary>[] = [
+    {
+      key: "name",
+      header: "Name",
+      sortable: true,
+      sortValue: (f) => f.name.toLowerCase(),
+      render: (f) => (
+        <button
+          type="button"
+          className="text-ink hover:text-accent hover:underline"
+          onClick={() => void navigate({ to: "/flows/$flowId", params: { flowId: f.flowId.value } })}
+        >
+          {f.name}
+        </button>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      sortable: true,
+      sortValue: (f) => f.status,
+      render: (f) => <StatusPill status={flowStatusLabel(f.status)} />,
+    },
+    {
+      key: "version",
+      header: "Version",
+      align: "right",
+      sortable: true,
+      sortValue: (f) => f.version,
+      render: (f) => <span className="font-mono text-body-sm text-ink-dim">v{f.version}</span>,
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="font-mono text-xl text-ink">Flows</h1>
+        <h1 className="text-h1 text-ink">Flows</h1>
         <Button onClick={() => setCreateOpen(true)}>New flow</Button>
       </div>
 
-      <Card>
-        {(flowsQuery.data ?? []).length === 0 && (
-          <div className="p-6 text-sm text-ink-dim">No flows yet — create one to get started.</div>
-        )}
-        <ul>
-          {(flowsQuery.data ?? []).map((f) => (
-            <FlowRow key={f.flowId.value} flowId={f.flowId.value} name={f.name} status={flowStatusLabel(f.status)} />
-          ))}
-        </ul>
-      </Card>
+      <DataTable
+        columns={columns}
+        rows={flowsQuery.data ?? []}
+        rowKey={(f) => f.flowId.value}
+        loading={flowsQuery.isLoading}
+        emptyTitle="No flows yet"
+        emptyDescription="Create one to get started."
+        pageSize={10}
+      />
 
       <CreateFlowDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
-  );
-}
-
-function FlowRow({ flowId, name, status }: { flowId: string; name: string; status: string }) {
-  const navigate = useNavigate();
-  return (
-    <li
-      className="flex cursor-pointer items-center justify-between border-b border-border px-4 py-3 last:border-b-0 hover:bg-surface-2"
-      onClick={() => void navigate({ to: "/flows/$flowId", params: { flowId } })}
-    >
-      <span className="text-sm text-ink">{name}</span>
-      <StatusPill status={status} />
-    </li>
   );
 }
 

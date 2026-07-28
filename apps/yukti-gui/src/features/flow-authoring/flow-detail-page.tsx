@@ -2,14 +2,16 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { flowsApi, getActionParams, modulesApi, ApiError } from "@/services/api-client";
-import { Button, Card, Input, Spinner, StatusPill, Textarea } from "@/components/ui/primitives";
+import { Button, Card, Dialog, Input, Spinner, StatusPill, Textarea } from "@/components/ui/primitives";
+import { Select } from "@/components/ui/form-controls";
 import { useToastStore } from "@/store/toast-store";
+import { WorkflowCanvas } from "@/features/flow-authoring/workflow-canvas";
 
-// FR-FEAT-04 (Workflow Builder): a form-based step editor, not a full
-// drag-and-drop React Flow canvas — that's a substantially larger build
-// this pass's scope didn't include time for; documented simplification,
-// not a silent one. Still satisfies the underlying loop: add steps,
-// publish, run.
+// FR-FEAT-04 (Workflow Builder): a real React Flow canvas (WorkflowCanvas)
+// visualizes the step sequence and drives "add step" via its trailing "+"
+// node. Drag-to-reorder and delete are still out of scope — FlowStepResponse
+// only carries a flat `order`, and flowsApi has no reorder/delete/update
+// endpoint yet — documented, not silent.
 export function FlowDetailPage() {
   const { flowId } = useParams({ strict: false }) as { flowId: string };
   const queryClient = useQueryClient();
@@ -19,6 +21,8 @@ export function FlowDetailPage() {
   const flowQuery = useQuery({ queryKey: ["flows", flowId], queryFn: () => flowsApi.get(flowId) });
   const modulesQuery = useQuery({ queryKey: ["modules"], queryFn: modulesApi.list });
 
+  const [addStepOpen, setAddStepOpen] = useState(false);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [moduleKind, setModuleKind] = useState("");
   const [action, setAction] = useState("");
   const [stepName, setStepName] = useState("");
@@ -41,6 +45,7 @@ export function FlowDetailPage() {
       setStepName("");
       setParamsJson("{}");
       setSaveAs("");
+      setAddStepOpen(false);
     },
     onError: (err) => pushToast({ kind: "error", message: err instanceof Error ? err.message : "Failed to add step." }),
   });
@@ -102,81 +107,92 @@ export function FlowDetailPage() {
       </div>
 
       <Card className="p-4">
-        <h2 className="mb-3 font-mono text-sm text-ink-dim">Steps ({flow.steps.length})</h2>
-        <ol className="flex flex-col gap-2">
-          {flow.steps
-            .sort((a, b) => a.order - b.order)
-            .map((step, i) => (
-              <li key={step.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-                <span className="font-mono text-xs text-ink-dim">{i + 1}</span>
-                <span className="text-sm text-ink">{step.name}</span>
-                <span className="font-mono text-xs text-ink-dim">{step.module}.{step.action}</span>
-              </li>
-            ))}
-          {flow.steps.length === 0 && <div className="text-sm text-ink-dim">No steps yet.</div>}
-        </ol>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-mono text-sm text-ink-dim">Steps ({flow.steps.length})</h2>
+          {flow.status === "Draft" && (
+            <Button variant="secondary" onClick={() => setAddStepOpen(true)}>
+              Add step
+            </Button>
+          )}
+        </div>
+        <WorkflowCanvas
+          steps={flow.steps}
+          canAddStep={flow.status === "Draft"}
+          onAddStep={() => setAddStepOpen(true)}
+          selectedStepId={selectedStepId}
+          onSelectStep={setSelectedStepId}
+        />
       </Card>
 
-      {flow.status === "Draft" && (
-        <Card className="p-4">
-          <h2 className="mb-3 font-mono text-sm text-ink-dim">Add step</h2>
-          <form
-            className="grid grid-cols-2 gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              addStepMutation.mutate();
+      {selectedStepId &&
+        (() => {
+          const step = flow.steps.find((s) => s.id === selectedStepId);
+          if (!step) return null;
+          return (
+            <Card className="p-4">
+              <h2 className="mb-3 font-mono text-sm text-ink-dim">
+                {step.name} — {step.module}.{step.action}
+              </h2>
+              <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
+                <dt className="text-ink-dim">Params</dt>
+                <dd>
+                  <pre className="whitespace-pre-wrap rounded-md bg-surface-2 p-2 font-mono text-xs text-ink">
+                    {JSON.stringify(step.params, null, 2)}
+                  </pre>
+                </dd>
+                <dt className="text-ink-dim">Save as</dt>
+                <dd className="font-mono text-xs text-ink">{step.saveAs ?? "—"}</dd>
+                <dt className="text-ink-dim">When</dt>
+                <dd className="font-mono text-xs text-ink">{step.when ?? "—"}</dd>
+              </dl>
+            </Card>
+          );
+        })()}
+
+      <Dialog open={addStepOpen} onClose={() => setAddStepOpen(false)} title="Add step">
+        <form
+          className="grid grid-cols-2 gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addStepMutation.mutate();
+          }}
+        >
+          <Input placeholder="Step name" value={stepName} onChange={(e) => setStepName(e.target.value)} required />
+          <Input placeholder="Save as (optional)" value={saveAs} onChange={(e) => setSaveAs(e.target.value)} />
+          <Select
+            value={moduleKind}
+            placeholder="Module…"
+            options={(modulesQuery.data ?? []).map((m) => ({ value: m.kind, label: m.displayName }))}
+            onChange={(kind) => {
+              setModuleKind(kind);
+              setAction("");
             }}
-          >
-            <Input placeholder="Step name" value={stepName} onChange={(e) => setStepName(e.target.value)} required />
-            <Input placeholder="Save as (optional)" value={saveAs} onChange={(e) => setSaveAs(e.target.value)} />
-            <select
-              className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink"
-              value={moduleKind}
-              onChange={(e) => {
-                setModuleKind(e.target.value);
-                setAction("");
-              }}
-              required
-            >
-              <option value="">Module…</option>
-              {modulesQuery.data?.map((m) => (
-                <option key={m.kind} value={m.kind}>
-                  {m.displayName}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink"
-              value={action}
-              onChange={(e) => setAction(e.target.value)}
-              required
-              disabled={!moduleKind}
-            >
-              <option value="">Action…</option>
-              {modulesQuery.data
-                ?.find((m) => m.kind === moduleKind)
-                ?.actions.map((a) => (
-                  <option key={a.actionName} value={a.actionName}>
-                    {a.actionName}
-                  </option>
-                ))}
-            </select>
-            <div className="col-span-2">
-              {selectedActionSchema && (
-                <p className="mb-1 text-xs text-ink-dim">
-                  Params: {selectedActionSchema.parameters.map((p) => `${p.name}${p.required ? "*" : ""}`).join(", ") || "none"}
-                </p>
-              )}
-              <Textarea rows={4} placeholder='{"key": "value"}' value={paramsJson} onChange={(e) => setParamsJson(e.target.value)} />
-            </div>
-            <div className="col-span-2 flex justify-end">
-              <Button type="submit" disabled={addStepMutation.isPending}>
-                Add step
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
+          />
+          <Select
+            value={action}
+            placeholder="Action…"
+            disabled={!moduleKind}
+            options={(modulesQuery.data?.find((m) => m.kind === moduleKind)?.actions ?? []).map((a) => ({
+              value: a.actionName,
+              label: a.actionName,
+            }))}
+            onChange={setAction}
+          />
+          <div className="col-span-2">
+            {selectedActionSchema && (
+              <p className="mb-1 text-xs text-ink-dim">
+                Params: {selectedActionSchema.parameters.map((p) => `${p.name}${p.required ? "*" : ""}`).join(", ") || "none"}
+              </p>
+            )}
+            <Textarea rows={4} placeholder='{"key": "value"}' value={paramsJson} onChange={(e) => setParamsJson(e.target.value)} />
+          </div>
+          <div className="col-span-2 flex justify-end">
+            <Button type="submit" disabled={addStepMutation.isPending}>
+              Add step
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }
