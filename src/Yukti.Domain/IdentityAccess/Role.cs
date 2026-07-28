@@ -71,7 +71,7 @@ public sealed class Role : AggregateRoot<RoleId>
         Create("Flow Author", tenantId: null, new[]
         {
             Permission.FlowCreate, Permission.FlowEdit, Permission.FlowPublish,
-            Permission.FlowView, Permission.ReportView,
+            Permission.FlowExecute, Permission.FlowView, Permission.ReportView,
         });
 
     public static Role CreateBaselineFlowRunner() =>
