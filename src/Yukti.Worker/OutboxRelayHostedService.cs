@@ -64,8 +64,17 @@ public sealed class OutboxRelayHostedService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Outbox message {MessageId} failed to deserialize as {EventType} — skipping",
+                // A deserialize failure is permanent, not transient — the
+                // exact same bytes will fail identically on every future
+                // poll. Unlike a dispatch failure (where at-least-once
+                // redelivery to an idempotent consumer, per FR-EVT-02, is
+                // the point), leaving ProcessedAt null here just makes this
+                // one row fail forever every 5 seconds, flooding logs.
+                // Marking it processed here really does what the log
+                // message already claims: skip it, once, for good.
+                _logger.LogError(ex, "Outbox message {MessageId} permanently failed to deserialize as {EventType} — marking processed, will not retry",
                     message.Id.Value, message.EventTypeName);
+                message.ProcessedAt = DateTimeOffset.UtcNow;
                 continue;
             }
 

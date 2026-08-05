@@ -29,6 +29,7 @@ namespace Yukti.Orchestration;
 public sealed class FlowEngine
 {
     private readonly IModuleDispatcher _dispatcher;
+    private readonly IModuleRegistry _registry;
     private readonly IVariableStore _variables;
     private readonly IRetryFlakeHandler _retryHandler;
     private readonly IFlowRunRepository _runRepository;
@@ -37,11 +38,12 @@ public sealed class FlowEngine
     private readonly ILogger<FlowEngine> _logger;
 
     public FlowEngine(
-        IModuleDispatcher dispatcher, IVariableStore variables, IRetryFlakeHandler retryHandler,
+        IModuleDispatcher dispatcher, IModuleRegistry registry, IVariableStore variables, IRetryFlakeHandler retryHandler,
         IFlowRunRepository runRepository, IUnitOfWorkFactory uowFactory, ILogger<FlowEngine> logger,
         RetryPolicy? defaultRetryPolicy = null)
     {
         _dispatcher = dispatcher;
+        _registry = registry;
         _variables = variables;
         _retryHandler = retryHandler;
         _runRepository = runRepository;
@@ -71,8 +73,40 @@ public sealed class FlowEngine
         runActivity?.SetTag("flow.tenant.id", run.TenantId.Value);
 
         OrchestrationTelemetry.OrchestrationConcurrentExecutions.Add(1);
+
+        // Only the modules this flow's steps actually reference get set up
+        // — a flow that never uses `web` must not pay Chromium's
+        // launch/close cost. Setup/Teardown were declared on
+        // IAutomationModule from the start but nothing previously called
+        // them (ApiModule/LogsModule get away with no-op bodies); WebModule
+        // is the first module that needs the browser session this creates,
+        // scoped to run.Id (see WebModule's own doc comment on why that
+        // can't be plain instance state on a singleton).
+        var usedModules = flow.Steps.Select(s => s.Module).Distinct()
+            .Select(kind => _registry.Resolve(kind))
+            .Where(m => m is not null)
+            .Cast<IAutomationModule>()
+            .ToList();
+
+        var runLevelCtx = new ExecutionContext
+        {
+            RunId = run.Id,
+            Variables = run.Variables,
+            Credentials = credentials,
+            RunCancellation = ct
+        };
+
         try
         {
+            // Setup runs inside the try so that if any module's Setup
+            // throws (e.g. Playwright/browser launch failure), the finally
+            // block below still runs: it decrements the concurrency gauge
+            // and tears down whichever modules DID set up successfully
+            // before the one that failed (WebModule.Teardown is a safe
+            // no-op for a module whose Setup never ran).
+            foreach (var module in usedModules)
+                await module.Setup(runLevelCtx, ct);
+
             _logger.LogInformation("FlowRun {FlowRunId} starting for flow {FlowId} ({StepCount} steps)",
                 run.Id.Value, flow.Id.Value, flow.Steps.Count);
 
@@ -178,6 +212,25 @@ public sealed class FlowEngine
         }
         finally
         {
+            // CancellationToken.None, deliberately not ct — a run that's
+            // being cancelled or already failed must still get its browser
+            // session closed; a shutdown token firing here must not leak a
+            // Chromium process. Each module's teardown is isolated so one
+            // module failing to clean up doesn't skip the others or mask
+            // the run's real outcome.
+            foreach (var module in usedModules)
+            {
+                try
+                {
+                    await module.Teardown(runLevelCtx, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Teardown failed for module {Module} on FlowRun {FlowRunId}",
+                        module.Kind, run.Id.Value);
+                }
+            }
+
             OrchestrationTelemetry.OrchestrationConcurrentExecutions.Add(-1);
         }
     }

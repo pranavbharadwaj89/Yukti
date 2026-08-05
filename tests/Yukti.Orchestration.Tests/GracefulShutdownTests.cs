@@ -85,7 +85,7 @@ public sealed class GracefulShutdownTests
         var moduleDispatcher = new ModuleDispatcher(registry, moduleRegistrations, new ModuleExecutionStrategySelector(), loggerFactory.CreateLogger<ModuleDispatcher>());
         var variableStore = new VariableStore();
         var retryHandler = new RetryFlakeHandler(loggerFactory.CreateLogger<RetryFlakeHandler>());
-        var engine = new FlowEngine(moduleDispatcher, variableStore, retryHandler, runRepo, uowFactory,
+        var engine = new FlowEngine(moduleDispatcher, registry, variableStore, retryHandler, runRepo, uowFactory,
             loggerFactory.CreateLogger<FlowEngine>(),
             // No retries — a retry loop re-checking ct would otherwise
             // confound "did the step's own commit survive cancellation"

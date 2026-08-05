@@ -56,7 +56,7 @@ moduleRegistry.Register(logsModule);
 var moduleDispatcher = new ModuleDispatcher(moduleRegistry, moduleRepo, new ModuleExecutionStrategySelector(), loggerFactory.CreateLogger<ModuleDispatcher>());
 var variableStore = new VariableStore();
 var retryHandler = new RetryFlakeHandler(loggerFactory.CreateLogger<RetryFlakeHandler>());
-var flowEngine = new FlowEngine(moduleDispatcher, variableStore, retryHandler, runRepo, uowFactory, loggerFactory.CreateLogger<FlowEngine>());
+var flowEngine = new FlowEngine(moduleDispatcher, moduleRegistry, variableStore, retryHandler, runRepo, uowFactory, loggerFactory.CreateLogger<FlowEngine>());
 var credentials = new InMemoryCredentialResolver();
 var auditRepository = new InMemoryAuditRepository(); // FR-AUDIT: every command handler below is AuditableCommandHandler now
 

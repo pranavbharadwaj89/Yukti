@@ -260,11 +260,17 @@ builder.Services.AddScoped<ITenantGuard, TenantGuard>();
 
 builder.Services.AddSingleton<ApiModule>();
 builder.Services.AddSingleton<LogsModule>();
+builder.Services.AddSingleton<WebModule>();
+builder.Services.AddSingleton<MobileModule>();
+builder.Services.AddSingleton<DesktopUiModule>();
 builder.Services.AddSingleton<IModuleRegistry>(sp =>
 {
     var registry = new ModuleRegistry();
     registry.Register(sp.GetRequiredService<ApiModule>());
     registry.Register(sp.GetRequiredService<LogsModule>());
+    registry.Register(sp.GetRequiredService<WebModule>());
+    registry.Register(sp.GetRequiredService<MobileModule>());
+    registry.Register(sp.GetRequiredService<DesktopUiModule>());
     return registry;
 });
 // Scoped, not Singleton: ModuleDispatcher now depends on the Scoped EF
@@ -390,34 +396,64 @@ using (var scope = app.Services.CreateScope())
             "admin@yukti.local", "Bootstrap Administrator", TenantId.New(), hasher.Hash("ChangeMe123!"));
         bootstrapAdmin.AssignRole(adminRoleId);
         await users.Save(bootstrapAdmin, default);
-
-        // The users table's RLS policy (Layer 2) checks writes as well as
-        // reads (FORCE ROW LEVEL SECURITY applies to every command) — with
-        // no authenticated request here, app.current_tenant_id is unset,
-        // so without this the INSERT below would violate the policy's
-        // WITH CHECK. Setting it to the tenant actually being created is
-        // the correct fix, not a bypass: every write, even at startup,
-        // establishes real tenant context rather than skipping RLS for it.
-        var seedDb = scope.ServiceProvider.GetRequiredService<YuktiDbContext>();
-        await seedDb.Database.OpenConnectionAsync();
-        await seedDb.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT set_config('app.current_tenant_id', {bootstrapAdmin.TenantId.Value.ToString()}, false)");
     }
+
+    // The users table's RLS policy (Layer 2) checks both writes and reads
+    // (FORCE ROW LEVEL SECURITY applies to every command) — with no
+    // authenticated request here, app.current_tenant_id is unset by
+    // default. This must run on EVERY startup, not just the one that first
+    // creates bootstrapAdmin: RegisterModuleCommandHandler below goes
+    // through PermissionChecker.EnsurePermission, which does a normal
+    // RLS-scoped GetById lookup on bootstrapAdmin.Id — on a restart where
+    // the admin already exists, skipping this made that lookup find
+    // nothing and throw ForbiddenException("...does not exist"), even
+    // though the user is really there. Setting it to the tenant actually
+    // being acted as is the correct fix, not a bypass: every write/read
+    // here, even at startup, establishes real tenant context rather than
+    // skipping RLS for it.
+    var seedDb = scope.ServiceProvider.GetRequiredService<YuktiDbContext>();
+    await seedDb.Database.OpenConnectionAsync();
+    await seedDb.Database.ExecuteSqlInterpolatedAsync(
+        $"SELECT set_config('app.current_tenant_id', {bootstrapAdmin.TenantId.Value.ToString()}, false)");
 
     await using var uow = uowFactory.Create();
     await uow.Commit(default);
 
     var moduleRegistrations = scope.ServiceProvider.GetRequiredService<IModuleRegistrationRepository>();
-    var registerHandler = scope.ServiceProvider.GetRequiredService<RegisterModuleCommandHandler>();
     var apiModule = scope.ServiceProvider.GetRequiredService<ApiModule>();
     var logsModule = scope.ServiceProvider.GetRequiredService<LogsModule>();
+    var webModule = scope.ServiceProvider.GetRequiredService<WebModule>();
+    var mobileModule = scope.ServiceProvider.GetRequiredService<MobileModule>();
+    var desktopUiModule = scope.ServiceProvider.GetRequiredService<DesktopUiModule>();
 
-    if (await moduleRegistrations.GetByKind(ModuleKind.Api, null, default) is null)
-        await registerHandler.Handle(new RegisterModuleCommand(
-            ModuleKind.Api, "API Automation", TrustTier.BuiltIn, apiModule.GetSupportedActions(), apiModule.ContractVersion, bootstrapAdmin.Id), default);
-    if (await moduleRegistrations.GetByKind(ModuleKind.Logs, null, default) is null)
-        await registerHandler.Handle(new RegisterModuleCommand(
-            ModuleKind.Logs, "Log Automation", TrustTier.BuiltIn, logsModule.GetSupportedActions(), logsModule.ContractVersion, bootstrapAdmin.Id), default);
+    // Bypasses RegisterModuleCommandHandler deliberately, same reasoning as
+    // the admin/role seeding above: that handler's EnsurePermission goes
+    // through EfUserRepository.GetById, which — per FR-TENANT-01 Layer 1 —
+    // filters on ITenantContextAccessor.CurrentTenantId and fails closed
+    // (returns null, never "no scoping") whenever there's no HttpContext to
+    // read a tenant claim from, exactly the case at process startup. That's
+    // correct, intentional security behavior for real requests; it's not
+    // meant to gate this seeding step, so this constructs+saves the
+    // ModuleRegistration aggregate directly instead of going through the
+    // command/permission pipeline.
+    async Task RegisterModuleIfMissing(ModuleKind kind, string displayName, IReadOnlyList<ActionSchema> actions, string contractVersion)
+    {
+        if (await moduleRegistrations.GetByKind(kind, null, default) is not null)
+            return;
+        var registration = new ModuleRegistration(kind, displayName, TrustTier.BuiltIn, contractVersion, tenantId: null);
+        foreach (var action in actions)
+            registration.RegisterAction(action);
+        await moduleRegistrations.Save(registration, default);
+    }
+
+    await RegisterModuleIfMissing(ModuleKind.Api, "API Automation", apiModule.GetSupportedActions(), apiModule.ContractVersion);
+    await RegisterModuleIfMissing(ModuleKind.Logs, "Log Automation", logsModule.GetSupportedActions(), logsModule.ContractVersion);
+    await RegisterModuleIfMissing(ModuleKind.Web, "Web Automation", webModule.GetSupportedActions(), webModule.ContractVersion);
+    await RegisterModuleIfMissing(ModuleKind.Mobile, "Mobile Automation", mobileModule.GetSupportedActions(), mobileModule.ContractVersion);
+    await RegisterModuleIfMissing(ModuleKind.DesktopUi, "Desktop UI Automation", desktopUiModule.GetSupportedActions(), desktopUiModule.ContractVersion);
+
+    await using var moduleUow = uowFactory.Create();
+    await moduleUow.Commit(default);
 }
 
 const string flowNotFound = "Flow not found.";

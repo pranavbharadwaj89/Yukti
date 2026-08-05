@@ -34,7 +34,7 @@ public sealed class FlowRunTelemetryTests
         var moduleDispatcher = new ModuleDispatcher(registry, moduleRegistrations, new ModuleExecutionStrategySelector(), loggerFactory.CreateLogger<ModuleDispatcher>());
         var variableStore = new VariableStore();
         var retryHandler = new RetryFlakeHandler(loggerFactory.CreateLogger<RetryFlakeHandler>());
-        var engine = new FlowEngine(moduleDispatcher, variableStore, retryHandler, runRepo, uowFactory,
+        var engine = new FlowEngine(moduleDispatcher, registry, variableStore, retryHandler, runRepo, uowFactory,
             loggerFactory.CreateLogger<FlowEngine>());
 
         return (engine, new InMemoryCredentialResolver());
