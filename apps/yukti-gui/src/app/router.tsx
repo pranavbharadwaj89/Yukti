@@ -7,6 +7,8 @@ import { FlowsPage } from "@/features/flow-authoring/flows-page";
 import { FlowDetailPage } from "@/features/flow-authoring/flow-detail-page";
 import { RunDetailPage } from "@/features/execution/run-detail-page";
 import { ReportsPage } from "@/features/reporting-audit/reports-page";
+import { TestPlaceholderPage } from "@/features/testing/test-placeholder-page";
+import { ModuleTestForm } from "@/features/testing/module-test-form";
 import { useAuthStore } from "@/store/auth-store";
 
 // FR-ROUTE-09: every authenticated route's loader checks for a session and
@@ -52,6 +54,28 @@ const runDetailRoute = createRoute({
 const reportsRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/reports", component: ReportsPage });
 const settingsRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/settings", component: SettingsPage });
 
+// Tests section — nav structure + routes now, real per-type forms later.
+const testWebRoute = createRoute({
+  getParentRoute: () => authenticatedLayoutRoute,
+  path: "/tests/web",
+  component: () => <ModuleTestForm moduleKind="web" title="Web Testing" />,
+});
+const testMobileRoute = createRoute({
+  getParentRoute: () => authenticatedLayoutRoute,
+  path: "/tests/mobile",
+  component: () => <ModuleTestForm moduleKind="mobile" title="Mobile Testing" />,
+});
+const testApiRoute = createRoute({
+  getParentRoute: () => authenticatedLayoutRoute,
+  path: "/tests/api",
+  component: () => <ModuleTestForm moduleKind="api" title="API Testing" />,
+});
+const testDatabaseRoute = createRoute({
+  getParentRoute: () => authenticatedLayoutRoute,
+  path: "/tests/database",
+  component: () => <TestPlaceholderPage title="Database Testing" />,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   authenticatedLayoutRoute.addChildren([
@@ -62,6 +86,10 @@ const routeTree = rootRoute.addChildren([
     runDetailRoute,
     reportsRoute,
     settingsRoute,
+    testWebRoute,
+    testMobileRoute,
+    testApiRoute,
+    testDatabaseRoute,
   ]),
 ]);
 

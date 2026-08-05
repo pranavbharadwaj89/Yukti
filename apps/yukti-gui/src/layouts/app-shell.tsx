@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 import { useThemeStore, type Theme } from "@/store/theme-store";
 import { ToastViewport } from "@/components/ui/primitives";
@@ -13,6 +15,16 @@ const NAV_ITEMS = [
   { to: "/settings", label: "Settings" },
 ];
 
+// Nav-structure-first: the Tests group and its four sub-forms exist as real
+// routes now (test-placeholder-page.tsx); each form's actual functionality
+// is a deliberately separate, later pass.
+const TEST_NAV_ITEMS = [
+  { to: "/tests/web", label: "Web" },
+  { to: "/tests/mobile", label: "Mobile" },
+  { to: "/tests/api", label: "API" },
+  { to: "/tests/database", label: "Database" },
+];
+
 export function AppShell() {
   const user = useAuthStore((s) => s.user);
   const clearSession = useAuthStore((s) => s.clearSession);
@@ -20,6 +32,7 @@ export function AppShell() {
   const setTheme = useThemeStore((s) => s.setTheme);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [testsExpanded, setTestsExpanded] = useState(pathname.startsWith("/tests"));
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg text-ink">
@@ -38,6 +51,33 @@ export function AppShell() {
               </Link>
             </li>
           ))}
+          <li>
+            <button
+              type="button"
+              onClick={() => setTestsExpanded((v) => !v)}
+              aria-expanded={testsExpanded}
+              className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-ink-dim hover:bg-surface-2 hover:text-ink"
+            >
+              Tests
+              {testsExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+            {testsExpanded && (
+              <ul className="mt-0.5 flex flex-col gap-0.5 border-l border-border pl-3">
+                {TEST_NAV_ITEMS.map((item) => (
+                  <li key={item.to}>
+                    <Link
+                      to={item.to}
+                      className={`block rounded-md px-3 py-2 text-sm ${
+                        pathname === item.to ? "bg-accent-soft text-accent" : "text-ink-dim hover:bg-surface-2 hover:text-ink"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
         </ul>
       </nav>
 
