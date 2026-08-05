@@ -17,3 +17,18 @@ public sealed record PathEqualsAssertion(string Path, object? ExpectedValue) : A
 public sealed record PathContainsAssertion(string Path, object ExpectedFragment) : Assertion;
 
 public sealed record PathExistsAssertion(string Path) : Assertion;
+
+public sealed record HeaderExistsAssertion(string HeaderName) : Assertion;
+
+public sealed record CookieExistsAssertion(string CookieName) : Assertion;
+
+/// <summary>
+/// Schema is a plain CLR object graph (Dictionary/List/primitives — the
+/// same normalized shape every other param arrives in, see
+/// JsonParamNormalizer), not a raw JSON string. Validated by
+/// MinimalJsonSchemaValidator, a deliberately small subset of JSON Schema
+/// (type/required/properties/items/enum only) — see that type's own doc
+/// comment and docs/specs/modules/api.md's "Known constraints" for what's
+/// out of scope.
+/// </summary>
+public sealed record SchemaValidationAssertion(object Schema) : Assertion;

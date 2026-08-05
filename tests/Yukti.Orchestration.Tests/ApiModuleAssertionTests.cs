@@ -144,6 +144,99 @@ public sealed class ApiModuleAssertionTests
     }
 
     [Fact]
+    public async Task HeaderExists_and_CookieExists_pass_and_fail_correctly()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            ctx.Response.Headers.Add("X-Request-Id", "abc-123");
+            ctx.Response.Headers.Add("Set-Cookie", "session=xyz; Path=/; HttpOnly");
+            await WriteBody(ctx, "{}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?>
+            {
+                new Dictionary<string, object?> { ["type"] = "headerExists", ["header"] = "x-request-id" }, // passes, case-insensitive
+                new Dictionary<string, object?> { ["type"] = "cookieExists", ["cookie"] = "session" }, // passes
+                new Dictionary<string, object?> { ["type"] = "headerExists", ["header"] = "X-Does-Not-Exist" }, // fails
+                new Dictionary<string, object?> { ["type"] = "cookieExists", ["cookie"] = "does-not-exist" }, // fails
+            },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Failed, outcome.Status);
+        Assert.Contains("Header 'X-Does-Not-Exist' does not exist", outcome.Error);
+        Assert.Contains("Cookie 'does-not-exist' does not exist", outcome.Error);
+        Assert.DoesNotContain("'x-request-id' does not exist", outcome.Error);
+        Assert.DoesNotContain("'session' does not exist", outcome.Error);
+    }
+
+    [Fact]
+    public async Task Schema_assertion_validates_type_required_properties_items_and_enum()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "{\"id\":42,\"status\":\"active\",\"tags\":[\"a\",\"b\"]}");
+        });
+
+        var module = new ApiModule();
+        var schema = new Dictionary<string, object?>
+        {
+            ["type"] = "object",
+            ["required"] = new List<object?> { "id", "status", "missingField" },
+            ["properties"] = new Dictionary<string, object?>
+            {
+                ["id"] = new Dictionary<string, object?> { ["type"] = "number" },
+                ["status"] = new Dictionary<string, object?> { ["type"] = "string", ["enum"] = new List<object?> { "active", "inactive" } },
+                ["tags"] = new Dictionary<string, object?> { ["type"] = "array", ["items"] = new Dictionary<string, object?> { ["type"] = "string" } },
+            },
+        };
+
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "schema", ["schema"] = schema } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Failed, outcome.Status);
+        Assert.Contains("missing required property 'missingField'", outcome.Error);
+    }
+
+    [Fact]
+    public async Task Schema_assertion_passes_for_a_valid_body()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "{\"id\":42,\"status\":\"active\"}");
+        });
+
+        var module = new ApiModule();
+        var schema = new Dictionary<string, object?>
+        {
+            ["type"] = "object",
+            ["required"] = new List<object?> { "id", "status" },
+            ["properties"] = new Dictionary<string, object?>
+            {
+                ["id"] = new Dictionary<string, object?> { ["type"] = "number" },
+                ["status"] = new Dictionary<string, object?> { ["type"] = "string", ["enum"] = new List<object?> { "active", "inactive" } },
+            },
+        };
+
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "schema", ["schema"] = schema } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Passed, outcome.Status);
+    }
+
+    [Fact]
     public async Task Standalone_expectedStatus_still_works_unchanged()
     {
         using var server = new TestHttpServer(async ctx =>

@@ -48,19 +48,25 @@ returns `Failed("Unknown api action '<action>'. Supported: 'request'.")`.
   { "type": "status", "expectedStatus": 200 },
   { "type": "pathEquals", "path": "data.id", "equals": 42 },
   { "type": "pathContains", "path": "data.items", "contains": "abc" },
-  { "type": "pathExists", "path": "data.token" }
+  { "type": "pathExists", "path": "data.token" },
+  { "type": "headerExists", "header": "X-Request-Id" },
+  { "type": "cookieExists", "cookie": "session" },
+  { "type": "schema", "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "number" } } } }
 ]}
 ```
 
 `path` is dot-notation (with optional `[index]` array segments, e.g.
 `items[0].id`) into the parsed JSON response body, evaluated by
 `JsonPathEvaluator` (a minimal evaluator — no full JSONPath `$`/wildcards/
-filters). All assertions in the array are checked via `AssertionEvaluator`;
-every failure is collected and joined with `; ` into a single `error`
-string — it does not fail fast on the first bad assertion, matching the TS
-prototype's `checkAssertion` behavior. An unknown `type` or a malformed
-entry raises a clean `StepOutcome.Failed` rather than an unhandled
-exception.
+filters). `header`/`cookie` are matched case-insensitively against the
+response's headers and `Set-Cookie` cookie names. `schema` is a JSON Schema
+object (not a JSON string) validated by `MinimalJsonSchemaValidator` — see
+"Known constraints" below for exactly what subset it supports. All
+assertions in the array are checked via `AssertionEvaluator`; every failure
+is collected and joined with `; ` into a single `error` string — it does
+not fail fast on the first bad assertion, matching the TS prototype's
+`checkAssertion` behavior. An unknown `type` or a malformed entry raises a
+clean `StepOutcome.Failed` rather than an unhandled exception.
 
 ## Response handling
 
@@ -116,3 +122,9 @@ Both implementations:
   `application/x-www-form-urlencoded` support yet.
 - `JsonPathEvaluator`'s `path` syntax is dotted segments plus `[index]` array
   access only — no JSONPath `$`, wildcards, or filter expressions.
+- `MinimalJsonSchemaValidator` (the `schema` assertion) supports only
+  `type`, `required`, `properties`, `items`, and `enum` — no `$ref`, no
+  `oneOf`/`anyOf`/`allOf`/`not`, no `pattern`/`format`/numeric or string
+  length bounds, no schema draft negotiation. It's a hand-rolled subset
+  (matching `JsonPathEvaluator`'s own scope-down), not a full JSON Schema
+  implementation.

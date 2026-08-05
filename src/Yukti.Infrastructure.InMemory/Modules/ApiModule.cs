@@ -41,7 +41,7 @@ public sealed class ApiModule : IAutomationModule
                 new ParamSpec { Name = "queryParams", Type = ParamType.Object, Required = false, Description = "Query params appended to the URL as a flat string->string object (last value wins on duplicate keys)." },
                 new ParamSpec { Name = "body", Type = ParamType.Object, Required = false, Description = "Request body — a JSON object/array is sent as application/json, a plain string is sent as text/plain (an explicit Content-Type header always wins)." },
                 new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = DefaultTimeoutMs, Description = "Request timeout in milliseconds." },
-                new ParamSpec { Name = "assert", Type = ParamType.Array, Required = false, Description = "Array of assertions: {type:'status',expectedStatus}, {type:'pathEquals',path,equals}, {type:'pathContains',path,contains}, {type:'pathExists',path}. All are evaluated; failures are collected, not fail-fast." },
+                new ParamSpec { Name = "assert", Type = ParamType.Array, Required = false, Description = "Array of assertions: {type:'status',expectedStatus}, {type:'pathEquals',path,equals}, {type:'pathContains',path,contains}, {type:'pathExists',path}, {type:'headerExists',header}, {type:'cookieExists',cookie}, {type:'schema',schema}. All are evaluated; failures are collected, not fail-fast." },
                 new ParamSpec { Name = "expectedStatus", Type = ParamType.Number, Required = false, Description = "Convenience shorthand for a single {type:'status'} assertion; kept for backward compatibility." },
             }
         }
@@ -102,12 +102,24 @@ public sealed class ApiModule : IAutomationModule
 
             var responseHeaders = response.Headers
                 .Concat(response.Content.Headers)
-                .ToDictionary(h => h.Key, h => string.Join(", ", h.Value));
+                .ToDictionary(h => h.Key, h => string.Join(", ", h.Value), StringComparer.OrdinalIgnoreCase);
 
+            var cookieNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (response.Headers.TryGetValues("Set-Cookie", out var setCookieValues))
+            {
+                foreach (var rawCookie in setCookieValues)
+                {
+                    var eq = rawCookie.IndexOf('=');
+                    if (eq > 0)
+                        cookieNames.Add(rawCookie[..eq].Trim());
+                }
+            }
+
+            var assertionContext = new AssertionContext(statusCode, bodyElement, responseHeaders, cookieNames);
             var assertionResults = assertions
                 .Select(a =>
                 {
-                    var (passed, error) = AssertionEvaluator.Evaluate(a, statusCode, bodyElement);
+                    var (passed, error) = AssertionEvaluator.Evaluate(a, assertionContext);
                     return new { description = Describe(a), passed, error };
                 })
                 .ToList();
@@ -159,6 +171,9 @@ public sealed class ApiModule : IAutomationModule
         PathEqualsAssertion a => $"{a.Path} equals {Json(a.ExpectedValue)}",
         PathContainsAssertion a => $"{a.Path} contains {Json(a.ExpectedFragment)}",
         PathExistsAssertion a => $"{a.Path} exists",
+        HeaderExistsAssertion a => $"header '{a.HeaderName}' exists",
+        CookieExistsAssertion a => $"cookie '{a.CookieName}' exists",
+        SchemaValidationAssertion => "body matches schema",
         _ => assertion.GetType().Name,
     };
 

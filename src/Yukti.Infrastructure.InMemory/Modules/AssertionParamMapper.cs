@@ -25,7 +25,10 @@ internal static class AssertionParamMapper
             "pathEquals" => new PathEqualsAssertion(RequireString(raw, "path", type), raw.GetValueOrDefault("equals")),
             "pathContains" => new PathContainsAssertion(RequireString(raw, "path", type), RequireAny(raw, "contains", type)),
             "pathExists" => new PathExistsAssertion(RequireString(raw, "path", type)),
-            _ => throw new ArgumentException($"Unknown assertion type '{type}'. Supported: status, pathEquals, pathContains, pathExists."),
+            "headerExists" => new HeaderExistsAssertion(RequireString(raw, "header", type)),
+            "cookieExists" => new CookieExistsAssertion(RequireString(raw, "cookie", type)),
+            "schema" => new SchemaValidationAssertion(RequireAny(raw, "schema", type)),
+            _ => throw new ArgumentException($"Unknown assertion type '{type}'. Supported: status, pathEquals, pathContains, pathExists, headerExists, cookieExists, schema."),
         };
     }
 
