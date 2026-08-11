@@ -113,6 +113,24 @@ export interface FlowRunResponse {
   results: StepResultResponse[];
 }
 
+// Matches ApiModule.Run's Data shape (src/Yukti.Infrastructure.InMemory/
+// Modules/ApiModule.cs) — StepResultResponse.data is `unknown` on the wire
+// since it's module-owned, so this is a narrowing type applied only where
+// we know the step ran the api module (the Response Viewer).
+export interface ApiAssertionResult {
+  description: string;
+  passed: boolean;
+  error?: string | null;
+}
+
+export interface ApiRequestResultData {
+  status: number;
+  headers: Record<string, string>;
+  body: unknown;
+  durationMs: number;
+  assertionResults: ApiAssertionResult[];
+}
+
 export interface TrendAggregateResponse {
   tenantId: string;
   totalRunsLast24h: number;

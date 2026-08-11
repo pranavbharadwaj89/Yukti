@@ -9,6 +9,7 @@ import { RunDetailPage } from "@/features/execution/run-detail-page";
 import { ReportsPage } from "@/features/reporting-audit/reports-page";
 import { TestPlaceholderPage } from "@/features/testing/test-placeholder-page";
 import { ModuleTestForm } from "@/features/testing/module-test-form";
+import { RequestDesigner } from "@/features/api-studio/request-designer";
 import { useAuthStore } from "@/store/auth-store";
 
 // FR-ROUTE-09: every authenticated route's loader checks for a session and
@@ -68,7 +69,7 @@ const testMobileRoute = createRoute({
 const testApiRoute = createRoute({
   getParentRoute: () => authenticatedLayoutRoute,
   path: "/tests/api",
-  component: () => <ModuleTestForm moduleKind="api" title="API Testing" />,
+  component: RequestDesigner,
 });
 const testDatabaseRoute = createRoute({
   getParentRoute: () => authenticatedLayoutRoute,
