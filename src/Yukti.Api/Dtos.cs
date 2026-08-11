@@ -1,3 +1,4 @@
+using Yukti.Application.Abstractions;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.ModulePlugin;
@@ -41,6 +42,32 @@ public sealed record PublishResponse(bool Succeeded, IReadOnlyList<string> Error
 }
 
 public sealed record RetryAttemptResponse(int AttemptNumber, string Status, double DurationMs, string? Error);
+
+public sealed record CreateApiCollectionRequest(string Name, string? Description);
+public sealed record RenameApiCollectionRequest(string Name, string? Description);
+public sealed record AddApiRequestRequest(
+    string Name, string Method, string Url,
+    Dictionary<string, object?>? Headers, Dictionary<string, object?>? QueryParams,
+    object? Body, object? Assertions);
+public sealed record UpdateApiRequestRequest(
+    string Name, string Method, string Url,
+    Dictionary<string, object?>? Headers, Dictionary<string, object?>? QueryParams,
+    object? Body, object? Assertions);
+
+public sealed record ApiRequestResponse(
+    Guid Id, string Name, string Method, string Url,
+    IReadOnlyDictionary<string, object?> Headers, IReadOnlyDictionary<string, object?> QueryParams,
+    object? Body, object? Assertions, int Order)
+{
+    public static ApiRequestResponse From(ApiRequestSummary r) => new(
+        r.Id.Value, r.Name, r.Method, r.Url, r.Headers, r.QueryParams, r.Body, r.Assertions, r.Order);
+}
+
+public sealed record ApiCollectionResponse(Guid Id, string Name, string? Description, IReadOnlyList<ApiRequestResponse> Requests)
+{
+    public static ApiCollectionResponse From(ApiCollectionSummary c) => new(
+        c.Id.Value, c.Name, c.Description, c.Requests.Select(ApiRequestResponse.From).ToList());
+}
 
 public sealed record StepResultResponse(
     Guid Id, string StepName, string Module, string Action, string Status,

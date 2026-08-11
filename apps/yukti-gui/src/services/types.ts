@@ -131,6 +131,25 @@ export interface ApiRequestResultData {
   assertionResults: ApiAssertionResult[];
 }
 
+export interface ApiRequestResponse {
+  id: string;
+  name: string;
+  method: string;
+  url: string;
+  headers: Record<string, unknown>;
+  queryParams: Record<string, unknown>;
+  body: unknown;
+  assertions: unknown;
+  order: number;
+}
+
+export interface ApiCollectionResponse {
+  id: string;
+  name: string;
+  description?: string | null;
+  requests: ApiRequestResponse[];
+}
+
 export interface TrendAggregateResponse {
   tenantId: string;
   totalRunsLast24h: number;

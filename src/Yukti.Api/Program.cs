@@ -15,11 +15,13 @@ using StackExchange.Redis;
 using Yukti.Api;
 using Role = Yukti.Domain.IdentityAccess.Role; // disambiguates from StackExchange.Redis.Role
 using Yukti.Application.Abstractions;
+using Yukti.Application.ApiTesting;
 using Yukti.Application.Execution;
 using Yukti.Application.FlowAuthoring;
 using Yukti.Application.IdentityAccess;
 using Yukti.Application.ModulePlugin;
 using Yukti.Contracts;
+using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Events;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
@@ -287,6 +289,12 @@ builder.Services.AddSingleton<IRetryFlakeHandler, RetryFlakeHandler>();
 builder.Services.AddScoped<FlowEngine>();
 
 builder.Services.AddScoped<CreateFlowCommandHandler>();
+builder.Services.AddScoped<CreateApiCollectionCommandHandler>();
+builder.Services.AddScoped<RenameApiCollectionCommandHandler>();
+builder.Services.AddScoped<DeleteApiCollectionCommandHandler>();
+builder.Services.AddScoped<AddApiRequestCommandHandler>();
+builder.Services.AddScoped<UpdateApiRequestCommandHandler>();
+builder.Services.AddScoped<DeleteApiRequestCommandHandler>();
 builder.Services.AddScoped<AddFlowStepCommandHandler>();
 builder.Services.AddScoped<PublishFlowCommandHandler>();
 builder.Services.AddScoped<TriggerFlowRunCommandHandler>();
@@ -457,6 +465,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 const string flowNotFound = "Flow not found.";
+const string apiCollectionNotFound = "API collection or request not found.";
 const string runNotFound = "FlowRun not found.";
 const string invalidCredentials = "Invalid email or password."; // FR-AUTH-05: identical for "no such user" and "wrong password"
 
@@ -676,6 +685,94 @@ runs.MapPost("/{runId:guid}/cancel", async (Guid runId, HttpContext context, Cla
     catch (InvalidOperationException)
     {
         return ProblemResults.NotFound(context, runNotFound);
+    }
+});
+
+// ---- API Studio: saved Collections/Requests (Explorer) — CRUD only, no
+// execution endpoint here. "Send" on a saved request still goes through
+// the exact same client-side create-flow -> add-step -> publish ->
+// trigger-run sequence the Request Designer already uses for ad-hoc
+// requests (see apps/yukti-gui/src/features/api-studio/request-designer.tsx)
+// — this group exists purely to persist/retrieve request definitions. ----
+var apiCollections = app.MapGroup($"{apiV1}/api-collections").WithTags("ApiCollections").RequireAuthorization().RequireRateLimiting("PerTenant");
+
+apiCollections.MapPost("/", async (CreateApiCollectionRequest req, ClaimsPrincipal principal, CreateApiCollectionCommandHandler handler, CancellationToken ct) =>
+{
+    var collectionId = await handler.Handle(new CreateApiCollectionCommand(req.Name, req.Description, principal.GetTenantId(), principal.GetUserId()), ct);
+    return Results.Created($"{apiV1}/api-collections/{collectionId.Value}", new { collectionId = collectionId.Value });
+});
+
+apiCollections.MapGet("/", async (ClaimsPrincipal principal, IApiCollectionSummaryQuery query, CancellationToken ct) =>
+    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(ApiCollectionResponse.From)));
+
+apiCollections.MapPut("/{collectionId:guid}", async (Guid collectionId, RenameApiCollectionRequest req, HttpContext context, ClaimsPrincipal principal, RenameApiCollectionCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        await handler.Handle(new RenameApiCollectionCommand(new ApiCollectionId(collectionId), req.Name, req.Description, principal.GetUserId()), ct);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, apiCollectionNotFound);
+    }
+});
+
+apiCollections.MapDelete("/{collectionId:guid}", async (Guid collectionId, HttpContext context, ClaimsPrincipal principal, DeleteApiCollectionCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        await handler.Handle(new DeleteApiCollectionCommand(new ApiCollectionId(collectionId), principal.GetUserId()), ct);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, apiCollectionNotFound);
+    }
+});
+
+apiCollections.MapPost("/{collectionId:guid}/requests", async (Guid collectionId, AddApiRequestRequest req, HttpContext context, ClaimsPrincipal principal, AddApiRequestCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        var requestId = await handler.Handle(new AddApiRequestCommand(
+            new ApiCollectionId(collectionId), req.Name, req.Method, req.Url,
+            req.Headers ?? new Dictionary<string, object?>(), req.QueryParams ?? new Dictionary<string, object?>(),
+            req.Body, req.Assertions, principal.GetUserId()), ct);
+        return Results.Created($"{apiV1}/api-collections/{collectionId}/requests/{requestId.Value}", new { requestId = requestId.Value });
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, apiCollectionNotFound);
+    }
+});
+
+apiCollections.MapPut("/{collectionId:guid}/requests/{requestId:guid}", async (Guid collectionId, Guid requestId, UpdateApiRequestRequest req, HttpContext context, ClaimsPrincipal principal, UpdateApiRequestCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        await handler.Handle(new UpdateApiRequestCommand(
+            new ApiCollectionId(collectionId), new ApiRequestId(requestId), req.Name, req.Method, req.Url,
+            req.Headers ?? new Dictionary<string, object?>(), req.QueryParams ?? new Dictionary<string, object?>(),
+            req.Body, req.Assertions, principal.GetUserId()), ct);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, apiCollectionNotFound);
+    }
+});
+
+apiCollections.MapDelete("/{collectionId:guid}/requests/{requestId:guid}", async (Guid collectionId, Guid requestId, HttpContext context, ClaimsPrincipal principal, DeleteApiRequestCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        await handler.Handle(new DeleteApiRequestCommand(new ApiCollectionId(collectionId), new ApiRequestId(requestId), principal.GetUserId()), ct);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, apiCollectionNotFound);
     }
 });
 

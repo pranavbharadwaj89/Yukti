@@ -30,6 +30,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IIdempotencyStore, EfIdempotencyStore>();
         services.AddScoped<IAuditRepository, EfAuditRepository>();
         services.AddScoped<IFlowSummaryQuery, EfFlowSummaryQuery>();
+        services.AddScoped<IApiCollectionRepository, EfApiCollectionRepository>();
+        services.AddScoped<IApiCollectionSummaryQuery, EfApiCollectionSummaryQuery>();
         services.AddScoped<ITenantSessionInitializer, EfTenantSessionInitializer>();
 
         return services;

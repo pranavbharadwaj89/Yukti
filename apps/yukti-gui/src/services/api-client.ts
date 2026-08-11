@@ -1,6 +1,7 @@
 import { useAuthStore, getStoredRefreshToken } from "@/store/auth-store";
 import type {
   ActionSchema,
+  ApiCollectionResponse,
   FlowPublishResponse,
   FlowResponse,
   FlowRunResponse,
@@ -153,6 +154,26 @@ export const runsApi = {
 
 export const modulesApi = {
   list: () => request<ModuleResponse[]>("/api/v1/modules"),
+};
+
+export const apiCollectionsApi = {
+  list: () => request<ApiCollectionResponse[]>("/api/v1/api-collections"),
+  create: (name: string, description: string | undefined) =>
+    request<{ collectionId: string }>("/api/v1/api-collections", { method: "POST", body: { name, description } }),
+  rename: (collectionId: string, name: string, description: string | undefined) =>
+    request<void>(`/api/v1/api-collections/${collectionId}`, { method: "PUT", body: { name, description } }),
+  delete: (collectionId: string) => request<void>(`/api/v1/api-collections/${collectionId}`, { method: "DELETE" }),
+  addRequest: (
+    collectionId: string,
+    req: { name: string; method: string; url: string; headers?: Record<string, unknown>; queryParams?: Record<string, unknown>; body?: unknown; assertions?: unknown },
+  ) => request<{ requestId: string }>(`/api/v1/api-collections/${collectionId}/requests`, { method: "POST", body: req }),
+  updateRequest: (
+    collectionId: string,
+    requestId: string,
+    req: { name: string; method: string; url: string; headers?: Record<string, unknown>; queryParams?: Record<string, unknown>; body?: unknown; assertions?: unknown },
+  ) => request<void>(`/api/v1/api-collections/${collectionId}/requests/${requestId}`, { method: "PUT", body: req }),
+  deleteRequest: (collectionId: string, requestId: string) =>
+    request<void>(`/api/v1/api-collections/${collectionId}/requests/${requestId}`, { method: "DELETE" }),
 };
 
 export const trendsApi = {

@@ -1,3 +1,4 @@
+using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.ModulePlugin;
@@ -35,6 +36,18 @@ public interface IUserRepository
     Task<Yukti.Domain.IdentityAccess.User?> GetById(UserId id, CancellationToken ct);
     Task<Yukti.Domain.IdentityAccess.User?> GetByEmail(string email, CancellationToken ct);
     Task Save(Yukti.Domain.IdentityAccess.User user, CancellationToken ct);
+}
+
+// Deliberate deviation from this file's own "no Delete" convention above:
+// Flow is archived, never deleted, because a Flow's execution history
+// (FlowRun) references it and must keep resolving. An ApiCollection has no
+// such downstream reference — it's disposable, editable scratch content —
+// so Delete here is a real repository-shaped operation, not a query.
+public interface IApiCollectionRepository
+{
+    Task<ApiCollection?> GetById(ApiCollectionId id, CancellationToken ct);
+    Task Save(ApiCollection collection, CancellationToken ct);
+    Task Delete(ApiCollection collection, CancellationToken ct);
 }
 
 public interface IRoleRepository

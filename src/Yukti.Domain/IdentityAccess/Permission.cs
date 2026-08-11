@@ -14,4 +14,5 @@ public enum Permission
     ReportView,
     ModuleManage,
     UserManage,
+    ApiCollectionManage,
 }

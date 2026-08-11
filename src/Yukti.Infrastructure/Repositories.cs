@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Yukti.Application.Abstractions;
+using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
@@ -99,6 +100,33 @@ public sealed class EfModuleRegistrationRepository : IModuleRegistrationReposito
     {
         if (_context.Entry(registration).State == EntityState.Detached)
             await _context.AddAsync(registration, ct);
+    }
+}
+
+public sealed class EfApiCollectionRepository : IApiCollectionRepository
+{
+    private readonly YuktiDbContext _context;
+    private readonly ITenantContextAccessor _tenant;
+
+    public EfApiCollectionRepository(YuktiDbContext context, ITenantContextAccessor tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
+
+    public Task<ApiCollection?> GetById(ApiCollectionId id, CancellationToken ct) =>
+        _context.ApiCollections.FirstOrDefaultAsync(c => c.Id == id && c.TenantId == _tenant.CurrentTenantId, ct);
+
+    public async Task Save(ApiCollection collection, CancellationToken ct)
+    {
+        if (_context.Entry(collection).State == EntityState.Detached)
+            await _context.AddAsync(collection, ct);
+    }
+
+    public Task Delete(ApiCollection collection, CancellationToken ct)
+    {
+        _context.Remove(collection);
+        return Task.CompletedTask;
     }
 }
 

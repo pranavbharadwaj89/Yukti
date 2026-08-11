@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Auditing;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
@@ -61,6 +62,7 @@ public sealed class YuktiDbContext : DbContext
     }
 
     public DbSet<Flow> Flows => Set<Flow>();
+    public DbSet<ApiCollection> ApiCollections => Set<ApiCollection>();
     public DbSet<FlowRun> FlowRuns => Set<FlowRun>();
     public DbSet<ModuleRegistration> ModuleRegistrations => Set<ModuleRegistration>();
     public DbSet<Yukti.Domain.IdentityAccess.User> Users => Set<Yukti.Domain.IdentityAccess.User>();
@@ -77,6 +79,7 @@ public sealed class YuktiDbContext : DbContext
         modelBuilder.ApplyConfiguration(new UserConfiguration());
         modelBuilder.ApplyConfiguration(new ModuleRegistrationConfiguration());
         modelBuilder.ApplyConfiguration(new FlowConfiguration());
+        modelBuilder.ApplyConfiguration(new ApiCollectionConfiguration());
         modelBuilder.ApplyConfiguration(new FlowRunConfiguration());
         modelBuilder.ApplyConfiguration(new AuditEntryConfiguration());
 

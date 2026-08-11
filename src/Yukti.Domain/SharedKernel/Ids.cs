@@ -83,3 +83,15 @@ public readonly record struct OutboxMessageId(Guid Value)
 {
     public static OutboxMessageId New() => new(Guid.NewGuid());
 }
+
+public readonly record struct ApiCollectionId(Guid Value)
+{
+    public static ApiCollectionId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString();
+}
+
+public readonly record struct ApiRequestId(Guid Value)
+{
+    public static ApiRequestId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString();
+}
