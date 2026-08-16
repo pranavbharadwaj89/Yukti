@@ -227,3 +227,24 @@ export interface TrendAggregateResponse {
   flakeRateLast24h: number;
   lastUpdatedAt: string;
 }
+
+export interface FlowReportSummaryResponse {
+  flowId: string;
+  flowName: string;
+  totalRuns: number;
+  passedRuns: number;
+  failedRuns: number;
+  lastRunAt: string;
+  lastRunStatus: string;
+}
+
+export interface FlowRunReportResponse {
+  flowRunId: string;
+  finalStatus: string;
+  passedCount: number;
+  failedCount: number;
+  skippedCount: number;
+  totalDurationMs: number;
+  occurredAt: string;
+  projectedAt: string;
+}

@@ -178,9 +178,12 @@
         },
         {
           "name": "Reports page",
-          "note": "Tenant-aggregate only — no per-flow drill-down or audit tie-in yet",
-          "type": "manual",
-          "status": "progress"
+          "note": "Per-flow drill-down (GET /flow-reports) + audit trail tie-in on expand",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/features/reporting-audit/reports-page.tsx",
+          "pattern": "FlowDrilldown",
+          "whenFound": "done",
+          "whenMissing": "progress"
         },
         {
           "name": "Accessibility pass: Select keyboard nav",

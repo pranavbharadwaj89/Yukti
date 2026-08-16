@@ -112,6 +112,23 @@ public sealed record AuditEntryDetailResponse(
         a.Id.Value, a.CommandType, a.TenantId?.Value, a.Succeeded, a.FailureReason, a.Metadata, a.OccurredAt);
 }
 
+public sealed record FlowReportSummaryResponse(
+    Guid FlowId, string FlowName, int TotalRuns, int PassedRuns, int FailedRuns,
+    DateTimeOffset LastRunAt, string LastRunStatus)
+{
+    public static FlowReportSummaryResponse From(FlowReportSummary s) => new(
+        s.FlowId.Value, s.FlowName, s.TotalRuns, s.PassedRuns, s.FailedRuns, s.LastRunAt, s.LastRunStatus.ToString());
+}
+
+public sealed record FlowRunReportResponse(
+    Guid FlowRunId, string FinalStatus, int PassedCount, int FailedCount, int SkippedCount,
+    double TotalDurationMs, DateTimeOffset OccurredAt, DateTimeOffset ProjectedAt)
+{
+    public static FlowRunReportResponse From(FlowRunReportEntry e) => new(
+        e.FlowRunId.Value, e.FinalStatus.ToString(), e.PassedCount, e.FailedCount, e.SkippedCount,
+        e.TotalDuration.TotalMilliseconds, e.OccurredAt, e.ProjectedAt);
+}
+
 public sealed record StepResultResponse(
     Guid Id, string StepName, string Module, string Action, string Status,
     double DurationMs, string? Message, string? Error, object? Data, bool IsFlaky,

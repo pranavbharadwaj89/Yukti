@@ -10,6 +10,8 @@ import type {
   ProblemDetails,
   AuditEntryResponse,
   AuditEntryDetailResponse,
+  FlowReportSummaryResponse,
+  FlowRunReportResponse,
   ProjectResponse,
   TestEnvironmentResponse,
   TokenResponse,
@@ -221,6 +223,11 @@ export const auditApi = {
 
 export const trendsApi = {
   get: () => request<TrendAggregateResponse | undefined>("/api/v1/trends"),
+};
+
+export const flowReportsApi = {
+  list: () => request<FlowReportSummaryResponse[]>("/api/v1/flow-reports"),
+  runsByFlow: (flowId: string) => request<FlowRunReportResponse[]>(`/api/v1/flow-reports/${flowId}/runs`),
 };
 
 export function getActionParams(modules: ModuleResponse[] | undefined, moduleKind: string, action: string): ActionSchema | undefined {

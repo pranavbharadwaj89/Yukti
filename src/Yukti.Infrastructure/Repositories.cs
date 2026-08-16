@@ -9,6 +9,7 @@ using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.Scheduling;
 using Yukti.Domain.SharedKernel;
+using Yukti.Infrastructure.ReadModels;
 
 namespace Yukti.Infrastructure;
 
@@ -278,6 +279,52 @@ public sealed class EfAuditSummaryQuery : IAuditSummaryQuery
             ? null
             : new AuditEntryDetail(entry.Id, entry.CommandType, entry.TenantId, entry.Succeeded, entry.FailureReason, entry.Metadata, entry.OccurredAt);
     }
+}
+
+public sealed class EfFlowReportSummaryQuery : IFlowReportSummaryQuery
+{
+    private readonly YuktiDbContext _context;
+    public EfFlowReportSummaryQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<IReadOnlyList<FlowReportSummary>> ListByTenant(TenantId tenantId, CancellationToken ct)
+    {
+        var reports = await _context.FlowReports
+            .Where(r => r.TenantId == tenantId)
+            .ToListAsync(ct);
+
+        if (reports.Count == 0) return Array.Empty<FlowReportSummary>();
+
+        var flowNames = await _context.Flows
+            .Where(f => f.TenantId == tenantId)
+            .Select(f => new { f.Id, f.Name })
+            .ToDictionaryAsync(f => f.Id, f => f.Name, ct);
+
+        return reports
+            .GroupBy(r => r.FlowId)
+            .Select(g =>
+            {
+                var latest = g.OrderByDescending(r => r.OccurredAt).First();
+                return new FlowReportSummary(
+                    g.Key,
+                    flowNames.TryGetValue(g.Key, out var name) ? name : g.Key.Value.ToString(),
+                    g.Count(),
+                    g.Count(r => r.FinalStatus == RunStatus.Passed),
+                    g.Count(r => r.FinalStatus == RunStatus.Failed),
+                    latest.OccurredAt,
+                    latest.FinalStatus);
+            })
+            .OrderByDescending(s => s.LastRunAt)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<FlowRunReportEntry>> ListRunsByFlow(FlowId flowId, TenantId tenantId, CancellationToken ct) =>
+        await _context.FlowReports
+            .Where(r => r.FlowId == flowId && r.TenantId == tenantId)
+            .OrderByDescending(r => r.OccurredAt)
+            .Select(r => new FlowRunReportEntry(
+                r.FlowRunId, r.FinalStatus, r.PassedCount, r.FailedCount, r.SkippedCount,
+                r.TotalDuration, r.OccurredAt, r.ProjectedAt))
+            .ToListAsync(ct);
 }
 
 public sealed class EfUserRepository : IUserRepository

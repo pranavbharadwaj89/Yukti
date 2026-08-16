@@ -39,6 +39,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITriggerRepository, EfTriggerRepository>();
         services.AddScoped<ITriggerSummaryQuery, EfTriggerSummaryQuery>();
         services.AddScoped<IAuditSummaryQuery, EfAuditSummaryQuery>();
+        services.AddScoped<IFlowReportSummaryQuery, EfFlowReportSummaryQuery>();
         services.AddScoped<ITenantSessionInitializer, EfTenantSessionInitializer>();
 
         return services;

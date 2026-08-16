@@ -990,6 +990,24 @@ app.MapGet($"{apiV1}/trends", async (ClaimsPrincipal principal, YuktiDbContext d
     return trend is null ? Results.NoContent() : Results.Ok(trend);
 }).WithTags("Trends").RequireAuthorization().RequireRateLimiting("PerTenant");
 
+// Reports page per-flow drill-down: same FlowReportReadModel rows the
+// tenant-wide /trends aggregate is built from, grouped by flow instead of
+// collapsed into one number. Same ReportView permission as /trends and
+// the audit endpoints above — all three are read-only tenant-aggregate
+// views over the same reporting surface.
+app.MapGet($"{apiV1}/flow-reports", async (ClaimsPrincipal principal, IPermissionChecker permissions, IFlowReportSummaryQuery query, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ReportView, ct);
+    return Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(FlowReportSummaryResponse.From));
+}).WithTags("Reports").RequireAuthorization().RequireRateLimiting("PerTenant");
+
+app.MapGet($"{apiV1}/flow-reports/{{flowId:guid}}/runs", async (Guid flowId, ClaimsPrincipal principal, IPermissionChecker permissions, IFlowReportSummaryQuery query, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ReportView, ct);
+    var runs = await query.ListRunsByFlow(new FlowId(flowId), principal.GetTenantId(), ct);
+    return Results.Ok(runs.Select(FlowRunReportResponse.From));
+}).WithTags("Reports").RequireAuthorization().RequireRateLimiting("PerTenant");
+
 // FR-RT-01/02: clients call JoinRun(flowRunId) after connecting, then
 // GET /api/v1/runs/{runId} once for full current state (the catch-up
 // fetch FR-RT-02 requires on every reconnect) before trusting any
