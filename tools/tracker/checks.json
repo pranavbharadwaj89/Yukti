@@ -307,9 +307,12 @@
         },
         {
           "name": "Config-driven deployment mode",
-          "note": "No config file convention yet — env vars only",
-          "type": "manual",
-          "status": "progress"
+          "note": "Deployment:SelfHosted read from config, gates FileWatch triggers",
+          "type": "grep",
+          "scope": "src/Yukti.Api/appsettings.json",
+          "pattern": "SelfHosted",
+          "whenFound": "done",
+          "whenMissing": "progress"
         },
         {
           "name": "CI/CD pipeline",
@@ -329,7 +332,7 @@
         },
         {
           "name": "appsettings.json / structured config files",
-          "note": "Everything currently flows through env vars + builder.Configuration",
+          "note": "appsettings.json + appsettings.Development.json; secrets still env vars/user-secrets only",
           "type": "exists",
           "path": "src/Yukti.Api/appsettings.json",
           "whenFound": "done",
