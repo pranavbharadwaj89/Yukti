@@ -1,0 +1,381 @@
+{
+  "_comment": "Each item is auto-derived from repo signals by generate-tracker.mjs. type 'grep' searches file contents under `scope` for `pattern` (plain substring). type 'exists' checks a path. type 'manual' is not auto-derivable and keeps a hand-set status until someone updates it here.",
+  "columns": {
+    "Backend": {
+      "items": [
+        {
+          "name": "Flow authoring + versioned publish",
+          "note": "Draft/Publish/Archive lifecycle, FlowRun execution engine",
+          "type": "grep",
+          "scope": "src/Yukti.Application/FlowAuthoring",
+          "pattern": "Publish",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "API Studio backend (requests, assertions, env vars)",
+          "note": "AssertionEvaluator, JsonPathEvaluator, per-project TestEnvironments",
+          "type": "grep",
+          "scope": "src/Yukti.Infrastructure.InMemory/Modules",
+          "pattern": "class AssertionEvaluator",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Logs Studio backend (rule checks + anomaly flags)",
+          "note": "Rule-based, not ML — see AI column",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/features/logs-studio",
+          "pattern": "checkRules",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Scheduler: Cron / Webhook / FileWatch triggers",
+          "note": "TriggerDefinition aggregate, no Delete by design (Disable is the lifecycle)",
+          "type": "grep",
+          "scope": "src/Yukti.Domain/Scheduling",
+          "pattern": "class TriggerDefinition",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Scheduler: FileWatch self-hosted deployment gate",
+          "note": "Reads Deployment:SelfHosted config",
+          "type": "grep",
+          "scope": "src/Yukti.Api",
+          "pattern": "Deployment:SelfHosted",
+          "whenFound": "done",
+          "whenMissing": "blocked"
+        },
+        {
+          "name": "Audit trail: command-level append-only log",
+          "note": "AuditEntry.Capture, no Update/Delete on the repository interface",
+          "type": "grep",
+          "scope": "src/Yukti.Domain/Auditing",
+          "pattern": "static AuditEntry Capture(",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Audit: per-entry metadata detail endpoint",
+          "note": "GET /audit-entries/{id} — metadata excluded from the list query on purpose",
+          "type": "grep",
+          "scope": "src/Yukti.Api/Program.cs",
+          "pattern": "audit-entries/{{id",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Multi-tenant RLS + permission checks",
+          "note": "EnsurePermission on every mutating endpoint, tenant guard on every read",
+          "type": "grep",
+          "scope": "src/Yukti.Api/Program.cs",
+          "pattern": "EnsurePermission",
+          "whenFound": "done",
+          "whenMissing": "blocked"
+        },
+        {
+          "name": "Module plugin registry + introspection",
+          "note": "GET /modules — zero hardcoded module knowledge on the client",
+          "type": "grep",
+          "scope": "src/Yukti.Api/Program.cs",
+          "pattern": "}/modules\"",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Outbox relay + table partitioning jobs",
+          "note": "Yukti.Worker hosted services",
+          "type": "exists",
+          "path": "src/Yukti.Worker/SchedulerHostedService.cs",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Webhook receiver endpoint (fires the trigger)",
+          "note": "WebhookPath is generated and stored, but nothing listens on it yet",
+          "type": "grep",
+          "scope": "src/Yukti.Api",
+          "pattern": "MapPost(\"/webhooks",
+          "matchCase": false,
+          "whenFound": "done",
+          "whenMissing": "blocked"
+        },
+        {
+          "name": "OpenAPI / Swagger document",
+          "note": "types.ts is hand-written against the live contract in lieu of this",
+          "type": "grep",
+          "scope": "src/Yukti.Api",
+          "pattern": "AddSwaggerGen",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        }
+      ]
+    },
+    "Frontend": {
+      "items": [
+        {
+          "name": "Flow Authoring canvas (schema-driven steps)",
+          "note": "Typed add-step fields generated from module ActionSchema",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/features/flow-authoring",
+          "pattern": "ActionSchema",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "API Studio UI",
+          "note": "Explorer tree, request designer, assertions editor, response viewer",
+          "type": "exists",
+          "path": "apps/yukti-gui/src/features/api-studio/request-designer.tsx",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Logs Studio UI",
+          "note": "Rules editor + results viewer",
+          "type": "exists",
+          "path": "apps/yukti-gui/src/features/logs-studio",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Scheduler UI: CRUD, enable/disable",
+          "note": "Real EF-backed persistence, not in-memory",
+          "type": "exists",
+          "path": "apps/yukti-gui/src/features/scheduler/scheduler-page.tsx",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Scheduler UI: webhook path copy affordance",
+          "note": "Inline copy button + post-create dialog, both via Clipboard API",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/features/scheduler",
+          "pattern": "clipboard",
+          "matchCase": false,
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Audit UI: list view",
+          "note": "",
+          "type": "exists",
+          "path": "apps/yukti-gui/src/features/audit/audit-page.tsx",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Audit UI: metadata detail + filter/search",
+          "note": "Expandable row fetches metadata lazily; search + result filter added",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/features/audit/audit-page.tsx",
+          "pattern": "metadata",
+          "matchCase": false,
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Reports page",
+          "note": "Tenant-aggregate only — no per-flow drill-down or audit tie-in yet",
+          "type": "manual",
+          "status": "progress"
+        },
+        {
+          "name": "Accessibility pass: Select keyboard nav",
+          "note": "Arrow/Home/End/Enter/Escape, aria-activedescendant",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/components/ui/form-controls.tsx",
+          "pattern": "aria-activedescendant",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Accessibility pass: Dialog focus + Escape",
+          "note": "Initial focus, focus restore on close, Escape to dismiss",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/components/ui/primitives.tsx",
+          "pattern": "Escape",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Accessibility pass: DataTable sort + pagination",
+          "note": "Sortable headers are real buttons with aria-sort; aria-current on page",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/components/ui/data-table.tsx",
+          "pattern": "aria-sort",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Full WCAG audit (contrast, screen reader pass)",
+          "note": "Ongoing pass fixes components in active use, not a formal audit",
+          "type": "manual",
+          "status": "planned"
+        },
+        {
+          "name": "Test coverage: shared UI primitives",
+          "note": "primitives, form-controls, data-table",
+          "type": "exists",
+          "path": "apps/yukti-gui/src/components/ui/primitives.test.tsx",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Test coverage: Audit + Scheduler pages",
+          "note": "Filter, metadata fetch, and copy-affordance behavior covered",
+          "type": "exists",
+          "path": "apps/yukti-gui/src/features/scheduler/scheduler-page.test.tsx",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Test coverage: API Studio, Flow Authoring, Projects",
+          "note": "Zero coverage on these feature areas until test files land",
+          "type": "exists",
+          "path": "apps/yukti-gui/src/features/api-studio/api-studio-page.test.tsx",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Module marketplace UI",
+          "note": "No view/install UI for third-party modules",
+          "type": "exists",
+          "path": "apps/yukti-gui/src/features/marketplace",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "E2E suite (Playwright)",
+          "note": "",
+          "type": "exists",
+          "path": "apps/yukti-gui/playwright.config.ts",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        }
+      ]
+    },
+    "Infra": {
+      "items": [
+        {
+          "name": "Postgres + EF Core persistence",
+          "note": "Real DB-backed repositories, not in-memory, across Api and Worker",
+          "type": "exists",
+          "path": "src/Yukti.Infrastructure/YuktiDbContext.cs",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Redis distributed trigger lock",
+          "note": "RedisTriggerLock — prevents double-fire across scaled Worker instances",
+          "type": "grep",
+          "scope": "src",
+          "pattern": "RedisTriggerLock",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Rate limiting (per-tenant)",
+          "note": "",
+          "type": "exists",
+          "path": "src/Yukti.Api/RedisFixedWindowRateLimiter.cs",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "CORS, configuration-driven origins",
+          "note": "Cors:AllowedOrigins, defaults to local dev ports only",
+          "type": "grep",
+          "scope": "src/Yukti.Api",
+          "pattern": "Cors:AllowedOrigins",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "OpenTelemetry tracing + metrics",
+          "note": "",
+          "type": "grep",
+          "scope": "src/Yukti.Api",
+          "pattern": "OpenTelemetry",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Config-driven deployment mode",
+          "note": "No config file convention yet — env vars only",
+          "type": "manual",
+          "status": "progress"
+        },
+        {
+          "name": "CI/CD pipeline",
+          "note": "No workflow files in the repo yet",
+          "type": "exists",
+          "path": ".github/workflows",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Containerization (Dockerfile / compose)",
+          "note": "",
+          "type": "exists",
+          "path": "Dockerfile",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "appsettings.json / structured config files",
+          "note": "Everything currently flows through env vars + builder.Configuration",
+          "type": "exists",
+          "path": "src/Yukti.Api/appsettings.json",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        }
+      ]
+    },
+    "AI": {
+      "items": [
+        {
+          "name": "Rule-based log anomaly detection",
+          "note": "LogsModule.checkRules / detectAnomalies — deterministic, not model-based",
+          "type": "grep",
+          "scope": "apps/yukti-gui/src/features/logs-studio",
+          "pattern": "detectAnomalies",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Flaky-test heuristic flag",
+          "note": "StepResultResponse.IsFlaky — heuristic, not learned",
+          "type": "grep",
+          "scope": "src/Yukti.Api/Dtos.cs",
+          "pattern": "IsFlaky",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "LLM-assisted test/assertion generation",
+          "note": "No LLM integration exists in the codebase yet",
+          "type": "grep",
+          "scope": "src",
+          "pattern": "OpenAI",
+          "whenFound": "done",
+          "whenMissing": "planned"
+        },
+        {
+          "name": "Self-healing selectors / auto-repair",
+          "note": "",
+          "type": "manual",
+          "status": "planned"
+        },
+        {
+          "name": "AI-powered flow suggestions",
+          "note": "",
+          "type": "manual",
+          "status": "planned"
+        }
+      ]
+    }
+  }
+}

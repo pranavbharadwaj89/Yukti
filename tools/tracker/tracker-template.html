@@ -1,0 +1,387 @@
+<title>Yukti — Build Tracker</title>
+<style>
+  :root {
+    --bg: #f3f5f7;
+    --bg-raised: #ffffff;
+    --ink: #171b21;
+    --ink-dim: #5b6472;
+    --border: #dde2e8;
+    --accent: #0e8a86;
+    --accent-ink: #ffffff;
+    --accent-soft: #e2f3f1;
+    --done: #1a8f4c;
+    --done-soft: #e5f5ec;
+    --progress: #b5860a;
+    --progress-soft: #faf1dc;
+    --planned: #6b7280;
+    --planned-soft: #eceef1;
+    --blocked: #c23b3b;
+    --blocked-soft: #fbeaea;
+    --track: #e3e7eb;
+    --shadow: 0 1px 2px rgba(20, 24, 30, 0.04), 0 8px 20px -12px rgba(20, 24, 30, 0.18);
+    --font-ui: -apple-system, "Segoe UI", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", "Consolas", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a;
+      --bg-raised: #1a1f26;
+      --ink: #e9edf1;
+      --ink-dim: #8d97a3;
+      --border: #2a313b;
+      --accent: #2dd4c9;
+      --accent-ink: #0a1615;
+      --accent-soft: rgba(45, 212, 201, 0.12);
+      --done: #4ade80;
+      --done-soft: rgba(74, 222, 128, 0.12);
+      --progress: #f2c14e;
+      --progress-soft: rgba(242, 193, 78, 0.1);
+      --planned: #8d97a3;
+      --planned-soft: rgba(141, 151, 163, 0.1);
+      --blocked: #f47272;
+      --blocked-soft: rgba(244, 114, 114, 0.1);
+      --track: #232a33;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12151a; --bg-raised: #1a1f26; --ink: #e9edf1; --ink-dim: #8d97a3; --border: #2a313b;
+    --accent: #2dd4c9; --accent-ink: #0a1615; --accent-soft: rgba(45, 212, 201, 0.12);
+    --done: #4ade80; --done-soft: rgba(74, 222, 128, 0.12);
+    --progress: #f2c14e; --progress-soft: rgba(242, 193, 78, 0.1);
+    --planned: #8d97a3; --planned-soft: rgba(141, 151, 163, 0.1);
+    --blocked: #f47272; --blocked-soft: rgba(244, 114, 114, 0.1);
+    --track: #232a33; --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f5f7; --bg-raised: #ffffff; --ink: #171b21; --ink-dim: #5b6472; --border: #dde2e8;
+    --accent: #0e8a86; --accent-ink: #ffffff; --accent-soft: #e2f3f1;
+    --done: #1a8f4c; --done-soft: #e5f5ec;
+    --progress: #b5860a; --progress-soft: #faf1dc;
+    --planned: #6b7280; --planned-soft: #eceef1;
+    --blocked: #c23b3b; --blocked-soft: #fbeaea;
+    --track: #e3e7eb; --shadow: 0 1px 2px rgba(20, 24, 30, 0.04), 0 8px 20px -12px rgba(20, 24, 30, 0.18);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-soft); }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 28px 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+  }
+  .title-block h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .title-block .sub {
+    color: var(--ink-dim);
+    font-size: 13px;
+  }
+  .title-block .sub code {
+    font-family: var(--font-mono);
+    background: var(--track);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .overall {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .overall-ring {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    flex-shrink: 0;
+  }
+  .overall-ring svg { transform: rotate(-90deg); }
+  .overall-ring .track { stroke: var(--track); }
+  .overall-ring .fill { stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray 0.4s ease; }
+  .overall-ring .pct {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .overall-label { text-align: right; }
+  .overall-label .n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 700; }
+  .overall-label .l { color: var(--ink-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-dim); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.done { background: var(--done); }
+  .dot.progress { background: var(--progress); }
+  .dot.planned { background: var(--planned); }
+  .dot.blocked { background: var(--blocked); }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .column {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .column-head {
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .column-head .row1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .column-head h2 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.005em; }
+  .column-head .count {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+  .bar-track {
+    margin-top: 10px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--track);
+    overflow: hidden;
+  }
+  .bar-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+
+  .items { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .item {
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 9px 10px;
+  }
+  .item:hover { background: var(--bg); }
+  .item-row { display: flex; align-items: flex-start; gap: 9px; }
+  .item .status-dot { margin-top: 5px; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .item-body { flex: 1; min-width: 0; }
+  .item-name { font-size: 13.5px; font-weight: 500; }
+  .item.is-done .item-name { color: var(--ink-dim); text-decoration: line-through; text-decoration-color: var(--border); }
+  .item-note { color: var(--ink-dim); font-size: 12px; margin-top: 2px; text-wrap: pretty; }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 7px 2px 6px;
+    border-radius: 99px;
+    white-space: nowrap;
+    margin-top: 6px;
+  }
+  .status-pill.done { background: var(--done-soft); color: var(--done); }
+  .status-pill.progress { background: var(--progress-soft); color: var(--progress); }
+  .status-pill.planned { background: var(--planned-soft); color: var(--planned); }
+  .status-pill.blocked { background: var(--blocked-soft); color: var(--blocked); }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    color: var(--ink-dim);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  footer code { font-family: var(--font-mono); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bar-fill, .overall-ring .fill { transition: none; }
+  }
+</style>
+
+<div class="page">
+  <header>
+    <div class="title-block">
+      <h1>Yukti — build tracker</h1>
+      <div class="sub">Generated <code id="generated-at"></code> from <code id="git-ref"></code> · statuses are derived from repo state, not hand-edited — see <code>tools/tracker/checks.json</code></div>
+    </div>
+    <div class="overall">
+      <div class="overall-ring">
+        <svg width="56" height="56" viewBox="0 0 56 56">
+          <circle class="track" cx="28" cy="28" r="24" fill="none" stroke-width="5"></circle>
+          <circle id="overall-fill" class="fill" cx="28" cy="28" r="24" fill="none" stroke-width="5" stroke-dasharray="0 999"></circle>
+        </svg>
+        <div class="pct" id="overall-pct">0%</div>
+      </div>
+      <div class="overall-label">
+        <div class="n" id="overall-count">0 / 0</div>
+        <div class="l">items done</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="legend">
+      <span class="legend-item"><span class="dot done"></span>Done</span>
+      <span class="legend-item"><span class="dot progress"></span>In progress</span>
+      <span class="legend-item"><span class="dot planned"></span>Planned</span>
+      <span class="legend-item"><span class="dot blocked"></span>Blocked</span>
+    </div>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <footer>
+    <span>Regenerate with <code>node tools/tracker/generate-tracker.mjs</code> from the repo root, then commit/push.</span>
+    <span>Add or re-scope items in <code>tools/tracker/checks.json</code>.</span>
+  </footer>
+</div>
+
+<script>
+  // Each item: [name, status ("done" | "progress" | "planned" | "blocked"), note]
+  // Generated by tools/tracker/generate-tracker.mjs — do not hand-edit this block.
+  var DATA = __TRACKER_DATA__;
+  var GENERATED_AT = "__GENERATED_AT__";
+  var GIT_SHA = "__GIT_SHA__";
+  var GIT_BRANCH = "__GIT_BRANCH__";
+
+  function render() {
+    var board = document.getElementById("board");
+    board.innerHTML = "";
+
+    var totalAll = 0, doneAll = 0;
+
+    Object.keys(DATA).forEach(function (col) {
+      var group = DATA[col];
+      var total = group.items.length;
+      var done = 0;
+
+      var colEl = document.createElement("div");
+      colEl.className = "column";
+
+      var head = document.createElement("div");
+      head.className = "column-head";
+      var row1 = document.createElement("div");
+      row1.className = "row1";
+      var h2 = document.createElement("h2");
+      h2.textContent = col;
+      var count = document.createElement("span");
+      count.className = "count";
+      row1.appendChild(h2);
+      row1.appendChild(count);
+      var barTrack = document.createElement("div");
+      barTrack.className = "bar-track";
+      var barFill = document.createElement("div");
+      barFill.className = "bar-fill";
+      barTrack.appendChild(barFill);
+      head.appendChild(row1);
+      head.appendChild(barTrack);
+      colEl.appendChild(head);
+
+      var list = document.createElement("ul");
+      list.className = "items";
+
+      group.items.forEach(function (entry) {
+        var name = entry[0], status = entry[1], note = entry[2];
+        var checked = status === "done";
+        if (checked) done++;
+
+        var li = document.createElement("li");
+        li.className = "item" + (checked ? " is-done" : "");
+
+        var rowEl = document.createElement("div");
+        rowEl.className = "item-row";
+
+        var dot = document.createElement("span");
+        dot.className = "status-dot dot " + status;
+
+        var body = document.createElement("div");
+        body.className = "item-body";
+
+        var label = document.createElement("div");
+        label.className = "item-name";
+        label.textContent = name;
+        body.appendChild(label);
+
+        if (note) {
+          var noteEl = document.createElement("div");
+          noteEl.className = "item-note";
+          noteEl.textContent = note;
+          body.appendChild(noteEl);
+        }
+
+        var pill = document.createElement("span");
+        pill.className = "status-pill " + status;
+        pill.textContent = status === "progress" ? "In progress" : status;
+        body.appendChild(document.createElement("br"));
+        body.appendChild(pill);
+
+        rowEl.appendChild(dot);
+        rowEl.appendChild(body);
+        li.appendChild(rowEl);
+        list.appendChild(li);
+      });
+
+      colEl.appendChild(list);
+      board.appendChild(colEl);
+
+      count.textContent = done + " / " + total;
+      var pct = total ? Math.round((done / total) * 100) : 0;
+      barFill.style.width = pct + "%";
+
+      totalAll += total;
+      doneAll += done;
+    });
+
+    var overallPct = totalAll ? Math.round((doneAll / totalAll) * 100) : 0;
+    document.getElementById("overall-count").textContent = doneAll + " / " + totalAll;
+    document.getElementById("overall-pct").textContent = overallPct + "%";
+    var circumference = 2 * Math.PI * 24;
+    var fillEl = document.getElementById("overall-fill");
+    fillEl.setAttribute("stroke-dasharray", (circumference * overallPct / 100) + " " + circumference);
+  }
+
+  document.getElementById("generated-at").textContent = new Date(GENERATED_AT).toLocaleString();
+  document.getElementById("git-ref").textContent = GIT_BRANCH + "@" + GIT_SHA;
+
+  render();
+</script>
