@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { flowsApi, getActionParams, modulesApi, runsApi, ApiError } from "@/services/api-client";
 import type { FlowRunResponse } from "@/services/types";
-import { Button, Card, Input, Spinner, StatusPill, Textarea } from "@/components/ui/primitives";
-import { Checkbox, Select } from "@/components/ui/form-controls";
+import { Button, Card, Input, Spinner, StatusPill } from "@/components/ui/primitives";
+import { Select } from "@/components/ui/form-controls";
 import { useToastStore } from "@/store/toast-store";
+import { useSelectedEnvironmentVariables } from "@/hooks";
+import { ParamFields, buildParamsFromFields, type FieldValue } from "@/features/shared/param-fields";
 
 // Each Tests tab (Web/Mobile/API) is a standalone single-action test runner
 // against its module's real plugin — no dependency on the Flows builder UI.
@@ -14,40 +16,47 @@ import { useToastStore } from "@/store/toast-store";
 // throwaway flow this creates is named so it's identifiable in the Flows
 // list, not hidden.
 
-type FieldValue = string | boolean;
-
-function buildParams(schema: ReturnType<typeof getActionParams>, values: Record<string, FieldValue>) {
-  if (!schema) return {};
-  const params: Record<string, unknown> = {};
-  for (const p of schema.parameters) {
-    const raw = values[p.name];
-    if (raw === undefined || raw === "") continue;
-    switch (p.type) {
-      case "Number": {
-        const n = Number(raw);
-        if (!Number.isNaN(n)) params[p.name] = n;
-        break;
-      }
-      case "Boolean":
-        params[p.name] = raw === true || raw === "true";
-        break;
-      case "Object":
-      case "Array":
-        try {
-          params[p.name] = JSON.parse(String(raw));
-        } catch {
-          throw new Error(`"${p.name}" must be valid JSON.`);
-        }
-        break;
-      default:
-        params[p.name] = String(raw);
-    }
-  }
-  return params;
-}
-
 function isTerminal(status: string) {
   return status === "Passed" || status === "Failed" || status === "Cancelled";
+}
+
+// MobileModule.Setup (src/Yukti.Infrastructure.InMemory/Modules/MobileModule.cs)
+// only opens an Appium session if ctx.Variables.mobile is populated — that
+// dictionary comes from TriggerFlowRunCommand.VariableOverrides, not step
+// params. Without this panel there was no way to supply it, so every
+// Mobile test failed with "not set up" regardless of what the user filled
+// into the action form above.
+interface MobileDeviceConfig {
+  platformName: string;
+  deviceName: string;
+  automationName: string;
+  appiumUrl: string;
+  app: string;
+}
+
+const emptyDeviceConfig: MobileDeviceConfig = { platformName: "", deviceName: "", automationName: "", appiumUrl: "", app: "" };
+
+function buildMobileVariableOverrides(config: MobileDeviceConfig): Record<string, unknown> | undefined {
+  const mobile: Record<string, unknown> = {};
+  if (config.platformName.trim()) mobile.platformName = config.platformName.trim();
+  if (config.deviceName.trim()) mobile.deviceName = config.deviceName.trim();
+  if (config.automationName.trim()) mobile.automationName = config.automationName.trim();
+  if (config.appiumUrl.trim()) mobile.appiumUrl = config.appiumUrl.trim();
+  if (config.app.trim()) mobile.app = config.app.trim();
+  return Object.keys(mobile).length > 0 ? { mobile } : undefined;
+}
+
+function isPathData(data: unknown): data is { path: string } {
+  return typeof data === "object" && data !== null && typeof (data as Record<string, unknown>).path === "string";
+}
+
+function isMatchData(data: unknown): data is { x: number; y: number; confidence?: number } {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    typeof (data as Record<string, unknown>).x === "number" &&
+    typeof (data as Record<string, unknown>).y === "number"
+  );
 }
 
 export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; title: string }) {
@@ -58,6 +67,8 @@ export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; titl
   const [action, setAction] = useState("");
   const [fieldValues, setFieldValues] = useState<Record<string, FieldValue>>({});
   const [runId, setRunId] = useState<string | null>(null);
+  const [deviceConfig, setDeviceConfig] = useState<MobileDeviceConfig>(emptyDeviceConfig);
+  const environmentVariables = useSelectedEnvironmentVariables();
 
   const module = modulesQuery.data?.find((m) => m.kind === moduleKind);
   const selectedActionSchema = getActionParams(modulesQuery.data, moduleKind, action);
@@ -71,12 +82,21 @@ export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; titl
 
   const runMutation = useMutation({
     mutationFn: async () => {
-      const params = buildParams(selectedActionSchema, fieldValues);
+      const params = buildParamsFromFields(selectedActionSchema, fieldValues);
       const { flowId } = await flowsApi.create(`${title} — ${new Date().toLocaleString()}`, `Ad-hoc ${moduleKind}.${action} test run from the Tests tab.`);
       await flowsApi.addStep(flowId, { name: action, module: moduleKind, action, params });
       const publishResult = await flowsApi.publish(flowId);
       if (!publishResult.succeeded) throw new Error(publishResult.errors.join("; "));
-      return flowsApi.triggerRun(flowId);
+      // Environment variables are the base (e.g. a Project's saved Mobile
+      // device config); the form's own Device config panel — if filled —
+      // takes priority, since a manual override at run time is more
+      // specific than the saved default.
+      const manualMobileOverride = moduleKind === "mobile" ? buildMobileVariableOverrides(deviceConfig) : undefined;
+      const variableOverrides =
+        environmentVariables || manualMobileOverride
+          ? { ...environmentVariables, ...manualMobileOverride }
+          : undefined;
+      return flowsApi.triggerRun(flowId, variableOverrides);
     },
     onSuccess: (run: FlowRunResponse) => {
       setRunId(run.id);
@@ -96,6 +116,52 @@ export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; titl
     <div className="flex flex-col gap-4">
       <h1 className="text-h1 text-ink">{title}</h1>
 
+      {moduleKind === "mobile" && (
+        <Card className="flex flex-col gap-3 p-4">
+          <h2 className="text-body-sm font-medium text-ink">Device config</h2>
+          <p className="text-caption text-ink-dim">
+            Required for the module to open an Appium session — without this, every action fails with "not set up".
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-body-sm text-ink-dim">Platform name*</label>
+              <Input
+                placeholder="Android or iOS"
+                value={deviceConfig.platformName}
+                onChange={(e) => setDeviceConfig((c) => ({ ...c, platformName: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-body-sm text-ink-dim">Device name*</label>
+              <Input
+                value={deviceConfig.deviceName}
+                onChange={(e) => setDeviceConfig((c) => ({ ...c, deviceName: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-body-sm text-ink-dim">Automation name*</label>
+              <Input
+                placeholder="UiAutomator2 or XCUITest"
+                value={deviceConfig.automationName}
+                onChange={(e) => setDeviceConfig((c) => ({ ...c, automationName: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-body-sm text-ink-dim">Appium URL</label>
+              <Input
+                placeholder="http://localhost:4723"
+                value={deviceConfig.appiumUrl}
+                onChange={(e) => setDeviceConfig((c) => ({ ...c, appiumUrl: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-body-sm text-ink-dim">App</label>
+              <Input value={deviceConfig.app} onChange={(e) => setDeviceConfig((c) => ({ ...c, app: e.target.value }))} />
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Card className="flex flex-col gap-3 p-4">
         <Select
           value={action}
@@ -110,36 +176,7 @@ export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; titl
         />
 
         {selectedActionSchema && (
-          <div className="flex flex-col gap-3">
-            {selectedActionSchema.parameters.map((p) => (
-              <div key={p.name} className="flex flex-col gap-1">
-                <label className="text-body-sm text-ink-dim">
-                  {p.name}
-                  {p.required ? "*" : ""}
-                  {p.description && <span className="ml-2 text-caption text-ink-dim/70">{p.description}</span>}
-                </label>
-                {p.type === "Boolean" ? (
-                  <Checkbox
-                    checked={fieldValues[p.name] === true}
-                    onChange={(checked) => setFieldValues((v) => ({ ...v, [p.name]: checked }))}
-                  />
-                ) : p.type === "Object" || p.type === "Array" ? (
-                  <Textarea
-                    rows={3}
-                    placeholder={p.type === "Array" ? "[...]" : "{...}"}
-                    value={(fieldValues[p.name] as string) ?? ""}
-                    onChange={(e) => setFieldValues((v) => ({ ...v, [p.name]: e.target.value }))}
-                  />
-                ) : (
-                  <Input
-                    type={p.type === "Number" ? "number" : "text"}
-                    value={(fieldValues[p.name] as string) ?? ""}
-                    onChange={(e) => setFieldValues((v) => ({ ...v, [p.name]: e.target.value }))}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+          <ParamFields schema={selectedActionSchema} values={fieldValues} onChange={setFieldValues} />
         )}
 
         <div className="flex justify-end">
@@ -166,6 +203,12 @@ export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; titl
                 </div>
                 {(r.message || r.error) && (
                   <p className={`text-body-sm ${r.error ? "text-danger" : "text-ink-dim"}`}>{r.error ?? r.message}</p>
+                )}
+                {isPathData(r.data) && <p className="font-mono text-body-sm text-ink-dim">Saved: {r.data.path}</p>}
+                {isMatchData(r.data) && (
+                  <p className="font-mono text-body-sm text-ink-dim">
+                    Match at ({r.data.x}, {r.data.y}){r.data.confidence !== undefined ? ` — confidence ${r.data.confidence}` : ""}
+                  </p>
                 )}
               </li>
             ))}

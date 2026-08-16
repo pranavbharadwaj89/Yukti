@@ -33,6 +33,11 @@ public sealed class Flow : AggregateRoot<FlowId>
     public TenantId TenantId { get; private set; }
     public UserId CreatedBy { get; private set; }
 
+    // Optional scoping to a ProjectManagement.Project — purely organizational
+    // (filters what the FE lists/shows), never enforced as an authorization
+    // boundary; TenantId remains the only real isolation guarantee.
+    public ProjectId? ProjectId { get; private set; }
+
     private readonly List<FlowStep> _steps = new();
     public IReadOnlyList<FlowStep> Steps => _steps.AsReadOnly();
 
@@ -51,14 +56,15 @@ public sealed class Flow : AggregateRoot<FlowId>
         _declaredVariables = new Dictionary<string, object?>();
     }
 
-    public static Flow CreateDraft(string name, string? description, TenantId tenantId, UserId createdBy)
+    public static Flow CreateDraft(string name, string? description, TenantId tenantId, UserId createdBy, ProjectId? projectId = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Flow name cannot be empty.");
 
         var flow = new Flow(FlowId.New(), FlowFamilyId.New(), version: 1, name, tenantId, createdBy)
         {
-            Description = description
+            Description = description,
+            ProjectId = projectId
         };
         return flow;
     }
@@ -68,6 +74,7 @@ public sealed class Flow : AggregateRoot<FlowId>
     {
         var next = new Flow(FlowId.New(), FamilyId, Version + 1, Name, TenantId, createdBy)
         {
+            ProjectId = ProjectId,
             Description = Description
         };
         foreach (var step in _steps)

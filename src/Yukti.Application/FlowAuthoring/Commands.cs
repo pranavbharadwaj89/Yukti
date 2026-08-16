@@ -8,7 +8,7 @@ using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Application.FlowAuthoring;
 
-public sealed record CreateFlowCommand(string Name, string? Description, TenantId TenantId, UserId AuthoredBy)
+public sealed record CreateFlowCommand(string Name, string? Description, TenantId TenantId, UserId AuthoredBy, ProjectId? ProjectId = null)
     : ICommand<FlowId>;
 
 public sealed record AddFlowStepCommand(
@@ -33,7 +33,7 @@ public sealed class CreateFlowCommandHandler : AuditableCommandHandler<CreateFlo
     {
         await _permissions.EnsurePermission(cmd.AuthoredBy, Permission.FlowCreate, ct);
 
-        var flow = Flow.CreateDraft(cmd.Name, cmd.Description, cmd.TenantId, cmd.AuthoredBy);
+        var flow = Flow.CreateDraft(cmd.Name, cmd.Description, cmd.TenantId, cmd.AuthoredBy, cmd.ProjectId);
         await _flows.Save(flow, ct);
         // FR-OPS-03: no commit here — AuditableCommandHandler.Handle commits
         // this alongside the audit entry, once, after HandleCore returns.

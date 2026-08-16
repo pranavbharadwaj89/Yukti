@@ -24,7 +24,8 @@ public sealed record ApiCollectionSummary(
     ApiCollectionId Id,
     string Name,
     string? Description,
-    IReadOnlyList<ApiRequestSummary> Requests);
+    IReadOnlyList<ApiRequestSummary> Requests,
+    ProjectId? ProjectId = null);
 
 public interface IApiCollectionSummaryQuery
 {

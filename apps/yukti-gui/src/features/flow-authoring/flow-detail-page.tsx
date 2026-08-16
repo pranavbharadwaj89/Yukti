@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { flowsApi, getActionParams, modulesApi, ApiError } from "@/services/api-client";
-import { Button, Card, Dialog, Input, Spinner, StatusPill, Textarea } from "@/components/ui/primitives";
+import { Button, Card, Dialog, Input, Spinner, StatusPill } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/form-controls";
 import { useToastStore } from "@/store/toast-store";
 import { WorkflowCanvas } from "@/features/flow-authoring/workflow-canvas";
+import { ParamFields, buildParamsFromFields, type FieldValue } from "@/features/shared/param-fields";
 
 // FR-FEAT-04 (Workflow Builder): a real React Flow canvas (WorkflowCanvas)
 // visualizes the step sequence and drives "add step" via its trailing "+"
@@ -26,24 +27,19 @@ export function FlowDetailPage() {
   const [moduleKind, setModuleKind] = useState("");
   const [action, setAction] = useState("");
   const [stepName, setStepName] = useState("");
-  const [paramsJson, setParamsJson] = useState("{}");
+  const [fieldValues, setFieldValues] = useState<Record<string, FieldValue>>({});
   const [saveAs, setSaveAs] = useState("");
 
   const addStepMutation = useMutation({
     mutationFn: () => {
-      let params: Record<string, unknown>;
-      try {
-        params = JSON.parse(paramsJson || "{}");
-      } catch {
-        throw new Error("Params must be valid JSON.");
-      }
+      const params = buildParamsFromFields(selectedActionSchema, fieldValues);
       return flowsApi.addStep(flowId, { name: stepName, module: moduleKind, action, params, saveAs: saveAs || undefined });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["flows", flowId] });
       pushToast({ kind: "success", message: "Step added." });
       setStepName("");
-      setParamsJson("{}");
+      setFieldValues({});
       setSaveAs("");
       setAddStepOpen(false);
     },
@@ -166,6 +162,7 @@ export function FlowDetailPage() {
             onChange={(kind) => {
               setModuleKind(kind);
               setAction("");
+              setFieldValues({});
             }}
           />
           <Select
@@ -176,15 +173,15 @@ export function FlowDetailPage() {
               value: a.actionName,
               label: a.actionName,
             }))}
-            onChange={setAction}
+            onChange={(a) => {
+              setAction(a);
+              setFieldValues({});
+            }}
           />
           <div className="col-span-2">
             {selectedActionSchema && (
-              <p className="mb-1 text-xs text-ink-dim">
-                Params: {selectedActionSchema.parameters.map((p) => `${p.name}${p.required ? "*" : ""}`).join(", ") || "none"}
-              </p>
+              <ParamFields schema={selectedActionSchema} values={fieldValues} onChange={setFieldValues} />
             )}
-            <Textarea rows={4} placeholder='{"key": "value"}' value={paramsJson} onChange={(e) => setParamsJson(e.target.value)} />
           </div>
           <div className="col-span-2 flex justify-end">
             <Button type="submit" disabled={addStepMutation.isPending}>

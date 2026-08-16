@@ -17,6 +17,9 @@ public sealed class ApiCollectionConfiguration : IEntityTypeConfiguration<ApiCol
         builder.Property(c => c.Name).IsRequired();
         builder.Property(c => c.Description);
         builder.Property(c => c.TenantId).HasConversion(id => id.Value, v => new TenantId(v));
+        builder.Property(c => c.ProjectId).HasConversion(
+            id => id == null ? (Guid?)null : id.Value.Value,
+            v => v == null ? (ProjectId?)null : new ProjectId(v.Value));
 
         // FR-DB-03: tenant_id leads every composite index on a multi-tenant table.
         builder.HasIndex(c => new { c.TenantId, c.Name });

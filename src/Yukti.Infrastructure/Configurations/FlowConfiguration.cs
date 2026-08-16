@@ -23,6 +23,9 @@ public sealed class FlowConfiguration : IEntityTypeConfiguration<Flow>
         builder.Property(f => f.ContinueOnFailure);
         builder.Property(f => f.TenantId).HasConversion(id => id.Value, v => new TenantId(v));
         builder.Property(f => f.CreatedBy).HasConversion(id => id.Value, v => new UserId(v));
+        builder.Property(f => f.ProjectId).HasConversion(
+            id => id == null ? (Guid?)null : id.Value.Value,
+            v => v == null ? (ProjectId?)null : new ProjectId(v.Value));
 
         // FlowId + Version together identify one immutable published
         // version (§9.2's core invariant) — a family can have many rows,

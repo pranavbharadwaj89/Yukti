@@ -1,14 +1,20 @@
 import { useState } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 import { useThemeStore, type Theme } from "@/store/theme-store";
+import { useProjectStore } from "@/store/project-store";
+import { projectsApi } from "@/services/api-client";
 import { ToastViewport } from "@/components/ui/primitives";
 
 // FR-STRUCT-04/FR-PHIL-01: persistent nav rail + top bar, composed once at
 // the app root — no page duplicates this chrome.
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
+  { to: "/projects", label: "Projects" },
+  { to: "/triggers", label: "Scheduler" },
+  { to: "/audit", label: "Audit" },
   { to: "/flows", label: "Flows" },
   { to: "/workflow-designer", label: "Workflow Designer" },
   { to: "/reports", label: "Reports" },
@@ -21,7 +27,9 @@ const NAV_ITEMS = [
 const TEST_NAV_ITEMS = [
   { to: "/tests/web", label: "Web" },
   { to: "/tests/mobile", label: "Mobile" },
+  { to: "/tests/ui", label: "Desktop UI" },
   { to: "/tests/api", label: "API" },
+  { to: "/tests/logs", label: "Logs" },
   { to: "/tests/database", label: "Database" },
 ];
 
@@ -30,6 +38,9 @@ export function AppShell() {
   const clearSession = useAuthStore((s) => s.clearSession);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
+  const selectProject = useProjectStore((s) => s.selectProject);
+  const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: projectsApi.list });
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [testsExpanded, setTestsExpanded] = useState(pathname.startsWith("/tests"));
@@ -85,6 +96,19 @@ export function AppShell() {
         <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-5">
           <div className="font-mono text-xs text-ink-dim">{user?.email}</div>
           <div className="flex items-center gap-3">
+            <select
+              aria-label="Active project"
+              value={selectedProjectId ?? ""}
+              onChange={(e) => selectProject(e.target.value || null)}
+              className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs text-ink"
+            >
+              <option value="">No active project</option>
+              {(projectsQuery.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
             <select
               aria-label="Theme"
               value={theme}

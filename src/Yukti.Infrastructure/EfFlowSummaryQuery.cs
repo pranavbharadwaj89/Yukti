@@ -12,6 +12,6 @@ public sealed class EfFlowSummaryQuery : IFlowSummaryQuery
     public async Task<IReadOnlyList<FlowSummaryReadModel>> ListByTenant(TenantId tenantId, CancellationToken ct) =>
         await _context.Flows
             .Where(f => f.TenantId == tenantId)
-            .Select(f => new FlowSummaryReadModel(f.Id, f.Name, f.Status, f.Version))
+            .Select(f => new FlowSummaryReadModel(f.Id, f.Name, f.Status, f.Version, f.ProjectId))
             .ToListAsync(ct);
 }

@@ -23,7 +23,8 @@ public sealed class EfApiCollectionSummaryQuery : IApiCollectionSummaryQuery
                 c.Id, c.Name, c.Description,
                 c.Requests.OrderBy(r => r.Order)
                     .Select(r => new ApiRequestSummary(r.Id, r.Name, r.Method, r.Url, r.Headers, r.QueryParams, r.Body, r.Assertions, r.Order))
-                    .ToList()))
+                    .ToList(),
+                c.ProjectId))
             .ToList();
     }
 }

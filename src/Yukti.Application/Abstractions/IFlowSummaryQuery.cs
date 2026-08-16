@@ -8,7 +8,7 @@ namespace Yukti.Application.Abstractions;
 /// this queries the exact same flows table a write just landed in, so
 /// "read your own writes" holds with zero synchronization machinery: there
 /// is no second copy of the data to fall behind.</summary>
-public sealed record FlowSummaryReadModel(FlowId FlowId, string Name, FlowStatus Status, int Version);
+public sealed record FlowSummaryReadModel(FlowId FlowId, string Name, FlowStatus Status, int Version, ProjectId? ProjectId);
 
 public interface IFlowSummaryQuery
 {

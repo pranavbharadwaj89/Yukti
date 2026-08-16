@@ -34,6 +34,9 @@ namespace Yukti.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -137,6 +140,9 @@ namespace Yukti.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -246,6 +252,100 @@ namespace Yukti.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("module_registrations", (string)null);
+                });
+
+            modelBuilder.Entity("Yukti.Domain.ProjectManagement.Project", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("projects", (string)null);
+                });
+
+            modelBuilder.Entity("Yukti.Domain.ProjectManagement.TestEnvironment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Variables")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("variables");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProjectId");
+
+                    b.ToTable("test_environments", (string)null);
+                });
+
+            modelBuilder.Entity("Yukti.Domain.Scheduling.TriggerDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CronExpression")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("FlowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LastFiredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RegisteredBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WatchPath")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WebhookPath")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WebhookSecret")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WebhookPath");
+
+                    b.HasIndex("TenantId", "FlowId");
+
+                    b.ToTable("triggers", (string)null);
                 });
 
             modelBuilder.Entity("Yukti.Infrastructure.IdempotencyRecord", b =>

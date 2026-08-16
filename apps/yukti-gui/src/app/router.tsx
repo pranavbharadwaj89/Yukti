@@ -3,6 +3,9 @@ import { AppShell } from "@/layouts/app-shell";
 import { LoginPage } from "@/pages/login-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { SettingsPage } from "@/pages/settings-page";
+import { ProjectsPage } from "@/features/projects/projects-page";
+import { SchedulerPage } from "@/features/scheduler/scheduler-page";
+import { AuditPage } from "@/features/audit/audit-page";
 import { FlowsPage } from "@/features/flow-authoring/flows-page";
 import { FlowDetailPage } from "@/features/flow-authoring/flow-detail-page";
 import { RunDetailPage } from "@/features/execution/run-detail-page";
@@ -10,6 +13,7 @@ import { ReportsPage } from "@/features/reporting-audit/reports-page";
 import { TestPlaceholderPage } from "@/features/testing/test-placeholder-page";
 import { ModuleTestForm } from "@/features/testing/module-test-form";
 import { ApiStudioPage } from "@/features/api-studio/api-studio-page";
+import { LogsStudioPage } from "@/features/logs-studio/logs-studio-page";
 import { useAuthStore } from "@/store/auth-store";
 
 // FR-ROUTE-09: every authenticated route's loader checks for a session and
@@ -33,6 +37,9 @@ const authenticatedLayoutRoute = createRoute({
 });
 
 const dashboardRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/", component: DashboardPage });
+const projectsRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/projects", component: ProjectsPage });
+const schedulerRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/triggers", component: SchedulerPage });
+const auditRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/audit", component: AuditPage });
 const flowsRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/flows", component: FlowsPage });
 const flowDetailRoute = createRoute({
   getParentRoute: () => authenticatedLayoutRoute,
@@ -66,6 +73,11 @@ const testMobileRoute = createRoute({
   path: "/tests/mobile",
   component: () => <ModuleTestForm moduleKind="mobile" title="Mobile Testing" />,
 });
+const testUiRoute = createRoute({
+  getParentRoute: () => authenticatedLayoutRoute,
+  path: "/tests/ui",
+  component: () => <ModuleTestForm moduleKind="ui" title="Desktop UI Testing" />,
+});
 const testApiRoute = createRoute({
   getParentRoute: () => authenticatedLayoutRoute,
   path: "/tests/api",
@@ -76,11 +88,19 @@ const testDatabaseRoute = createRoute({
   path: "/tests/database",
   component: () => <TestPlaceholderPage title="Database Testing" />,
 });
+const testLogsRoute = createRoute({
+  getParentRoute: () => authenticatedLayoutRoute,
+  path: "/tests/logs",
+  component: LogsStudioPage,
+});
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
   authenticatedLayoutRoute.addChildren([
     dashboardRoute,
+    projectsRoute,
+    schedulerRoute,
+    auditRoute,
     flowsRoute,
     flowDetailRoute,
     workflowDesignerRoute,
@@ -89,8 +109,10 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     testWebRoute,
     testMobileRoute,
+    testUiRoute,
     testApiRoute,
     testDatabaseRoute,
+    testLogsRoute,
   ]),
 ]);
 

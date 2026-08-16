@@ -5,6 +5,8 @@ using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.ModulePlugin;
+using Yukti.Domain.ProjectManagement;
+using Yukti.Domain.Scheduling;
 using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure.Configurations;
 using Yukti.Infrastructure.ReadModels;
@@ -63,6 +65,9 @@ public sealed class YuktiDbContext : DbContext
 
     public DbSet<Flow> Flows => Set<Flow>();
     public DbSet<ApiCollection> ApiCollections => Set<ApiCollection>();
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<TestEnvironment> TestEnvironments => Set<TestEnvironment>();
+    public DbSet<TriggerDefinition> Triggers => Set<TriggerDefinition>();
     public DbSet<FlowRun> FlowRuns => Set<FlowRun>();
     public DbSet<ModuleRegistration> ModuleRegistrations => Set<ModuleRegistration>();
     public DbSet<Yukti.Domain.IdentityAccess.User> Users => Set<Yukti.Domain.IdentityAccess.User>();
@@ -80,6 +85,9 @@ public sealed class YuktiDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ModuleRegistrationConfiguration());
         modelBuilder.ApplyConfiguration(new FlowConfiguration());
         modelBuilder.ApplyConfiguration(new ApiCollectionConfiguration());
+        modelBuilder.ApplyConfiguration(new ProjectConfiguration());
+        modelBuilder.ApplyConfiguration(new TestEnvironmentConfiguration());
+        modelBuilder.ApplyConfiguration(new TriggerConfiguration());
         modelBuilder.ApplyConfiguration(new FlowRunConfiguration());
         modelBuilder.ApplyConfiguration(new AuditEntryConfiguration());
 

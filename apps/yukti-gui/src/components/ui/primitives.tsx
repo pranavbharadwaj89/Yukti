@@ -1,4 +1,6 @@
 import {
+  useEffect,
+  useRef,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -79,11 +81,30 @@ export function Dialog({
   title: string;
   children: ReactNode;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previouslyFocused.current?.focus();
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-xl"
+        ref={panelRef}
+        tabIndex={-1}
+        className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-xl outline-none"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -105,12 +126,26 @@ export function ToastViewport() {
     info: "border-info/40 bg-info-soft text-info",
   };
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
+    <div
+      className="fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       {toasts.map((t) => (
         <div
           key={t.id}
+          role="button"
+          tabIndex={0}
           className={`cursor-pointer rounded-md border px-3.5 py-2.5 text-sm shadow-lg ${styles[t.kind]}`}
           onClick={() => dismiss(t.id)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              dismiss(t.id);
+            }
+          }}
+          aria-label={`Dismiss notification: ${t.message}`}
         >
           <div>{t.message}</div>
           {t.correlationId && <div className="mt-1 font-mono text-xs opacity-70">ref: {t.correlationId}</div>}

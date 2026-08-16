@@ -4,7 +4,10 @@ using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
+using Yukti.Domain.Auditing;
 using Yukti.Domain.ModulePlugin;
+using Yukti.Domain.ProjectManagement;
+using Yukti.Domain.Scheduling;
 using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Infrastructure;
@@ -127,6 +130,153 @@ public sealed class EfApiCollectionRepository : IApiCollectionRepository
     {
         _context.Remove(collection);
         return Task.CompletedTask;
+    }
+}
+
+public sealed class EfProjectRepository : IProjectRepository
+{
+    private readonly YuktiDbContext _context;
+    private readonly ITenantContextAccessor _tenant;
+
+    public EfProjectRepository(YuktiDbContext context, ITenantContextAccessor tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
+
+    public Task<Project?> GetById(ProjectId id, CancellationToken ct) =>
+        _context.Projects.FirstOrDefaultAsync(p => p.Id == id && p.TenantId == _tenant.CurrentTenantId, ct);
+
+    public async Task Save(Project project, CancellationToken ct)
+    {
+        if (_context.Entry(project).State == EntityState.Detached)
+            await _context.AddAsync(project, ct);
+    }
+
+    public Task Delete(Project project, CancellationToken ct)
+    {
+        _context.Remove(project);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class EfTestEnvironmentRepository : ITestEnvironmentRepository
+{
+    private readonly YuktiDbContext _context;
+    private readonly ITenantContextAccessor _tenant;
+
+    public EfTestEnvironmentRepository(YuktiDbContext context, ITenantContextAccessor tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
+
+    public Task<TestEnvironment?> GetById(TestEnvironmentId id, CancellationToken ct) =>
+        _context.TestEnvironments.FirstOrDefaultAsync(e => e.Id == id && e.TenantId == _tenant.CurrentTenantId, ct);
+
+    public async Task Save(TestEnvironment environment, CancellationToken ct)
+    {
+        if (_context.Entry(environment).State == EntityState.Detached)
+            await _context.AddAsync(environment, ct);
+    }
+
+    public Task Delete(TestEnvironment environment, CancellationToken ct)
+    {
+        _context.Remove(environment);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class EfProjectSummaryQuery : IProjectSummaryQuery
+{
+    private readonly YuktiDbContext _context;
+    public EfProjectSummaryQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<IReadOnlyList<ProjectSummary>> ListByTenant(TenantId tenantId, CancellationToken ct) =>
+        await _context.Projects
+            .Where(p => p.TenantId == tenantId)
+            .Select(p => new ProjectSummary(p.Id, p.Name, p.Description))
+            .ToListAsync(ct);
+}
+
+public sealed class EfTestEnvironmentSummaryQuery : ITestEnvironmentSummaryQuery
+{
+    private readonly YuktiDbContext _context;
+    public EfTestEnvironmentSummaryQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<IReadOnlyList<TestEnvironmentSummary>> ListByProject(ProjectId projectId, CancellationToken ct) =>
+        await _context.TestEnvironments
+            .Where(e => e.ProjectId == projectId)
+            .Select(e => new TestEnvironmentSummary(e.Id, e.ProjectId, e.Name, e.Variables))
+            .ToListAsync(ct);
+}
+
+public sealed class EfTriggerRepository : ITriggerRepository
+{
+    private readonly YuktiDbContext _context;
+    private readonly ITenantContextAccessor _tenant;
+
+    public EfTriggerRepository(YuktiDbContext context, ITenantContextAccessor tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
+
+    public Task<TriggerDefinition?> GetById(TriggerId id, CancellationToken ct) =>
+        _context.Triggers.FirstOrDefaultAsync(t => t.Id == id && t.TenantId == _tenant.CurrentTenantId, ct);
+
+    // Deliberately unfiltered by tenant — an incoming webhook HTTP request
+    // has no tenant context yet; the trigger it resolves to IS how tenant
+    // gets established for that request, same reasoning as EfUserRepository's
+    // GetByEmail.
+    public Task<TriggerDefinition?> GetByWebhookPath(string webhookPath, CancellationToken ct) =>
+        _context.Triggers.FirstOrDefaultAsync(t => t.WebhookPath == webhookPath, ct);
+
+    // Scheduler (Yukti.Worker) runs cross-tenant by design (FR-AUDIT-03's
+    // yukti_worker BYPASSRLS role) — every enabled cron trigger across every
+    // tenant must be visible here, not scoped to one caller's tenant.
+    public async Task<IReadOnlyList<TriggerDefinition>> GetEnabledCronTriggers(CancellationToken ct) =>
+        await _context.Triggers.Where(t => t.Kind == TriggerKind.Cron && t.IsEnabled).ToListAsync(ct);
+
+    public async Task Save(TriggerDefinition trigger, CancellationToken ct)
+    {
+        if (_context.Entry(trigger).State == EntityState.Detached)
+            await _context.AddAsync(trigger, ct);
+    }
+}
+
+public sealed class EfTriggerSummaryQuery : ITriggerSummaryQuery
+{
+    private readonly YuktiDbContext _context;
+    public EfTriggerSummaryQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<IReadOnlyList<TriggerSummary>> ListByTenant(TenantId tenantId, CancellationToken ct) =>
+        await _context.Triggers
+            .Where(t => t.TenantId == tenantId)
+            .Select(t => new TriggerSummary(t.Id, t.FlowId, t.Kind, t.IsEnabled, t.LastFiredAt, t.CronExpression, t.WebhookPath, t.WatchPath))
+            .ToListAsync(ct);
+}
+
+public sealed class EfAuditSummaryQuery : IAuditSummaryQuery
+{
+    private readonly YuktiDbContext _context;
+    public EfAuditSummaryQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<IReadOnlyList<AuditEntrySummary>> ListByTenant(TenantId tenantId, CancellationToken ct) =>
+        await _context.AuditEntries
+            .Where(a => a.TenantId == tenantId)
+            .OrderByDescending(a => a.OccurredAt)
+            .Select(a => new AuditEntrySummary(a.Id, a.CommandType, a.TenantId, a.Succeeded, a.FailureReason, a.OccurredAt))
+            .ToListAsync(ct);
+
+    public async Task<AuditEntryDetail?> GetById(AuditEntryId id, TenantId tenantId, CancellationToken ct)
+    {
+        var entry = await _context.AuditEntries
+            .Where(a => a.Id == id && a.TenantId == tenantId)
+            .FirstOrDefaultAsync(ct);
+        return entry is null
+            ? null
+            : new AuditEntryDetail(entry.Id, entry.CommandType, entry.TenantId, entry.Succeeded, entry.FailureReason, entry.Metadata, entry.OccurredAt);
     }
 }
 

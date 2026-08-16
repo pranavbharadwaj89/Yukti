@@ -26,6 +26,7 @@ export interface FlowSummary {
   name: string;
   status: number; // raw FlowStatus enum ordinal: 0=Draft, 1=Published, 2=Archived
   version: number;
+  projectId: { value: string } | null;
 }
 
 export function flowStatusLabel(status: number): string {
@@ -148,6 +149,75 @@ export interface ApiCollectionResponse {
   name: string;
   description?: string | null;
   requests: ApiRequestResponse[];
+  projectId: string | null;
+}
+
+export interface ProjectResponse {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface TestEnvironmentResponse {
+  id: string;
+  projectId: string;
+  name: string;
+  variables: Record<string, unknown>;
+}
+
+export interface TriggerResponse {
+  id: string;
+  flowId: string;
+  kind: "Cron" | "Webhook" | "FileWatch";
+  isEnabled: boolean;
+  lastFiredAt: string | null;
+  cronExpression: string | null;
+  webhookPath: string | null;
+  watchPath: string | null;
+}
+
+export interface AuditEntryResponse {
+  id: string;
+  commandType: string;
+  tenantId: string | null;
+  succeeded: boolean;
+  failureReason: string | null;
+  occurredAt: string;
+}
+
+export interface AuditEntryDetailResponse extends AuditEntryResponse {
+  metadata: Record<string, unknown>;
+}
+
+// Matches LogsModule.Run's Data shape (src/Yukti.Infrastructure.InMemory/
+// Modules/LogsModule.cs) for the checkRules and detectAnomalies actions
+// respectively — StepResultResponse.data is `unknown` on the wire since
+// it's module-owned, narrowed only where we know the step ran the logs
+// module (Logs Studio's results viewer).
+export interface LogRuleMatch {
+  rule: string;
+  count: number;
+  samples: string[];
+}
+
+export interface LogCheckRulesResultData {
+  matches: LogRuleMatch[];
+  linesScanned: number;
+}
+
+export interface LogAnomalyBucket {
+  bucket: string;
+  errorRate: number;
+  total: number;
+  errors: number;
+}
+
+export interface LogAnomalyResultData {
+  mean: number;
+  stdDev: number;
+  threshold: number;
+  anomalousBuckets: LogAnomalyBucket[];
+  bucketsScanned: number;
 }
 
 export interface TrendAggregateResponse {

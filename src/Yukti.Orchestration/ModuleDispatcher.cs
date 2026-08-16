@@ -25,6 +25,16 @@ public sealed class ModuleDispatcher : IModuleDispatcher
     private readonly IModuleExecutionStrategySelector _strategySelector;
     private readonly ILogger<ModuleDispatcher> _logger;
 
+    // DesktopUiModule drives this machine's real mouse/keyboard/screen via
+    // raw Win32 SendInput — there is exactly one of each, so two Desktop UI
+    // steps executing at the same instant would physically fight over the
+    // same cursor regardless of which Project/tenant triggered them. Static
+    // (process-wide) by construction: Desktop UI only ever runs in-process
+    // on this one machine anyway, so no distributed lock is needed — every
+    // Dispatch call in this process, across every concurrent FlowRun, shares
+    // the same semaphore.
+    private static readonly SemaphoreSlim DesktopUiLock = new(1, 1);
+
     public ModuleDispatcher(IModuleRegistry registry, IModuleRegistrationRepository registrations,
         IModuleExecutionStrategySelector strategySelector, ILogger<ModuleDispatcher> logger)
     {
@@ -60,6 +70,17 @@ public sealed class ModuleDispatcher : IModuleDispatcher
         var trust = registration?.Trust ?? TrustTier.BuiltIn;
         var strategy = _strategySelector.SelectFor(trust);
 
-        return await strategy.Execute(target, action, parameters, ctx, ct);
+        if (module != ModuleKind.DesktopUi)
+            return await strategy.Execute(target, action, parameters, ctx, ct);
+
+        await DesktopUiLock.WaitAsync(ct);
+        try
+        {
+            return await strategy.Execute(target, action, parameters, ctx, ct);
+        }
+        finally
+        {
+            DesktopUiLock.Release();
+        }
     }
 }

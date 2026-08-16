@@ -131,15 +131,19 @@ export function DataTable<T>({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  onClick={() => col.sortable && toggleSort(col.key)}
+                  aria-sort={col.sortable ? (sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none") : undefined}
                   className={`select-none whitespace-nowrap px-4 py-3 font-semibold text-ink ${
                     col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"
-                  } ${col.sortable ? "cursor-pointer hover:bg-surface" : ""}`}
+                  }`}
                 >
-                  <span className="inline-flex items-center gap-1.5">
-                    {col.header}
-                    {col.sortable &&
-                      (sortKey === col.key ? (
+                  {col.sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key)}
+                      className="inline-flex items-center gap-1.5 hover:text-accent"
+                    >
+                      {col.header}
+                      {sortKey === col.key ? (
                         sortDir === "asc" ? (
                           <ChevronUp size={14} className="text-ink-dim" />
                         ) : (
@@ -147,8 +151,11 @@ export function DataTable<T>({
                         )
                       ) : (
                         <ChevronsUpDown size={14} className="text-ink-dim/50" />
-                      ))}
-                  </span>
+                      )}
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">{col.header}</span>
+                  )}
                 </th>
               ))}
             </tr>

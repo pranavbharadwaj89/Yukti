@@ -95,3 +95,15 @@ public readonly record struct ApiRequestId(Guid Value)
     public static ApiRequestId New() => new(Guid.NewGuid());
     public override string ToString() => Value.ToString();
 }
+
+public readonly record struct ProjectId(Guid Value)
+{
+    public static ProjectId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString();
+}
+
+public readonly record struct TestEnvironmentId(Guid Value)
+{
+    public static TestEnvironmentId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString();
+}

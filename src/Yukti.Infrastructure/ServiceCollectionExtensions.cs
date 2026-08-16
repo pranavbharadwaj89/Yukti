@@ -32,6 +32,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFlowSummaryQuery, EfFlowSummaryQuery>();
         services.AddScoped<IApiCollectionRepository, EfApiCollectionRepository>();
         services.AddScoped<IApiCollectionSummaryQuery, EfApiCollectionSummaryQuery>();
+        services.AddScoped<IProjectRepository, EfProjectRepository>();
+        services.AddScoped<IProjectSummaryQuery, EfProjectSummaryQuery>();
+        services.AddScoped<ITestEnvironmentRepository, EfTestEnvironmentRepository>();
+        services.AddScoped<ITestEnvironmentSummaryQuery, EfTestEnvironmentSummaryQuery>();
+        services.AddScoped<ITriggerRepository, EfTriggerRepository>();
+        services.AddScoped<ITriggerSummaryQuery, EfTriggerSummaryQuery>();
+        services.AddScoped<IAuditSummaryQuery, EfAuditSummaryQuery>();
         services.AddScoped<ITenantSessionInitializer, EfTenantSessionInitializer>();
 
         return services;

@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/form-controls";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
 import { useToastStore } from "@/store/toast-store";
+import { useSelectedEnvironmentVariables } from "@/hooks";
 import { KeyValueEditor, newKeyValueRow, type KeyValueRow } from "./key-value-editor";
 import {
   AssertionsEditor,
@@ -98,6 +99,7 @@ export function RequestDesigner({
   onSaved?: () => void;
 } = {}) {
   const pushToast = useToastStore((s) => s.push);
+  const environmentVariables = useSelectedEnvironmentVariables();
 
   const [name, setName] = useState(loadedRequest?.name ?? "");
   const [method, setMethod] = useState(loadedRequest?.method ?? "GET");
@@ -135,7 +137,7 @@ export function RequestDesigner({
       await flowsApi.addStep(flowId, { name: "request", module: "api", action: "request", params });
       const publishResult = await flowsApi.publish(flowId);
       if (!publishResult.succeeded) throw new Error(publishResult.errors.join("; "));
-      return flowsApi.triggerRun(flowId);
+      return flowsApi.triggerRun(flowId, environmentVariables);
     },
     onSuccess: (run: FlowRunResponse) => setRunId(run.id),
     onError: (err) =>

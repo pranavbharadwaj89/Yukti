@@ -7,7 +7,7 @@ using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Application.ApiTesting;
 
-public sealed record CreateApiCollectionCommand(string Name, string? Description, TenantId TenantId, UserId RequestedBy)
+public sealed record CreateApiCollectionCommand(string Name, string? Description, TenantId TenantId, UserId RequestedBy, ProjectId? ProjectId = null)
     : ICommand<ApiCollectionId>;
 
 public sealed record RenameApiCollectionCommand(ApiCollectionId CollectionId, string Name, string? Description, UserId RequestedBy)
@@ -44,7 +44,7 @@ public sealed class CreateApiCollectionCommandHandler : AuditableCommandHandler<
     {
         await _permissions.EnsurePermission(cmd.RequestedBy, Permission.ApiCollectionManage, ct);
 
-        var collection = ApiCollection.Create(cmd.Name, cmd.Description, cmd.TenantId);
+        var collection = ApiCollection.Create(cmd.Name, cmd.Description, cmd.TenantId, cmd.ProjectId);
         await _collections.Save(collection, ct);
         return collection.Id;
     }

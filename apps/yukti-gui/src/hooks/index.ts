@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth-store";
+import { useProjectStore } from "@/store/project-store";
 import { ensureRunProgressConnected, getRunProgressConnection } from "@/services/signalr";
-import { runsApi } from "@/services/api-client";
+import { runsApi, environmentsApi } from "@/services/api-client";
 import type { FlowRunResponse } from "@/services/types";
 
 // FR-AUTHZ-02/FR-SEC-02: UX-convenience-only gating — real enforcement is
@@ -72,4 +74,20 @@ export function useLiveRunProgress(runId: string | undefined) {
   }, [runId]);
 
   return { run, error };
+}
+
+// The selected TestEnvironment's Variables, ready to pass straight through
+// as flowsApi.triggerRun's variableOverrides — same object shape by design
+// (TestEnvironment.cs's doc comment), so no per-call-site translation is
+// needed. Returns undefined when nothing is selected, matching
+// triggerRun's optional param.
+export function useSelectedEnvironmentVariables(): Record<string, unknown> | undefined {
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
+  const selectedEnvironmentId = useProjectStore((s) => s.selectedEnvironmentId);
+  const environmentsQuery = useQuery({
+    queryKey: ["environments", selectedProjectId],
+    queryFn: () => environmentsApi.list(selectedProjectId!),
+    enabled: !!selectedProjectId,
+  });
+  return environmentsQuery.data?.find((e) => e.id === selectedEnvironmentId)?.variables;
 }

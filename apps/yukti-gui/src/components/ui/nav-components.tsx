@@ -98,6 +98,8 @@ export function Pagination({
       <button
         key={p}
         type="button"
+        aria-current={p === page ? "page" : undefined}
+        aria-label={`Page ${p}`}
         onClick={() => onChange(p)}
         className={`flex h-9 min-w-9 items-center justify-center rounded-md border text-body transition-colors ${pageButtonClass(p === page, false)}`}
       >

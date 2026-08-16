@@ -102,10 +102,10 @@ public sealed class MobileModule : IAutomationModule
 
         var options = new AppiumOptions();
         options.PlatformName = platformName;
-        options.AddAdditionalAppiumOption("appium:deviceName", deviceName);
-        options.AddAdditionalAppiumOption("appium:automationName", automationName);
+        options.DeviceName = deviceName;
+        options.AutomationName = automationName;
         if (app is not null)
-            options.AddAdditionalAppiumOption("appium:app", app);
+            options.App = app;
         foreach (var (key, value) in config)
         {
             if (key is "platformName" or "deviceName" or "app" or "automationName" or "appiumUrl")

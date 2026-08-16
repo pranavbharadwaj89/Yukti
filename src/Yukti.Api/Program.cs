@@ -27,6 +27,8 @@ using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.ModulePlugin;
+using Yukti.Domain.ProjectManagement;
+using Yukti.Domain.Scheduling;
 using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure;
 using Yukti.Infrastructure.InMemory;
@@ -139,6 +141,12 @@ builder.Services.AddAuthorization();
 // via environment/config to the actual frontend origin(s), never "*".
 var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? new[] { "http://localhost:5173", "http://localhost:3000" };
+
+// FR-SCHED-01: FileWatch triggers are self-hosted-deployment-only (Volume 1
+// §21.2). Deployment:SelfHosted is configuration-driven so a hosted/SaaS
+// deployment can flip it off without a code change; defaults to true since
+// every deployment of this app today is self-hosted.
+var isSelfHostedDeployment = builder.Configuration.GetValue("Deployment:SelfHosted", true);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("YuktiCors", policy => policy
@@ -466,6 +474,8 @@ using (var scope = app.Services.CreateScope())
 
 const string flowNotFound = "Flow not found.";
 const string apiCollectionNotFound = "API collection or request not found.";
+const string projectNotFound = "Project not found.";
+const string testEnvironmentNotFound = "Test environment not found.";
 const string runNotFound = "FlowRun not found.";
 const string invalidCredentials = "Invalid email or password."; // FR-AUTH-05: identical for "no such user" and "wrong password"
 
@@ -570,7 +580,9 @@ var flows = app.MapGroup($"{apiV1}/flows").WithTags("Flows").RequireAuthorizatio
 
 flows.MapPost("/", async (CreateFlowRequest req, ClaimsPrincipal principal, CreateFlowCommandHandler handler, CancellationToken ct) =>
 {
-    var flowId = await handler.Handle(new CreateFlowCommand(req.Name, req.Description, principal.GetTenantId(), principal.GetUserId()), ct);
+    var flowId = await handler.Handle(new CreateFlowCommand(
+        req.Name, req.Description, principal.GetTenantId(), principal.GetUserId(),
+        req.ProjectId is { } pid ? new ProjectId(pid) : null), ct);
     return Results.Created($"{apiV1}/flows/{flowId.Value}", new { flowId = flowId.Value });
 });
 
@@ -698,7 +710,9 @@ var apiCollections = app.MapGroup($"{apiV1}/api-collections").WithTags("ApiColle
 
 apiCollections.MapPost("/", async (CreateApiCollectionRequest req, ClaimsPrincipal principal, CreateApiCollectionCommandHandler handler, CancellationToken ct) =>
 {
-    var collectionId = await handler.Handle(new CreateApiCollectionCommand(req.Name, req.Description, principal.GetTenantId(), principal.GetUserId()), ct);
+    var collectionId = await handler.Handle(new CreateApiCollectionCommand(
+        req.Name, req.Description, principal.GetTenantId(), principal.GetUserId(),
+        req.ProjectId is { } cpid ? new ProjectId(cpid) : null), ct);
     return Results.Created($"{apiV1}/api-collections/{collectionId.Value}", new { collectionId = collectionId.Value });
 });
 
@@ -775,6 +789,179 @@ apiCollections.MapDelete("/{collectionId:guid}/requests/{requestId:guid}", async
         return ProblemResults.NotFound(context, apiCollectionNotFound);
     }
 });
+
+// ---- Projects + TestEnvironments — deliberately direct repository CRUD
+// rather than the full AuditableCommandHandler ceremony every other
+// aggregate in this file uses. Both are low-privilege, disposable,
+// editable-in-place organizational resources (reusing
+// Permission.ApiCollectionManage rather than minting a new closed-enum
+// entry for them) — the audit trail/command-catalog rigor other aggregates
+// get is a deliberate, documented simplification here, not an oversight. ----
+var projects = app.MapGroup($"{apiV1}/projects").WithTags("Projects").RequireAuthorization().RequireRateLimiting("PerTenant");
+
+projects.MapPost("/", async (CreateProjectRequest req, ClaimsPrincipal principal, IPermissionChecker permissions, IProjectRepository repo, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ApiCollectionManage, ct);
+    var project = Project.Create(req.Name, req.Description, principal.GetTenantId());
+    await using var uow = uowFactory.Create();
+    await repo.Save(project, ct);
+    await uow.Commit(ct);
+    return Results.Created($"{apiV1}/projects/{project.Id.Value}", new { projectId = project.Id.Value });
+});
+
+projects.MapGet("/", async (ClaimsPrincipal principal, IProjectSummaryQuery query, CancellationToken ct) =>
+    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(ProjectResponse.From)));
+
+projects.MapPut("/{projectId:guid}", async (Guid projectId, RenameProjectRequest req, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, IProjectRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ApiCollectionManage, ct);
+    var project = await repo.GetById(new ProjectId(projectId), ct);
+    if (project is null) return ProblemResults.NotFound(context, projectNotFound);
+    tenantGuard.EnsureAccessible(project.TenantId);
+    project.Rename(req.Name, req.Description);
+    await using var uow = uowFactory.Create();
+    await repo.Save(project, ct);
+    await uow.Commit(ct);
+    return Results.NoContent();
+});
+
+projects.MapDelete("/{projectId:guid}", async (Guid projectId, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, IProjectRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ApiCollectionManage, ct);
+    var project = await repo.GetById(new ProjectId(projectId), ct);
+    if (project is null) return ProblemResults.NotFound(context, projectNotFound);
+    tenantGuard.EnsureAccessible(project.TenantId);
+    await using var uow = uowFactory.Create();
+    await repo.Delete(project, ct);
+    await uow.Commit(ct);
+    return Results.NoContent();
+});
+
+projects.MapPost("/{projectId:guid}/environments", async (Guid projectId, CreateTestEnvironmentRequest req, ClaimsPrincipal principal, IPermissionChecker permissions, ITestEnvironmentRepository repo, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ApiCollectionManage, ct);
+    var environment = TestEnvironment.Create(
+        req.Name, new ProjectId(projectId), req.Variables ?? new Dictionary<string, object?>(), principal.GetTenantId());
+    await using var uow = uowFactory.Create();
+    await repo.Save(environment, ct);
+    await uow.Commit(ct);
+    return Results.Created($"{apiV1}/projects/{projectId}/environments/{environment.Id.Value}", new { environmentId = environment.Id.Value });
+});
+
+projects.MapGet("/{projectId:guid}/environments", async (Guid projectId, ITestEnvironmentSummaryQuery query, CancellationToken ct) =>
+    Results.Ok((await query.ListByProject(new ProjectId(projectId), ct)).Select(TestEnvironmentResponse.From)));
+
+projects.MapPut("/{projectId:guid}/environments/{environmentId:guid}", async (Guid projectId, Guid environmentId, UpdateTestEnvironmentRequest req, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, ITestEnvironmentRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ApiCollectionManage, ct);
+    var environment = await repo.GetById(new TestEnvironmentId(environmentId), ct);
+    if (environment is null) return ProblemResults.NotFound(context, testEnvironmentNotFound);
+    tenantGuard.EnsureAccessible(environment.TenantId);
+    environment.Update(req.Name, req.Variables ?? new Dictionary<string, object?>());
+    await using var uow = uowFactory.Create();
+    await repo.Save(environment, ct);
+    await uow.Commit(ct);
+    return Results.NoContent();
+});
+
+projects.MapDelete("/{projectId:guid}/environments/{environmentId:guid}", async (Guid projectId, Guid environmentId, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, ITestEnvironmentRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ApiCollectionManage, ct);
+    var environment = await repo.GetById(new TestEnvironmentId(environmentId), ct);
+    if (environment is null) return ProblemResults.NotFound(context, testEnvironmentNotFound);
+    tenantGuard.EnsureAccessible(environment.TenantId);
+    await using var uow = uowFactory.Create();
+    await repo.Delete(environment, ct);
+    await uow.Commit(ct);
+    return Results.NoContent();
+});
+
+// ---- Scheduler: TriggerDefinition CRUD (create/list/enable/disable — no
+// Delete, ITriggerRepository doesn't expose one; Disable is the real,
+// supported way to stop a trigger). Reuses Permission.FlowExecute since a
+// trigger exists purely to fire TriggerFlowRunCommand, the exact permission
+// that command itself checks (TriggerDefinition.cs's own doc comment). ----
+var triggerNotFound = "Trigger not found.";
+
+app.MapPost($"{apiV1}/flows/{{flowId:guid}}/triggers", async (Guid flowId, CreateTriggerRequest req, ClaimsPrincipal principal, IPermissionChecker permissions, ITriggerRepository repo, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.FlowExecute, ct);
+    var tenantId = principal.GetTenantId();
+    var userId = principal.GetUserId();
+    var fid = new FlowId(flowId);
+
+    TriggerDefinition trigger = req.Kind switch
+    {
+        "Cron" => TriggerDefinition.CreateCron(fid, tenantId, userId, req.CronExpression ?? throw new ArgumentException("cronExpression is required for a Cron trigger.")),
+        "Webhook" => TriggerDefinition.CreateWebhook(fid, tenantId, userId, req.WebhookSecret),
+        // FileWatch is self-hosted-only per the domain constructor;
+        // isSelfHostedDeployment is read from Deployment:SelfHosted config
+        // above, not hardcoded — a hosted deployment sets it false and the
+        // constructor itself refuses to proceed (Volume 1 §21.2).
+        "FileWatch" => TriggerDefinition.CreateFileWatch(fid, tenantId, userId, req.WatchPath ?? "", isSelfHostedDeployment),
+        _ => throw new ArgumentException($"Unknown trigger kind '{req.Kind}'."),
+    };
+
+    await using var uow = uowFactory.Create();
+    await repo.Save(trigger, ct);
+    await uow.Commit(ct);
+    return Results.Created($"{apiV1}/triggers/{trigger.Id.Value}", new { triggerId = trigger.Id.Value });
+})
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
+
+app.MapGet($"{apiV1}/triggers", async (ClaimsPrincipal principal, ITriggerSummaryQuery query, CancellationToken ct) =>
+    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(TriggerResponse.From)))
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
+
+app.MapPut($"{apiV1}/triggers/{{triggerId:guid}}/enable", async (Guid triggerId, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, ITriggerRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.FlowExecute, ct);
+    var trigger = await repo.GetById(new TriggerId(triggerId), ct);
+    if (trigger is null) return ProblemResults.NotFound(context, triggerNotFound);
+    tenantGuard.EnsureAccessible(trigger.TenantId);
+    trigger.Enable();
+    await using var uow = uowFactory.Create();
+    await repo.Save(trigger, ct);
+    await uow.Commit(ct);
+    return Results.NoContent();
+})
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
+
+app.MapPut($"{apiV1}/triggers/{{triggerId:guid}}/disable", async (Guid triggerId, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, ITriggerRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.FlowExecute, ct);
+    var trigger = await repo.GetById(new TriggerId(triggerId), ct);
+    if (trigger is null) return ProblemResults.NotFound(context, triggerNotFound);
+    tenantGuard.EnsureAccessible(trigger.TenantId);
+    trigger.Disable();
+    await using var uow = uowFactory.Create();
+    await repo.Save(trigger, ct);
+    await uow.Commit(ct);
+    return Results.NoContent();
+})
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
+
+// ---- Audit: read-only, list-only (matches the backend's append-only, no-
+// query-until-now design). No dedicated AuditView permission exists in the
+// closed Permission enum — reusing ReportView as the closest honest fit
+// (read-only, tenant-wide aggregate data), flagged in the plan this
+// implements rather than silently picking an unrelated permission. ----
+app.MapGet($"{apiV1}/audit-entries", async (ClaimsPrincipal principal, IPermissionChecker permissions, IAuditSummaryQuery query, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ReportView, ct);
+    return Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(AuditEntryResponse.From));
+})
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Audit");
+
+// Detail fetch: the one place Metadata (IAuditSummaryQuery's own doc
+// comment) is exposed, one entry at a time, same permission as the list.
+app.MapGet($"{apiV1}/audit-entries/{{id:guid}}", async (Guid id, ClaimsPrincipal principal, IPermissionChecker permissions, IAuditSummaryQuery query, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.ReportView, ct);
+    var entry = await query.GetById(new AuditEntryId(id), principal.GetTenantId(), ct);
+    return entry is null ? Results.NotFound("Audit entry not found.") : Results.Ok(AuditEntryDetailResponse.From(entry));
+})
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Audit");
 
 // FR-ORCH-7: introspection surface a flow-authoring GUI renders from
 // directly — zero hardcoded per-module knowledge on the client side.

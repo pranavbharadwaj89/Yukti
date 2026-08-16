@@ -6,6 +6,7 @@ import type { ApiRequestResponse } from "@/services/types";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/primitives";
 import { useToastStore } from "@/store/toast-store";
+import { useProjectStore } from "@/store/project-store";
 
 const METHOD_VARIANT: Record<string, BadgeVariant> = {
   GET: "success",
@@ -32,6 +33,7 @@ export function ExplorerTree({
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
 
   const collectionsQuery = useQuery({ queryKey: ["api-collections"], queryFn: apiCollectionsApi.list });
 
@@ -49,7 +51,8 @@ export function ExplorerTree({
   }
 
   const createMutation = useMutation({
-    mutationFn: () => apiCollectionsApi.create(`Collection ${new Date().toLocaleTimeString()}`, undefined),
+    mutationFn: () =>
+      apiCollectionsApi.create(`Collection ${new Date().toLocaleTimeString()}`, undefined, selectedProjectId ?? undefined),
     onSuccess: invalidate,
     onError: reportError("Failed to create collection."),
   });
@@ -69,7 +72,9 @@ export function ExplorerTree({
     });
   }
 
-  const collections = collectionsQuery.data ?? [];
+  const collections = selectedProjectId
+    ? (collectionsQuery.data ?? []).filter((c) => c.projectId === selectedProjectId)
+    : (collectionsQuery.data ?? []);
 
   return (
     <div className="flex w-72 flex-shrink-0 flex-col gap-2 border-r border-border pr-3">

@@ -6,6 +6,7 @@ import { flowStatusLabel, type FlowSummary } from "@/services/types";
 import { Button, Dialog, Input, StatusPill } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useToastStore } from "@/store/toast-store";
+import { useProjectStore } from "@/store/project-store";
 
 // FR-FEAT-02 (Project Explorer) is [NEW-DOMAIN], blocked on Q-01 — this is
 // a flat flow list instead, the closest available today. Rendered through
@@ -14,7 +15,11 @@ import { useToastStore } from "@/store/toast-store";
 export function FlowsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const navigate = useNavigate();
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
   const flowsQuery = useQuery({ queryKey: ["flows"], queryFn: flowsApi.list });
+  const visibleFlows = selectedProjectId
+    ? (flowsQuery.data ?? []).filter((f) => f.projectId?.value === selectedProjectId)
+    : (flowsQuery.data ?? []);
 
   const columns: Column<FlowSummary>[] = [
     {
@@ -58,7 +63,7 @@ export function FlowsPage() {
 
       <DataTable
         columns={columns}
-        rows={flowsQuery.data ?? []}
+        rows={visibleFlows}
         rowKey={(f) => f.flowId.value}
         loading={flowsQuery.isLoading}
         emptyTitle="No flows yet"
@@ -77,9 +82,10 @@ function CreateFlowDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const pushToast = useToastStore((s) => s.push);
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
 
   const createMutation = useMutation({
-    mutationFn: () => flowsApi.create(name, description || undefined),
+    mutationFn: () => flowsApi.create(name, description || undefined, selectedProjectId ?? undefined),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["flows"] });
       pushToast({ kind: "success", message: `Flow "${name}" created.` });

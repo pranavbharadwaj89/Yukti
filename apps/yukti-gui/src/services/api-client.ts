@@ -8,8 +8,13 @@ import type {
   FlowSummary,
   ModuleResponse,
   ProblemDetails,
+  AuditEntryResponse,
+  AuditEntryDetailResponse,
+  ProjectResponse,
+  TestEnvironmentResponse,
   TokenResponse,
   TrendAggregateResponse,
+  TriggerResponse,
 } from "@/services/types";
 
 // FR-STRUCT-05: the one typed API client every feature calls through —
@@ -132,8 +137,8 @@ export const authApi = {
 export const flowsApi = {
   list: () => request<FlowSummary[]>("/api/v1/flows"),
   get: (flowId: string) => request<FlowResponse>(`/api/v1/flows/${flowId}`),
-  create: (name: string, description: string | undefined) =>
-    request<{ flowId: string }>("/api/v1/flows", { method: "POST", body: { name, description } }),
+  create: (name: string, description: string | undefined, projectId?: string) =>
+    request<{ flowId: string }>("/api/v1/flows", { method: "POST", body: { name, description, projectId } }),
   addStep: (
     flowId: string,
     step: { name: string; module: string; action: string; params: Record<string, unknown>; saveAs?: string; when?: string },
@@ -158,8 +163,8 @@ export const modulesApi = {
 
 export const apiCollectionsApi = {
   list: () => request<ApiCollectionResponse[]>("/api/v1/api-collections"),
-  create: (name: string, description: string | undefined) =>
-    request<{ collectionId: string }>("/api/v1/api-collections", { method: "POST", body: { name, description } }),
+  create: (name: string, description: string | undefined, projectId?: string) =>
+    request<{ collectionId: string }>("/api/v1/api-collections", { method: "POST", body: { name, description, projectId } }),
   rename: (collectionId: string, name: string, description: string | undefined) =>
     request<void>(`/api/v1/api-collections/${collectionId}`, { method: "PUT", body: { name, description } }),
   delete: (collectionId: string) => request<void>(`/api/v1/api-collections/${collectionId}`, { method: "DELETE" }),
@@ -174,6 +179,44 @@ export const apiCollectionsApi = {
   ) => request<void>(`/api/v1/api-collections/${collectionId}/requests/${requestId}`, { method: "PUT", body: req }),
   deleteRequest: (collectionId: string, requestId: string) =>
     request<void>(`/api/v1/api-collections/${collectionId}/requests/${requestId}`, { method: "DELETE" }),
+};
+
+export const projectsApi = {
+  list: () => request<ProjectResponse[]>("/api/v1/projects"),
+  create: (name: string, description: string | undefined) =>
+    request<{ projectId: string }>("/api/v1/projects", { method: "POST", body: { name, description } }),
+  rename: (projectId: string, name: string, description: string | undefined) =>
+    request<void>(`/api/v1/projects/${projectId}`, { method: "PUT", body: { name, description } }),
+  delete: (projectId: string) => request<void>(`/api/v1/projects/${projectId}`, { method: "DELETE" }),
+};
+
+export const environmentsApi = {
+  list: (projectId: string) => request<TestEnvironmentResponse[]>(`/api/v1/projects/${projectId}/environments`),
+  create: (projectId: string, name: string, variables: Record<string, unknown>) =>
+    request<{ environmentId: string }>(`/api/v1/projects/${projectId}/environments`, {
+      method: "POST",
+      body: { name, variables },
+    }),
+  update: (projectId: string, environmentId: string, name: string, variables: Record<string, unknown>) =>
+    request<void>(`/api/v1/projects/${projectId}/environments/${environmentId}`, {
+      method: "PUT",
+      body: { name, variables },
+    }),
+  delete: (projectId: string, environmentId: string) =>
+    request<void>(`/api/v1/projects/${projectId}/environments/${environmentId}`, { method: "DELETE" }),
+};
+
+export const triggersApi = {
+  list: () => request<TriggerResponse[]>("/api/v1/triggers"),
+  create: (flowId: string, req: { kind: "Cron" | "Webhook" | "FileWatch"; cronExpression?: string; webhookSecret?: string; watchPath?: string }) =>
+    request<{ triggerId: string }>(`/api/v1/flows/${flowId}/triggers`, { method: "POST", body: req }),
+  enable: (triggerId: string) => request<void>(`/api/v1/triggers/${triggerId}/enable`, { method: "PUT" }),
+  disable: (triggerId: string) => request<void>(`/api/v1/triggers/${triggerId}/disable`, { method: "PUT" }),
+};
+
+export const auditApi = {
+  list: () => request<AuditEntryResponse[]>("/api/v1/audit-entries"),
+  getById: (id: string) => request<AuditEntryDetailResponse>(`/api/v1/audit-entries/${id}`),
 };
 
 export const trendsApi = {

@@ -17,6 +17,10 @@ public sealed class ApiCollection : AggregateRoot<ApiCollectionId>
     public string Name { get; private set; }
     public string? Description { get; private set; }
 
+    // Same deliberately-non-enforcing scoping as Flow.ProjectId — see that
+    // property's doc comment.
+    public ProjectId? ProjectId { get; private set; }
+
     private readonly List<ApiRequest> _requests = new();
     public IReadOnlyList<ApiRequest> Requests => _requests.AsReadOnly();
 
@@ -27,11 +31,11 @@ public sealed class ApiCollection : AggregateRoot<ApiCollectionId>
         TenantId = tenantId;
     }
 
-    public static ApiCollection Create(string name, string? description, TenantId tenantId)
+    public static ApiCollection Create(string name, string? description, TenantId tenantId, ProjectId? projectId = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("ApiCollection name cannot be empty.");
-        return new ApiCollection(ApiCollectionId.New(), name, description, tenantId);
+        return new ApiCollection(ApiCollectionId.New(), name, description, tenantId) { ProjectId = projectId };
     }
 
     public void Rename(string name, string? description)

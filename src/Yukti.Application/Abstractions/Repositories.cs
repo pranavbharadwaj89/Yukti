@@ -2,6 +2,7 @@ using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.ModulePlugin;
+using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Application.Abstractions;
@@ -48,6 +49,25 @@ public interface IApiCollectionRepository
     Task<ApiCollection?> GetById(ApiCollectionId id, CancellationToken ct);
     Task Save(ApiCollection collection, CancellationToken ct);
     Task Delete(ApiCollection collection, CancellationToken ct);
+}
+
+// Project/TestEnvironment are both disposable, editable-in-place resources
+// (no version history, no publish step) — same shape as IApiCollectionRepository.
+// FR-REPO-02: no List/GetAll here — that's IProjectSummaryQuery/
+// ITestEnvironmentSummaryQuery's job (Yukti.Application/Abstractions/
+// IProjectSummaryQuery.cs), same split IApiCollectionSummaryQuery uses.
+public interface IProjectRepository
+{
+    Task<Project?> GetById(ProjectId id, CancellationToken ct);
+    Task Save(Project project, CancellationToken ct);
+    Task Delete(Project project, CancellationToken ct);
+}
+
+public interface ITestEnvironmentRepository
+{
+    Task<TestEnvironment?> GetById(TestEnvironmentId id, CancellationToken ct);
+    Task Save(TestEnvironment environment, CancellationToken ct);
+    Task Delete(TestEnvironment environment, CancellationToken ct);
 }
 
 public interface IRoleRepository

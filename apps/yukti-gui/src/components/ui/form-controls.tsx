@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Check, ChevronDown } from "lucide-react";
 
 // UI_Component_Spec.md Part 2 §3/§4/§5 (Dropdown, Checkbox, Radio),
@@ -88,12 +88,14 @@ export interface SelectOption<T extends string = string> {
 }
 
 export function Select<T extends string = string>({
+  id,
   value,
   options,
   onChange,
   placeholder = "Select…",
   disabled,
 }: {
+  id?: string;
   value: T | "";
   options: SelectOption<T>[];
   onChange: (value: T) => void;
@@ -101,31 +103,102 @@ export function Select<T extends string = string>({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const idBase = useId();
   const selected = options.find((o) => o.value === value);
+  const selectedIndex = options.findIndex((o) => o.value === value);
 
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
     document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("mousedown", onDocClick);
   }, [open]);
+
+  function openList(startAt: number) {
+    setOpen(true);
+    setHighlighted(startAt >= 0 ? startAt : 0);
+  }
+
+  function moveHighlight(delta: number) {
+    setHighlighted((prev) => {
+      const base = prev < 0 ? (selectedIndex >= 0 ? selectedIndex : 0) : prev;
+      let next = base;
+      for (let i = 0; i < options.length; i++) {
+        next = (next + delta + options.length) % options.length;
+        if (!options[next].disabled) break;
+      }
+      return next;
+    });
+  }
+
+  function commit(index: number) {
+    const opt = options[index];
+    if (!opt || opt.disabled) return;
+    onChange(opt.value);
+    setOpen(false);
+    buttonRef.current?.focus();
+  }
+
+  function onButtonKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (!open) openList(selectedIndex);
+    }
+  }
+
+  function onListKeyDown(e: KeyboardEvent<HTMLUListElement>) {
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        moveHighlight(1);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        moveHighlight(-1);
+        break;
+      case "Home":
+        e.preventDefault();
+        setHighlighted(options.findIndex((o) => !o.disabled));
+        break;
+      case "End":
+        e.preventDefault();
+        for (let i = options.length - 1; i >= 0; i--) {
+          if (!options[i].disabled) {
+            setHighlighted(i);
+            break;
+          }
+        }
+        break;
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        commit(highlighted);
+        break;
+      case "Escape":
+        e.preventDefault();
+        setOpen(false);
+        buttonRef.current?.focus();
+        break;
+      case "Tab":
+        setOpen(false);
+        break;
+    }
+  }
 
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={buttonRef}
+        id={id}
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : openList(selectedIndex))}
+        onKeyDown={onButtonKeyDown}
         aria-haspopup="listbox"
         aria-expanded={open}
         className="flex h-9 w-full items-center justify-between rounded-md border border-border bg-surface px-3 text-body text-ink disabled:cursor-not-allowed disabled:opacity-60"
@@ -136,24 +209,29 @@ export function Select<T extends string = string>({
       {open && (
         <ul
           role="listbox"
-          className="absolute z-[1000] mt-1 max-h-60 min-w-full overflow-auto rounded-md border border-border bg-surface shadow-lg"
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+          aria-activedescendant={highlighted >= 0 ? `${idBase}-opt-${highlighted}` : undefined}
+          onKeyDown={onListKeyDown}
+          className="absolute z-[1000] mt-1 max-h-60 min-w-full overflow-auto rounded-md border border-border bg-surface shadow-lg outline-none"
         >
-          {options.map((opt) => (
+          {options.map((opt, i) => (
             <li
               key={opt.value}
+              id={`${idBase}-opt-${i}`}
               role="option"
               aria-selected={opt.value === value}
-              onClick={() => {
-                if (opt.disabled) return;
-                onChange(opt.value);
-                setOpen(false);
-              }}
+              aria-disabled={opt.disabled}
+              onMouseEnter={() => setHighlighted(i)}
+              onClick={() => commit(i)}
               className={`flex cursor-pointer items-center gap-2 px-3 py-2.5 text-body transition-colors ${
                 opt.disabled
                   ? "cursor-not-allowed text-ink-dim"
-                  : opt.value === value
+                  : i === highlighted
                     ? "bg-accent-soft text-accent"
-                    : "text-ink hover:bg-surface-2"
+                    : opt.value === value
+                      ? "text-accent"
+                      : "text-ink hover:bg-surface-2"
               }`}
             >
               {opt.value === value && <Check size={14} />}

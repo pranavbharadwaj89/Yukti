@@ -50,7 +50,11 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 builder.Services.AddScoped<ITenantContextAccessor, AmbientTenantContextAccessor>();
 builder.Services.AddScoped<IPermissionChecker, PermissionChecker>();
 
-builder.Services.AddSingleton<ITriggerRepository, InMemoryTriggerRepository>();
+// ITriggerRepository is now the real EfTriggerRepository, registered by
+// AddYuktiInfrastructure above — previously InMemoryTriggerRepository here,
+// which meant scheduled triggers vanished on every restart and were
+// invisible to Yukti.Api (which never referenced the in-memory store at
+// all). Scoped, not Singleton, matching every other Ef* repository.
 builder.Services.AddSingleton<ITriggerLock, RedisTriggerLock>();
 builder.Services.AddScoped<TriggerFlowRunCommandHandler>();
 builder.Services.AddHostedService<SchedulerHostedService>();
