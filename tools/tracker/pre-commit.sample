@@ -1,5 +1,6 @@
 #!/bin/sh
 # Keeps docs/TRACKER.html in sync with repo state on every commit.
 # Install: copy this file to .git/hooks/pre-commit (chmod +x on macOS/Linux).
-node tools/tracker/generate-tracker.mjs
+NODE_BIN=$(command -v node || echo "/c/Program Files/nodejs/node")
+"$NODE_BIN" tools/tracker/generate-tracker.mjs
 git add docs/TRACKER.html
