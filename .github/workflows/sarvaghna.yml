@@ -1,0 +1,54 @@
+name: SARVAGHNA Code Quality & Analysis Agent
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+    types: [ opened, synchronize, reopened ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  issues: write
+
+jobs:
+  sarvaghna-analyze:
+    name: SARVAGHNA Code Inspection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full git history required for accurate diff analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run SARVAGHNA Code Inspector
+        id: sarvaghna
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: |
+          echo "Initiating SARVAGHNA (सर्वज्ञ) inspection..."
+          node tools/sarvaghna/sarvaghna.mjs
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore .NET Dependencies
+        run: dotnet restore Yukti.sln
+
+      - name: Build Solution with Roslyn Analyzers
+        run: dotnet build Yukti.sln --configuration Release --no-restore
+
+      - name: Run Backend Test Suite
+        run: dotnet test --no-build --configuration Release --verbosity normal

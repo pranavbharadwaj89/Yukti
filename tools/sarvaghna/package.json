@@ -1,0 +1,13 @@
+{
+  "name": "sarvaghna",
+  "version": "1.0.0",
+  "description": "SARVAGHNA (सर्वज्ञ) — Omniscient Code Analysis & Review Agent for Yukti",
+  "type": "module",
+  "bin": {
+    "sarvaghna": "./sarvaghna.mjs"
+  },
+  "scripts": {
+    "analyze": "node sarvaghna.mjs",
+    "pre-flight": "node sarvaghna.mjs --staged"
+  }
+}

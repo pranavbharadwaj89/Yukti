@@ -1,0 +1,71 @@
+{
+  "agentName": "SARVAGHNA",
+  "version": "1.0.0",
+  "rules": {
+    "secrets": {
+      "enabled": true,
+      "blockOnDetect": true,
+      "patterns": [
+        {
+          "name": "AWS Access Key",
+          "regex": "AKIA[0-9A-Z]{16}",
+          "severity": "CRITICAL"
+        },
+        {
+          "name": "GitHub Token",
+          "regex": "(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,255}",
+          "severity": "CRITICAL"
+        },
+        {
+          "name": "Google / Gemini API Key",
+          "regex": "AIzaSy[A-Za-z0-9_-]{33}",
+          "severity": "CRITICAL"
+        },
+        {
+          "name": "Private Key",
+          "regex": "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+          "severity": "CRITICAL"
+        },
+        {
+          "name": "Hardcoded Password or Secret Assignment",
+          "regex": "(api[_-]?key|client[_-]?secret|password|db_pass|auth_token)\\s*[:=]\\s*['\"][A-Za-z0-9+/=._\\-@$#!%*?&]{8,}['\"]",
+          "flags": "i",
+          "severity": "HIGH"
+        },
+        {
+          "name": "Database Connection String with Password",
+          "regex": "(Server=.*Password=.*|Host=.*Password=.*|postgres://.*:.*@|mongodb(?:\\+srv)?://.*:.*@)",
+          "flags": "i",
+          "severity": "CRITICAL"
+        }
+      ]
+    },
+    "architecture": {
+      "enabled": true,
+      "zeroDependencyDomain": true,
+      "structuredLoggingOnly": true,
+      "cancellationTokenRequired": true,
+      "noSyncOverAsync": true
+    },
+    "aiReview": {
+      "enabled": true,
+      "model": "gemini-2.5-flash",
+      "temperature": 0.2,
+      "maxOutputTokens": 4096
+    }
+  },
+  "ignoredPaths": [
+    "tools/sarvaghna/rules/",
+    "tools/sarvaghna/sarvaghna.config.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    ".git/",
+    "docs/TRACKER.html",
+    "*.min.js",
+    "*.min.css",
+    "bin/",
+    "obj/",
+    "dist/"
+  ]
+}
