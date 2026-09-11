@@ -58,9 +58,84 @@ SARVAGHNA runs a 4-tier inspection pipeline across code changes (`git diff`):
 
 ---
 
-## Local Usage (Pre-Flight Check)
+## Inculcating SARVAGHNA into Git (Native Hooks)
 
-Developers can run SARVAGHNA locally before pushing changes:
+You can embed SARVAGHNA directly into your local Git commands so that Git blocks non-compliant commits and pushes automatically:
+
+```powershell
+# Inculcate SARVAGHNA into Git hooks:
+node tools/sarvaghna/sarvaghna.mjs --install-hooks
+
+# Uninstall if ever needed:
+node tools/sarvaghna/sarvaghna.mjs --uninstall-hooks
+```
+
+Once installed:
+* `git commit` triggers SARVAGHNA across staged changes. Violations will abort the commit.
+* `git push` triggers SARVAGHNA across all branch commits before transmitting to remote.
+
+---
+
+## Defining Your Own Custom Rules
+
+You can add custom rules to `tools/sarvaghna/rules/custom/` in either JSON or JavaScript format:
+
+### A. Declarative Rules (`*.rule.json`)
+Drop a JSON file (e.g. `tools/sarvaghna/rules/custom/my-rule.rule.json`):
+```json
+{
+  "id": "RULE-NO-CONSOLE-LOG",
+  "name": "No Console Logs in Production",
+  "severity": "WARNING",
+  "filePattern": "*.ts",
+  "regex": "\\bconsole\\.log\\(",
+  "message": "Remove console.log calls or replace with structured logging before merging."
+}
+```
+
+### B. Executable Rules (`*.rule.mjs`)
+For advanced multi-line or AST checks, create a `.rule.mjs` file:
+```javascript
+export default {
+  id: "RULE-CUSTOM-CHECK",
+  name: "Custom Logic Checker",
+  severity: "HIGH",
+  evaluate(diffFiles) {
+    const findings = [];
+    // Custom inspection logic...
+    return findings;
+  }
+};
+```
+
+---
+
+## Defining Your Own Custom Skills
+
+Skills are modular capability extensions in `tools/sarvaghna/skills/<skill-name>/index.mjs`:
+
+```javascript
+export const skill = {
+  name: "skill-my-custom-tool",
+  description: "Runs custom analysis or linters against changed files",
+  async execute(diffFiles, context) {
+    const findings = [];
+    // Inspect diffFiles, invoke linters or custom tools
+    return {
+      status: "COMPLETED",
+      summary: "Skill execution summary",
+      findings
+    };
+  }
+};
+```
+SARVAGHNA automatically discovers and executes every skill folder on each run.
+
+---
+
+## Local Usage (Manual Pre-Flight)
+
+Developers can run SARVAGHNA manually at any time:
 
 ```powershell
 # Analyze staged changes before committing
@@ -84,3 +159,4 @@ To enable Tier 4 (AI Deep Review):
 1. Go to your GitHub repository: **Settings → Secrets and variables → Actions**.
 2. Add a new repository secret: `GEMINI_API_KEY`.
 3. SARVAGHNA will automatically activate deep semantic analysis on subsequent runs.
+
