@@ -37,7 +37,7 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: |
           echo "Initiating SARVAGHNA (सर्वज्ञ) inspection..."
-          node tools/sarvaghna/sarvaghna.mjs
+          node sarvaghna/sarvaghna.mjs
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4

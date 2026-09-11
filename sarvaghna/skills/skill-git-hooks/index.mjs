@@ -18,7 +18,7 @@ export const skill = {
     const preCommitScript = `#!/bin/sh
 # SARVAGHNA Git pre-commit hook
 echo "👁️  SARVAGHNA: Scanning staged changes before commit..."
-node tools/sarvaghna/sarvaghna.mjs --staged
+node sarvaghna/sarvaghna.mjs --staged
 RESULT=$?
 if [ $RESULT -ne 0 ]; then
   echo ""
@@ -33,7 +33,7 @@ exit 0
     const prePushScript = `#!/bin/sh
 # SARVAGHNA Git pre-push hook
 echo "👁️  SARVAGHNA: Validating commits before push..."
-node tools/sarvaghna/sarvaghna.mjs --base origin/main --head HEAD
+node sarvaghna/sarvaghna.mjs --base origin/main --head HEAD
 RESULT=$?
 if [ $RESULT -ne 0 ]; then
   echo ""

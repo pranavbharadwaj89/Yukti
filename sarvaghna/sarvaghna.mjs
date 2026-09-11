@@ -12,14 +12,15 @@ import { checkArchitecture } from './rules/architecture.mjs';
 import { loadAndExecuteCustomRules } from './rules/rule-engine.mjs';
 import { loadAndExecuteSkills } from './skills/skill-engine.mjs';
 import { skill as gitHooksSkill } from './skills/skill-git-hooks/index.mjs';
+import { DecisionEngine } from './core/decision-engine.mjs';
 import { runSemanticReview } from './rules/semantic-reviewer.mjs';
 import { formatTerminalOutput, writeGitHubStepSummary, emitGitHubAnnotations, postOrUpdatePRComment } from './formatters/github.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '..', '..');
+const repoRoot = path.resolve(__dirname, '..');
 
-// 1. Handle Git Hook Inculcation Commands
+// 1. Handle Git Hook Inculcation & Ledger Commands
 const args = process.argv.slice(2);
 
 if (args.includes('--install-hooks')) {
@@ -29,6 +30,25 @@ if (args.includes('--install-hooks')) {
 
 if (args.includes('--uninstall-hooks')) {
   gitHooksSkill.uninstallHooks(repoRoot);
+  process.exit(0);
+}
+
+if (args.includes('--ledger')) {
+  const recents = DecisionEngine.readRecentDecisions(10);
+  console.log('\n================================================================');
+  console.log('         📜 SARVAGHNA IMMUTABLE DECISION LEDGER (Recent 10)     ');
+  console.log('================================================================');
+  if (recents.length === 0) {
+    console.log('No decisions recorded yet.\n');
+  } else {
+    recents.forEach((r, idx) => {
+      const icon = r.verdict === 'AUTHORIZE_PASS' ? '✅' : '❌';
+      console.log(`[${idx + 1}] ${r.timestamp} | ${icon} ${r.verdict} (Confidence: ${Math.round(r.confidence * 100)}%)`);
+      console.log(`    Target: ${r.target} | Mandate: @${r.mandate}`);
+      console.log(`    Rationale: ${r.rationale}`);
+    });
+    console.log('\n================================================================\n');
+  }
   process.exit(0);
 }
 
@@ -193,13 +213,25 @@ async function run() {
   }
 
   const durationMs = Date.now() - startTime;
-  const hasCritical = allRuleFindings.some(f => f.severity === 'CRITICAL' || f.severity === 'HIGH') ||
-                      (aiReview.enabled && aiReview.verdict === 'REQUEST_CHANGES');
+
+  // Compute Sovereign Decision on behalf of @pranavbharadwaj89
+  const targetLabel = isStaged ? 'staged-changes' : `${baseCommit}..${headCommit}`;
+  const decision = DecisionEngine.makeDecision({
+    target: targetLabel,
+    ruleFindings: allRuleFindings,
+    aiReview,
+    filesCount: diffFiles.length,
+    linesAdded,
+    linesDeleted
+  });
+
+  const hasCritical = decision.verdict === 'BLOCK_AND_PREVENT';
 
   const result = {
     ruleFindings: allRuleFindings,
     skillReports,
     aiReview,
+    decision,
     durationMs,
     filesCount: diffFiles.length,
     linesAdded,
@@ -209,16 +241,21 @@ async function run() {
 
   // Format and Output Results
   formatTerminalOutput(result);
+
+  console.log(`👑 SARVAGHNA AUTONOMOUS DECISION: [${decision.verdict}] (Confidence: ${Math.round(decision.confidence * 100)}%)`);
+  console.log(`   Mandate: Acting on behalf of @pranavbharadwaj89`);
+  console.log(`   Rationale: ${decision.rationale}\n`);
+
   emitGitHubAnnotations(allRuleFindings);
   writeGitHubStepSummary(result);
   await postOrUpdatePRComment(result);
 
   // Exit with error code if blocking issues found
   if (hasCritical) {
-    console.error('❌ SARVAGHNA Check Failed: Blocking quality, security, or architectural issues detected.\n');
+    console.error('❌ SARVAGHNA Mandate: Action REJECTED. Fix the blocking issues above.\n');
     process.exit(1);
   } else {
-    console.log('✅ SARVAGHNA Check Passed: All quality gates cleared successfully.\n');
+    console.log('✅ SARVAGHNA Mandate: Action AUTHORIZED & Cleared.\n');
     process.exit(0);
   }
 }

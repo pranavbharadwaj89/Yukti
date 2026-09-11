@@ -55,9 +55,10 @@
     }
   },
   "ignoredPaths": [
-    "tools/sarvaghna/rules/",
-    "tools/sarvaghna/skills/",
-    "tools/sarvaghna/sarvaghna.config.json",
+    "sarvaghna/rules/",
+    "sarvaghna/skills/",
+    "sarvaghna/ledger/",
+    "sarvaghna/sarvaghna.config.json",
     "package-lock.json",
     "pnpm-lock.yaml",
     "yarn.lock",
