@@ -1,9 +1,20 @@
 # Yukti — Progress Summary
 
-Overall: **32 / 43 tracked items done** (Backend 10/12, Frontend 13/17, Infra 7/9, AI 2/5).
+Overall: **32 / 44 tracked items done** (Backend 10/12, Frontend 13/17, Infra 7/10, AI 2/5).
 Live, auto-detected breakdown: [docs/TRACKER.html](TRACKER.html) — regenerate with
 `node tools/tracker/generate-tracker.mjs` from the repo root; a local pre-commit hook
 keeps it current automatically on every commit.
+
+## Note on scope: the full architecture spec
+
+`docs/YUKTI COMPLETE ARCH INFO` (added 2026-08-22) is the full 6-volume architecture
+document (Vol 0 Product Blueprint through Vol 5 Engineering Playbook) that this repo's
+smaller specs only ever referenced without containing. The 32/44 count above is scored
+against the older, narrower requirement docs — measured against this much larger spec
+instead, Backend (Vol 1) is the strongest area (~65-70% of its concrete architecture is
+real), Frontend (Vol 2) is ~50-55%, and AI (Vol 3) and Infrastructure (Vol 4) are both
+still in the 0-10% range — the spec describes a substantially bigger AI/infra surface
+than exists today. See the Vault/secrets row above, sourced from this cross-check.
 
 ## What shipped in this working session
 
@@ -48,6 +59,7 @@ keeps it current automatically on every commit.
 | Frontend | E2E suite (Playwright) | planned |
 | Infra | CI/CD pipeline | planned — no workflow files in the repo yet |
 | Infra | Containerization (Dockerfile / compose) | planned |
+| Infra | Real secrets manager (Vault) | planned — `InMemoryCredentialResolver` is explicitly a demo-grade stand-in; `ICredentialResolver` is the real interface a Vault client swaps in against, zero other changes needed |
 | AI | LLM-assisted test/assertion generation | planned — no LLM integration exists yet |
 | AI | Self-healing selectors / auto-repair | planned |
 | AI | AI-powered flow suggestions | planned |
