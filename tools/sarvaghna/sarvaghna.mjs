@@ -13,7 +13,7 @@ import { loadAndExecuteCustomRules } from './rules/rule-engine.mjs';
 import { loadAndExecuteSkills } from './skills/skill-engine.mjs';
 import { skill as gitHooksSkill } from './skills/skill-git-hooks/index.mjs';
 import { runSemanticReview } from './rules/semantic-reviewer.mjs';
-import { formatTerminalOutput, writeGitHubStepSummary, emitGitHubAnnotations } from './formatters/github.mjs';
+import { formatTerminalOutput, writeGitHubStepSummary, emitGitHubAnnotations, postOrUpdatePRComment } from './formatters/github.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -211,6 +211,7 @@ async function run() {
   formatTerminalOutput(result);
   emitGitHubAnnotations(allRuleFindings);
   writeGitHubStepSummary(result);
+  await postOrUpdatePRComment(result);
 
   // Exit with error code if blocking issues found
   if (hasCritical) {

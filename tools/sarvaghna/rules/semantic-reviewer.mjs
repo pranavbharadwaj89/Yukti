@@ -1,5 +1,12 @@
 // tools/sarvaghna/rules/semantic-reviewer.mjs
-// Tier 4: Gemini-powered semantic code review agent
+// Tier 4: Gemini-powered semantic code review agent wired to @pranavbharadwaj89
+
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export async function runSemanticReview(diffFiles, fullDiffText, config) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -13,30 +20,50 @@ export async function runSemanticReview(diffFiles, fullDiffText, config) {
   const model = config.rules.aiReview?.model || 'gemini-2.5-flash';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  // Truncate diff text if overly large to stay within context and cost limits
-  const maxDiffLength = 30000;
-  let truncatedDiff = fullDiffText;
-  if (fullDiffText.length > maxDiffLength) {
-    truncatedDiff = fullDiffText.substring(0, maxDiffLength) + '\n\n... [Diff truncated by SARVAGHNA for context size] ...';
+  // Read active goals from GOALS.md dynamically
+  let activeGoalsText = '';
+  const goalsPath = path.resolve(__dirname, '..', 'GOALS.md');
+  if (fs.existsSync(goalsPath)) {
+    try {
+      activeGoalsText = fs.readFileSync(goalsPath, 'utf8');
+    } catch (e) {
+      // Gracefully continue
+    }
   }
 
-  const prompt = `You are SARVAGHNA (सर्वज्ञ), the omniscient GitHub Code Review & Quality Agent for the Yukti Unified Automation Platform.
-Analyze the following Git diff thoroughly line by line against enterprise standards:
-1. Core Architectural Pillars:
+  // Truncate diff text if overly large to stay within context and cost limits
+  const maxDiffLength = 35000;
+  let truncatedDiff = fullDiffText;
+  if (fullDiffText.length > maxDiffLength) {
+    truncatedDiff = fullDiffText.substring(0, maxDiffLength) + '\n\n... [Diff truncated by SARVAGHNA for context window] ...';
+  }
+
+  const prompt = `You are SARVAGHNA (सर्वज्ञ), the autonomous GitHub Code Intelligence & Quality Agent dedicated to @pranavbharadwaj89 for the Yukti Unified Automation Platform.
+
+You are NOT a dumb linter; you are a skilled, sensible, context-aware engineering agent.
+Your primary directives and active goals set by @pranavbharadwaj89:
+================================================================
+${activeGoalsText || 'Guard Yukti architecture, zero secrets, high developer velocity, constructive feedback.'}
+================================================================
+
+SENSIBILITY & REVIEW GUIDELINES:
+1. High Signal, Zero Noise:
+   - Do NOT flag stylistic pedantry or formatting trivia.
+   - Recognize intentional design decisions, mocks, test fixtures, and documentation placeholders (e.g. '...', '<placeholder>').
+2. Architectural Invariants (Yukti Volume Alignment):
    - Yukti.Domain must be pure DDD with zero external dependencies.
-   - Flow execution must maintain crash durability (atomic per-step commit).
+   - Flow execution must maintain crash durability (atomic per-step unit of work commit).
    - Async methods must accept CancellationTokens.
-   - Structured logging only (no string interpolation in logger messages).
-   - Multi-tenant isolation and security: no hardcoded secrets or exposed PII.
-2. Defect & Edge-Case Detection:
-   - Concurrency bugs, race conditions, memory leaks, unhandled exceptions, incorrect nullability assumptions.
-3. Code Cleanliness & Readability:
-   - Clear naming, maintainable structure, adherence to TypeScript (frontend) and modern C# / .NET 8 idioms (backend).
+   - Structured logging only (no string interpolation in logger calls).
+3. Concurrency & Logic Defect Detection:
+   - Identify race conditions, deadlock vectors (.Result / .Wait()), unhandled exceptions, and edge-case mishandling.
+4. Constructive Precision:
+   - Provide concrete replacement snippets ('suggestion') for any issue flagged.
 
 Please return your evaluation in pure JSON matching this exact structure:
 {
   "verdict": "APPROVED" | "COMMENT" | "REQUEST_CHANGES",
-  "summary": "Concise 2-3 sentence executive summary of the changes and overall quality verdict.",
+  "summary": "Concise 2-3 sentence executive summary of the changes and overall quality verdict signed by SARVAGHNA.",
   "strengths": ["list of positive aspects of the code changes"],
   "lineReviews": [
     {
@@ -49,7 +76,7 @@ Please return your evaluation in pure JSON matching this exact structure:
   ]
 }
 
-GIT DIFF:
+GIT DIFF TO ANALYZE:
 \`\`\`diff
 ${truncatedDiff}
 \`\`\`
