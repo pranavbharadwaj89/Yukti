@@ -1,0 +1,8 @@
+{
+  "id": "RULE-DEBUGGER",
+  "name": "No Debugger Statements",
+  "severity": "HIGH",
+  "filePattern": "*.ts",
+  "regex": "\\bdebugger\\b",
+  "message": "Do not leave 'debugger;' statements in production code."
+}

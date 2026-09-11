@@ -9,13 +9,30 @@ import { fileURLToPath } from 'url';
 
 import { scanSecrets } from './rules/secrets.mjs';
 import { checkArchitecture } from './rules/architecture.mjs';
+import { loadAndExecuteCustomRules } from './rules/rule-engine.mjs';
+import { loadAndExecuteSkills } from './skills/skill-engine.mjs';
+import { skill as gitHooksSkill } from './skills/skill-git-hooks/index.mjs';
 import { runSemanticReview } from './rules/semantic-reviewer.mjs';
 import { formatTerminalOutput, writeGitHubStepSummary, emitGitHubAnnotations } from './formatters/github.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '..', '..');
 
-// 1. Load Configuration
+// 1. Handle Git Hook Inculcation Commands
+const args = process.argv.slice(2);
+
+if (args.includes('--install-hooks')) {
+  gitHooksSkill.installHooks(repoRoot);
+  process.exit(0);
+}
+
+if (args.includes('--uninstall-hooks')) {
+  gitHooksSkill.uninstallHooks(repoRoot);
+  process.exit(0);
+}
+
+// 2. Load Configuration
 const configPath = path.join(__dirname, 'sarvaghna.config.json');
 let config = {};
 try {
@@ -24,8 +41,7 @@ try {
   console.warn(`[SARVAGHNA] Warning: Could not read config file, using defaults: ${e.message}`);
 }
 
-// 2. Parse CLI Arguments
-const args = process.argv.slice(2);
+// 3. Parse Inspection Arguments
 let baseCommit = null;
 let headCommit = 'HEAD';
 let isStaged = false;
@@ -45,12 +61,11 @@ if (!baseCommit && !isStaged) {
   if (process.env.GITHUB_BASE_REF) {
     baseCommit = `origin/${process.env.GITHUB_BASE_REF}`;
   } else {
-    // Default to comparing against previous commit or HEAD
     baseCommit = 'HEAD~1';
   }
 }
 
-// 3. Obtain Git Diff
+// 4. Obtain Git Diff
 let diffCommand = '';
 if (isStaged) {
   diffCommand = 'git diff --staged -U3';
@@ -62,7 +77,6 @@ let rawDiff = '';
 try {
   rawDiff = execSync(diffCommand, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
 } catch (err) {
-  // If base commit not found (e.g. initial commit or shallow clone), fallback to HEAD diff
   try {
     rawDiff = execSync('git diff HEAD -U3', { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
   } catch (fallbackErr) {
@@ -71,7 +85,7 @@ try {
   }
 }
 
-// 4. Parse Git Diff
+// 5. Parse Git Diff into Structured Chunks
 function parseGitDiff(diffText) {
   const files = [];
   if (!diffText || diffText.trim().length === 0) return files;
@@ -82,7 +96,7 @@ function parseGitDiff(diffText) {
     if (!rf.trim()) continue;
 
     const lines = rf.split(/\r?\n/);
-    const headerLine = lines[0]; // e.g. "a/path/file.cs b/path/file.cs"
+    const headerLine = lines[0];
     const m = headerLine.match(/a\/(.+?)\s+b\/(.+)/);
     if (!m) continue;
 
@@ -107,7 +121,6 @@ function parseGitDiff(diffText) {
       const line = lines[i];
 
       if (line.startsWith('@@')) {
-        // e.g. @@ -10,5 +12,7 @@
         const chunkMatch = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
         if (chunkMatch) {
           currentNewLine = parseInt(chunkMatch[1], 10);
@@ -138,7 +151,7 @@ function parseGitDiff(diffText) {
   return files;
 }
 
-// 5. Execute Analysis Pipeline
+// 6. Execute Analysis Pipeline
 async function run() {
   const startTime = Date.now();
   const diffFiles = parseGitDiff(rawDiff);
@@ -157,15 +170,23 @@ async function run() {
     process.exit(0);
   }
 
-  // Tier 1: Secrets Scanning
+  // Tier 1: Core Secrets Scanner
   const secretFindings = config.rules?.secrets?.enabled ? scanSecrets(diffFiles, config) : [];
 
-  // Tier 2 & 3: Architectural and Playbook Invariants
+  // Tier 2: Core Architectural Invariants
   const archFindings = config.rules?.architecture?.enabled ? checkArchitecture(diffFiles, config) : [];
 
-  const allRuleFindings = [...secretFindings, ...archFindings];
+  // Tier 3: User Custom Rules Engine (loads *.rule.json and *.rule.mjs)
+  const rulesDir = path.join(__dirname, 'rules');
+  const customRuleFindings = await loadAndExecuteCustomRules(diffFiles, rulesDir);
 
-  // Tier 4: AI Semantic Review
+  // Tier 4: Modular Skills Engine (loads tools/sarvaghna/skills/*)
+  const skillsDir = path.join(__dirname, 'skills');
+  const { findings: skillFindings, skillReports } = await loadAndExecuteSkills(diffFiles, skillsDir, { config, rawDiff });
+
+  const allRuleFindings = [...secretFindings, ...archFindings, ...customRuleFindings, ...skillFindings];
+
+  // Tier 5: AI Semantic Review (Gemini LLM)
   let aiReview = { enabled: false, reason: 'AI review disabled in config.' };
   if (config.rules?.aiReview?.enabled) {
     aiReview = await runSemanticReview(diffFiles, rawDiff, config);
@@ -177,6 +198,7 @@ async function run() {
 
   const result = {
     ruleFindings: allRuleFindings,
+    skillReports,
     aiReview,
     durationMs,
     filesCount: diffFiles.length,
