@@ -13,3 +13,7 @@ obj/
 ## OS
 .DS_Store
 Thumbs.db
+
+## Sarvaghna Agent Runtime Ledger
+sarvaghna/ledger/decisions.jsonl
+
