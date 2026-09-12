@@ -16,7 +16,7 @@ export class AnalystAgent {
   }
 
   /**
-   * Reads a PRD, specification, or requirement document and extracts testable criteria.
+   * Reads a PRD, specification, requirement document, or Jira scenario JSON.
    * @param {string} filePath - Absolute or relative path to document.
    */
   analyzeDoc(filePath) {
@@ -25,6 +25,39 @@ export class AnalystAgent {
     }
 
     const content = fs.readFileSync(filePath, 'utf8');
+
+    // If it's a Jira scenarios JSON file (from jira_client / analyst_agent)
+    if (filePath.endsWith('.json')) {
+      try {
+        const data = JSON.parse(content);
+        if (data.ticket_id && data.test_scenarios) {
+          const criteria = data.test_scenarios.map((s, idx) => ({
+            title: s.name,
+            description: `${s.description} (Expected: ${s.expected_result})`,
+            section: `Jira: ${data.ticket_id}`,
+            line: idx + 1
+          }));
+
+          return {
+            agent: this.name,
+            source: `Jira Ticket ${data.ticket_id}`,
+            lineCount: criteria.length,
+            userStoriesCount: 1,
+            criteriaCount: criteria.length,
+            rulesCount: 0,
+            ambiguitiesCount: (data.ambiguities || []).length,
+            userStories: [{ story: data.summary, section: data.ticket_id, line: 1 }],
+            acceptanceCriteria: criteria,
+            architecturalRules: [],
+            ambiguities: (data.ambiguities || []).map(a => ({ warning: a, section: data.ticket_id, line: 1 })),
+            summary: `Analyzed Jira ticket '${data.ticket_id}': Extracted ${criteria.length} test scenarios and flagged ${(data.ambiguities || []).length} ambiguities.`
+          };
+        }
+      } catch {
+        // Fall back to plain text analysis
+      }
+    }
+
     return this.analyzeText(content, path.basename(filePath));
   }
 

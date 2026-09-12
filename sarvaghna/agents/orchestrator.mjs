@@ -2,6 +2,7 @@
 // Agent: Orchestrator (The boss — routes and decides)
 // Color: #9B8FE0 (Purple) | Tagline: "The boss — routes and decides"
 
+import fs from 'fs';
 import path from 'path';
 import { AnalystAgent } from './analyst.mjs';
 import { CoderAgent } from './coder.mjs';
@@ -208,7 +209,17 @@ export class OrchestratorAgent {
 
     // Step 1: Delegate to ANALYST
     let analysisResult = null;
-    const docPath = context.docPath || 'd:/Yukti/New Text Document.txt';
+    let docPath = context.docPath;
+    const ticketMatch = goalDescription.match(/\b([A-Z]{2,10}-\d+)\b/);
+    if (!docPath && ticketMatch) {
+      const candidate = path.resolve(process.cwd(), 'sarvaghna', 'integrations', 'jira', `scenarios_${ticketMatch[1]}.json`);
+      if (fs.existsSync(candidate)) {
+        docPath = candidate;
+      }
+    }
+    if (!docPath) {
+      docPath = 'd:/Yukti/New Text Document.txt';
+    }
 
     try {
       analysisResult = this.analyst.analyzeDoc(docPath);

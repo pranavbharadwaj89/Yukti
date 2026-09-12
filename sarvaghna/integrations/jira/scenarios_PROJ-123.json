@@ -1,0 +1,56 @@
+{
+  "ticket_id": "PROJ-123",
+  "summary": "Implement automated checkout and payment confirmation flow for PROJ-123",
+  "test_scenarios": [
+    {
+      "id": "TS-001",
+      "name": "Happy path: Implement automated checkout and payment confirmation flow for PROJ-123",
+      "type": "happy_path",
+      "description": "When customer adds items to cart and submits payment, order service must confirm order and log transaction.",
+      "preconditions": [
+        "User is authenticated with valid credentials"
+      ],
+      "steps": [
+        "Navigate to target feature",
+        "Trigger action",
+        "Verify success status"
+      ],
+      "expected_result": "System returns 200 OK and updates UI state",
+      "priority": "high"
+    },
+    {
+      "id": "TS-002",
+      "name": "Negative: Invalid inputs and validation error",
+      "type": "negative",
+      "description": "Verify system rejects invalid parameters gracefully",
+      "preconditions": [
+        "User is on feature form"
+      ],
+      "steps": [
+        "Submit form with empty required fields"
+      ],
+      "expected_result": "System returns 400 Bad Request with RFC 7807 problem details",
+      "priority": "medium"
+    },
+    {
+      "id": "TS-003",
+      "name": "Edge case: Timeout and network failure recovery",
+      "type": "edge_case",
+      "description": "Verify retry and graceful timeout behavior under degraded network",
+      "preconditions": [
+        "Network latency threshold simulated"
+      ],
+      "steps": [
+        "Trigger asynchronous flow run",
+        "Simulate transient 503 error"
+      ],
+      "expected_result": "Retry policy executes and succeeds on subsequent attempt",
+      "priority": "low"
+    }
+  ],
+  "ambiguities": [],
+  "out_of_scope": [
+    "Load testing beyond 10,000 req/s",
+    "Third-party gateway downtime"
+  ]
+}
