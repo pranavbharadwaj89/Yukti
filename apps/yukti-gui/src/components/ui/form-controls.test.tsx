@@ -11,7 +11,7 @@ const OPTIONS = [
 ];
 
 function ControlledSelect() {
-  const [value, setValue] = useState<"a" | "b" | "c" | "">("");
+  const [value, setValue] = useState("");
   return <Select value={value} options={OPTIONS} onChange={setValue} placeholder="Pick one…" />;
 }
 

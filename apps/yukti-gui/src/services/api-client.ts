@@ -233,3 +233,6 @@ export const flowReportsApi = {
 export function getActionParams(modules: ModuleResponse[] | undefined, moduleKind: string, action: string): ActionSchema | undefined {
   return modules?.find((m) => m.kind === moduleKind)?.actions.find((a) => a.actionName === action);
 }
+
+export const apiStudioApi = apiCollectionsApi;
+

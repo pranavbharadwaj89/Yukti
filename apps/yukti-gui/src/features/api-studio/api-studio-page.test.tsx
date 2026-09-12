@@ -2,18 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiStudioPage } from "./api-studio-page";
-import { apiStudioApi } from "@/services/api-client";
+import { apiCollectionsApi } from "@/services/api-client";
 
 vi.mock("@/services/api-client", () => ({
-  apiStudioApi: {
-    listCollections: vi.fn(),
-    createCollection: vi.fn(),
-    renameCollection: vi.fn(),
-    deleteCollection: vi.fn(),
+  apiCollectionsApi: {
+    list: vi.fn(),
+    create: vi.fn(),
+    rename: vi.fn(),
+    delete: vi.fn(),
     addRequest: vi.fn(),
     updateRequest: vi.fn(),
     deleteRequest: vi.fn(),
-    executeAdHoc: vi.fn(),
   },
   projectsApi: {
     listEnvironments: vi.fn().mockResolvedValue([]),
@@ -36,7 +35,7 @@ beforeEach(() => {
 
 describe("ApiStudioPage", () => {
   it("renders the explorer tree and request designer panes", async () => {
-    vi.mocked(apiStudioApi.listCollections).mockResolvedValue([
+    vi.mocked(apiCollectionsApi.list).mockResolvedValue([
       {
         id: "col-1",
         name: "User Service",
@@ -48,9 +47,10 @@ describe("ApiStudioPage", () => {
             method: "GET",
             url: "https://api.example.com/user",
             headers: {},
+            queryParams: {},
             body: null,
-            timeoutMs: 5000,
             assertions: [],
+            order: 1,
           },
         ],
       },

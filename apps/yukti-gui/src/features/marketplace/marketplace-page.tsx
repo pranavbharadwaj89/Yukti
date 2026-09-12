@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Package, Search, CheckCircle2, ShieldCheck, Download, ExternalLink } from "lucide-react";
-import { Button, Input, Spinner } from "@/components/ui/primitives";
+import { Package, Search, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Button, Input } from "@/components/ui/primitives";
 import { useToastStore } from "@/store/toast-store";
 
 interface ModulePackage {
@@ -234,11 +233,10 @@ export function MarketplacePage() {
                 )}
 
                 <Button
-                  variant={isInstalled ? "outline" : "primary"}
-                  size="sm"
+                  variant={isInstalled ? "secondary" : "primary"}
                   onClick={() => handleInstallToggle(mod)}
                   disabled={mod.trustTier === "BuiltIn"}
-                  className="text-xs"
+                  className="text-xs py-1 px-2.5"
                 >
                   {isInstalled ? (mod.trustTier === "BuiltIn" ? "Built-in" : "Deactivate") : "Install"}
                 </Button>
