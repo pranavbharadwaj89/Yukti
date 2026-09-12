@@ -1,0 +1,20 @@
+[
+  {
+    "status": "success",
+    "filename": "test_ts_001_happy_path_implement_automated_checkout_.py",
+    "scenario_id": "TS-001",
+    "notes": "Generated with deterministic template"
+  },
+  {
+    "status": "success",
+    "filename": "test_ts_002_negative_invalid_inputs_and_validation_e.py",
+    "scenario_id": "TS-002",
+    "notes": "Generated with deterministic template"
+  },
+  {
+    "status": "success",
+    "filename": "test_ts_003_edge_case_timeout_and_network_failure_re.py",
+    "scenario_id": "TS-003",
+    "notes": "Generated with deterministic template"
+  }
+]

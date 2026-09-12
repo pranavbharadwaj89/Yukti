@@ -1,0 +1,8 @@
+{
+  "id": "PROJ-123",
+  "summary": "Implement automated checkout and payment confirmation flow for PROJ-123",
+  "description": "When customer adds items to cart and submits payment, order service must confirm order and log transaction.",
+  "acceptance": "1. User completes checkout.\n2. Payment API returns 200.\n3. Application log contains OrderPlacedSuccessfully.",
+  "type": "Story",
+  "priority": "High"
+}

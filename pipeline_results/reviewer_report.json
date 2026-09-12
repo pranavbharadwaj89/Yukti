@@ -1,0 +1,38 @@
+{
+  "score": 100,
+  "decision": "ship",
+  "summary": "High-confidence test suite with 100/100 quality score. Core requirements and scenarios verified cleanly.",
+  "criteria_coverage": [
+    {
+      "criterion": "User completes checkout",
+      "status": "covered",
+      "covered_by": [
+        "Happy path: Implement automated checkout and payment confirmation flow for PROJ-123"
+      ],
+      "notes": "Verified against test execution report."
+    },
+    {
+      "criterion": "Payment API returns",
+      "status": "covered",
+      "covered_by": [
+        "Happy path: Implement automated checkout and payment confirmation flow for PROJ-123"
+      ],
+      "notes": "Verified against test execution report."
+    },
+    {
+      "criterion": "Application log contains OrderPlacedSuccessfully",
+      "status": "covered",
+      "covered_by": [
+        "Happy path: Implement automated checkout and payment confirmation flow for PROJ-123"
+      ],
+      "notes": "Verified against test execution report."
+    }
+  ],
+  "deductions": [],
+  "gaps": [],
+  "strengths": [
+    "Strong alignment between acceptance criteria and test scenario assertions.",
+    "Includes negative test paths for invalid user input."
+  ],
+  "retry_instructions": null
+}
