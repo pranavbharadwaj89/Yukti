@@ -1,0 +1,77 @@
+{
+  "flowId": "flow-proj-123",
+  "name": "PROJ-123: Implement automated checkout and payment confirmation flow for PROJ-123",
+  "description": "Automated test flow generated from Jira ticket PROJ-123",
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "TS-001",
+      "name": "Happy path: Implement automated checkout and payment confirmation flow for PROJ-123",
+      "type": "happy_path",
+      "priority": "high",
+      "steps": [
+        {
+          "stepId": "TS-001-step-1",
+          "action": "ExecuteStep",
+          "parameters": {
+            "stepDescription": "Navigate to target feature"
+          }
+        },
+        {
+          "stepId": "TS-001-step-2",
+          "action": "ExecuteStep",
+          "parameters": {
+            "stepDescription": "Trigger action"
+          }
+        },
+        {
+          "stepId": "TS-001-step-3",
+          "action": "ExecuteStep",
+          "parameters": {
+            "stepDescription": "Verify success status"
+          }
+        }
+      ],
+      "expectedResult": "System returns 200 OK and updates UI state"
+    },
+    {
+      "id": "TS-002",
+      "name": "Negative: Invalid inputs and validation error",
+      "type": "negative",
+      "priority": "medium",
+      "steps": [
+        {
+          "stepId": "TS-002-step-1",
+          "action": "ExecuteStep",
+          "parameters": {
+            "stepDescription": "Submit form with empty required fields"
+          }
+        }
+      ],
+      "expectedResult": "System returns 400 Bad Request with RFC 7807 problem details"
+    },
+    {
+      "id": "TS-003",
+      "name": "Edge case: Timeout and network failure recovery",
+      "type": "edge_case",
+      "priority": "low",
+      "steps": [
+        {
+          "stepId": "TS-003-step-1",
+          "action": "ExecuteStep",
+          "parameters": {
+            "stepDescription": "Trigger asynchronous flow run"
+          }
+        },
+        {
+          "stepId": "TS-003-step-2",
+          "action": "ExecuteStep",
+          "parameters": {
+            "stepDescription": "Simulate transient 503 error"
+          }
+        }
+      ],
+      "expectedResult": "Retry policy executes and succeeds on subsequent attempt"
+    }
+  ]
+}

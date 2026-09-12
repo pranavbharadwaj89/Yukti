@@ -4,11 +4,16 @@
 
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
 import { AnalystAgent } from './analyst.mjs';
 import { CoderAgent } from './coder.mjs';
 import { TesterAgent } from './tester.mjs';
 import { ReviewerAgent } from './reviewer.mjs';
 import { DecisionEngine } from '../core/decision-engine.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * The 5-Section Canonical Orchestrator System Prompt
@@ -211,10 +216,31 @@ export class OrchestratorAgent {
     let analysisResult = null;
     let docPath = context.docPath;
     const ticketMatch = goalDescription.match(/\b([A-Z]{2,10}-\d+)\b/);
-    if (!docPath && ticketMatch) {
-      const candidate = path.resolve(process.cwd(), 'sarvaghna', 'integrations', 'jira', `scenarios_${ticketMatch[1]}.json`);
-      if (fs.existsSync(candidate)) {
-        docPath = candidate;
+    if (ticketMatch) {
+      const ticketId = ticketMatch[1];
+      const candidates = [
+        path.resolve(process.cwd(), 'sarvaghna', 'integrations', 'jira', `scenarios_${ticketId}.json`),
+        path.resolve(process.cwd(), 'integrations', 'jira', `scenarios_${ticketId}.json`),
+        path.resolve(process.cwd(), `scenarios_${ticketId}.json`),
+        path.resolve(__dirname, '..', 'integrations', 'jira', `scenarios_${ticketId}.json`)
+      ];
+      let found = candidates.find(c => fs.existsSync(c));
+      if (!found) {
+        try {
+          const jiraDir = path.resolve(__dirname, '..', 'integrations', 'jira');
+          if (fs.existsSync(path.join(jiraDir, 'run.py'))) {
+            execSync(`python run.py ${ticketId}`, { cwd: jiraDir, stdio: 'ignore' });
+            const generated = path.join(jiraDir, `scenarios_${ticketId}.json`);
+            if (fs.existsSync(generated)) {
+              found = generated;
+            }
+          }
+        } catch {
+          // ignore error and proceed
+        }
+      }
+      if (found && fs.existsSync(found)) {
+        docPath = found;
       }
     }
     if (!docPath) {
@@ -255,14 +281,25 @@ export class OrchestratorAgent {
     };
 
     try {
-      codeGenResult = this.coder.generateTest(sampleCriterion, 'playwright');
-      missionLog.push({
-        step: 2,
-        agent: 'CODER',
-        status: 'SUCCESS',
-        result: `Generated ${codeGenResult.targetType} test script '${codeGenResult.filename}' with ${codeGenResult.resilienceStrategy}.`
-      });
-      state.current_step = `Coder generated '${codeGenResult.filename}' with resilient locators.`;
+      if (analysisResult.scenariosData) {
+        codeGenResult = this.coder.generateTestsFromScenarios(analysisResult.scenariosData, 'playwright');
+        missionLog.push({
+          step: 2,
+          agent: 'CODER',
+          status: 'SUCCESS',
+          result: `Ingested ${analysisResult.scenariosData.test_scenarios.length} Jira scenarios from ${analysisResult.scenariosData.ticket_id} and generated '${codeGenResult.filename}'.`
+        });
+        state.current_step = `Coder generated test suite for ${analysisResult.scenariosData.test_scenarios.length} scenarios.`;
+      } else {
+        codeGenResult = this.coder.generateTest(sampleCriterion, 'playwright');
+        missionLog.push({
+          step: 2,
+          agent: 'CODER',
+          status: 'SUCCESS',
+          result: `Generated ${codeGenResult.targetType} test script '${codeGenResult.filename}' with ${codeGenResult.resilienceStrategy}.`
+        });
+        state.current_step = `Coder generated '${codeGenResult.filename}' with resilient locators.`;
+      }
     } catch (e) {
       if (retryCounts.CODER < 1) {
         retryCounts.CODER++;

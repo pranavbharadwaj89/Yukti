@@ -50,7 +50,8 @@ export class AnalystAgent {
             acceptanceCriteria: criteria,
             architecturalRules: [],
             ambiguities: (data.ambiguities || []).map(a => ({ warning: a, section: data.ticket_id, line: 1 })),
-            summary: `Analyzed Jira ticket '${data.ticket_id}': Extracted ${criteria.length} test scenarios and flagged ${(data.ambiguities || []).length} ambiguities.`
+            summary: `Analyzed Jira ticket '${data.ticket_id}': Extracted ${criteria.length} test scenarios and flagged ${(data.ambiguities || []).length} ambiguities.`,
+            scenariosData: data
           };
         }
       } catch {

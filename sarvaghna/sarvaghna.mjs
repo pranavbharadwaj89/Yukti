@@ -74,6 +74,30 @@ if (args.includes('--orchestrator-prompt')) {
   process.exit(0);
 }
 
+if (args.includes('--scenarios') || args.includes('--coder-tests')) {
+  const flagIndex = args.indexOf('--scenarios') !== -1 ? args.indexOf('--scenarios') : args.indexOf('--coder-tests');
+  const scenariosPath = args[flagIndex + 1] || 'scenarios_PROJ-123.json';
+  const targetType = args.includes('--target') ? args[args.indexOf('--target') + 1] : 'all';
+
+  console.log('\n================================================================');
+  console.log('         🤖 SARVAGHNA CODER AGENT: SCENARIO INGESTION           ');
+  console.log('================================================================');
+  console.log(`Ingesting scenarios from: ${scenariosPath}`);
+  console.log(`Target frameworks: ${targetType}\n`);
+
+  const coder = new CoderAgent();
+  const results = coder.generateTestsFromScenarios(scenariosPath, targetType, path.resolve(repoRoot, 'tests', 'scenarios'));
+
+  const list = Array.isArray(results) ? results : [results];
+  list.forEach(res => {
+    console.log(`✅ Generated ${res.targetType.toUpperCase()} test suite:`);
+    console.log(`   File: ${res.writtenPath || res.filename}`);
+    console.log(`   Total Scenarios: ${res.scenariosCount}\n`);
+  });
+  console.log('================================================================\n');
+  process.exit(0);
+}
+
 if (args.includes('--crew') || args.includes('--mission')) {
   const goalIndex = args.indexOf('--mission');
   const goal = goalIndex !== -1 && args[goalIndex + 1]
