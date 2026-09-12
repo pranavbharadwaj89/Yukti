@@ -1,7 +1,4 @@
-// sarvaghna/agents/tester.mjs
-// Agent: Tester (Runs tests and reports results)
-// Color: #EF9F27 (Amber) | Tagline: "Runs tests and reports results"
-
+import fs from 'fs';
 import { execSync } from 'child_process';
 import path from 'path';
 
@@ -17,13 +14,15 @@ export class TesterAgent {
 
   /**
    * Executes the real test suite using local CLI runner.
-   * @param {'dotnet' | 'frontend' | 'all'} suiteType
+   * @param {'dotnet' | 'frontend' | 'pytest' | 'all'} suiteType
    * @param {string} cwd - Working directory.
    */
   runSuite(suiteType = 'dotnet', cwd = process.cwd()) {
     let command = 'dotnet test';
     if (suiteType === 'frontend') {
       command = 'npm.cmd test -- --run';
+    } else if (suiteType === 'pytest') {
+      command = 'python run_tester.py coder_results.json';
     }
 
     const startTime = Date.now();
@@ -45,17 +44,49 @@ export class TesterAgent {
     }
 
     const durationMs = Date.now() - startTime;
-    return this.parseAndSummarize(command, suiteType, exitCode, stdout, stderr, durationMs);
+    return this.parseAndSummarize(command, suiteType, exitCode, stdout, stderr, durationMs, cwd);
   }
 
   /**
    * Parses test output and formats a clear, human-readable summary.
    */
-  parseAndSummarize(command, suiteType, exitCode, stdout, stderr, durationMs) {
+  parseAndSummarize(command, suiteType, exitCode, stdout, stderr, durationMs, cwd = process.cwd()) {
     let passed = 0;
     let failed = 0;
     let skipped = 0;
     let total = 0;
+
+    if (suiteType === 'pytest') {
+      const reportPath = path.resolve(cwd, 'tester_report.json');
+      if (fs.existsSync(reportPath)) {
+        try {
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          let pCount = 0;
+          let fCount = 0;
+          (report.results || []).forEach(r => {
+            pCount += (r.tests_passed || 0);
+            fCount += (r.tests_failed || 0);
+          });
+          return {
+            agent: this.name,
+            suiteType,
+            command,
+            exitCode,
+            success: report.status === 'all_passed',
+            total: pCount + fCount,
+            passed: pCount,
+            failed: fCount,
+            skipped: 0,
+            durationMs,
+            humanSummary: report.summary || `Pytest suite finished with status: ${report.status}`,
+            structuredReport: report,
+            failureDetails: (report.results || []).flatMap(r => (r.failures || []).map(f => `${f.test_name}: ${f.message}`))
+          };
+        } catch {
+          // fallback to stdout
+        }
+      }
+    }
 
     // Parse dotnet test output: "Passed!  - Failed: 0, Passed: 17, Skipped: 0, Total: 17"
     const matches = [...stdout.matchAll(/Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)/g)];

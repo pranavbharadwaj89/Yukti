@@ -1,0 +1,17 @@
+{
+  "status": "all_passed",
+  "summary": "All 2 tests passed successfully across 1 test file(s).",
+  "results": [
+    {
+      "file": "test_sample.py",
+      "passed": true,
+      "tests_run": 2,
+      "tests_passed": 2,
+      "tests_failed": 0,
+      "duration_seconds": 0.14,
+      "failures": []
+    }
+  ],
+  "environment_issues": [],
+  "ready_for_reviewer": true
+}
