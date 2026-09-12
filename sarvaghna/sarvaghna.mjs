@@ -64,6 +64,16 @@ if (args.includes('--crew-list')) {
   process.exit(0);
 }
 
+if (args.includes('--orchestrator-prompt')) {
+  const orchestrator = new OrchestratorAgent();
+  const rendered = orchestrator.renderPrompt(
+    'Execute comprehensive test generation and quality verification for the Yukti platform',
+    'Previous mission accomplished with all 67 tests passing and 100% architectural quality score.'
+  );
+  console.log(rendered);
+  process.exit(0);
+}
+
 if (args.includes('--crew') || args.includes('--mission')) {
   const goalIndex = args.indexOf('--mission');
   const goal = goalIndex !== -1 && args[goalIndex + 1]
@@ -91,6 +101,9 @@ if (args.includes('--crew') || args.includes('--mission')) {
     const icon = entry.status === 'SUCCESS' || entry.status === 'PASSED' || entry.status === 'APPROVED' ? '✅' : 'ℹ️';
     console.log(`  ${icon} Step ${entry.step} [${entry.agent}]: ${entry.result}`);
   });
+
+  console.log('\n📦 Orchestrator Structured State JSON:');
+  console.log(JSON.stringify(mission.state, null, 2));
 
   console.log('\n================================================================');
   console.log(`🏆 Crew Mission Verdict: [${mission.verdict}] (Confidence: ${Math.round(mission.confidence * 100)}%)`);
