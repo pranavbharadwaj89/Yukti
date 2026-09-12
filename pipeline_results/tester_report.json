@@ -3,12 +3,12 @@
   "summary": "All 3 tests passed successfully across 3 test file(s).",
   "results": [
     {
-      "file": "test_ts_001_happy_path_implement_automated_checkout_.py",
+      "file": "test_ts_001_happy_path_users_should_be_able_to_log_i.py",
       "passed": true,
       "tests_run": 1,
       "tests_passed": 1,
       "tests_failed": 0,
-      "duration_seconds": 0.04,
+      "duration_seconds": 0.06,
       "failures": []
     },
     {
@@ -26,7 +26,7 @@
       "tests_run": 1,
       "tests_passed": 1,
       "tests_failed": 0,
-      "duration_seconds": 0.04,
+      "duration_seconds": 0.03,
       "failures": []
     }
   ],

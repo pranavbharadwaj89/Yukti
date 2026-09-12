@@ -1,8 +1,11 @@
 {
-  "id": "PROJ-123",
-  "summary": "Implement automated checkout and payment confirmation flow for PROJ-123",
-  "description": "When customer adds items to cart and submits payment, order service must confirm order and log transaction.",
-  "acceptance": "1. User completes checkout.\n2. Payment API returns 200.\n3. Application log contains OrderPlacedSuccessfully.",
+  "id": "THOUGHT-8EC2A8",
+  "summary": "users should be able to log in with email and password",
+  "description": "users should be able to log in with email and password",
+  "acceptance": "",
   "type": "Story",
-  "priority": "High"
+  "priority": "Medium",
+  "source": "thought_intake",
+  "created_at": "2026-09-12T16:03:50.281966",
+  "base_url": "http://localhost:3000"
 }

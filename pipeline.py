@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-from jira_client        import fetch_ticket
+from thought_intake   import thought_to_ticket as fetch_ticket
 from analyst_agent      import run_analyst
 from coder_agent        import run_coder
 from tester_agent       import run_tester
@@ -184,8 +184,8 @@ def run_pipeline(ticket_id: str, base_url: str = "http://localhost:3000"):
     state["base_url"] = base_url
     save_state(state)
 
-    safe_print(f"\nFetching {ticket_id} from Jira...")
-    ticket = fetch_ticket(ticket_id)
+    safe_print(f"\nLoading thought {ticket_id}...")
+    ticket = fetch_ticket(ticket_id, base_url)
 
     # Save ticket for Reviewer
     (RESULTS_DIR / "ticket.json").write_text(json.dumps(ticket, indent=2), encoding="utf-8")
@@ -285,13 +285,22 @@ def run_pipeline(ticket_id: str, base_url: str = "http://localhost:3000"):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import sys
+
     if len(sys.argv) < 2:
-        print("Usage: python pipeline.py TICKET-ID [base-url]")
-        print("       python pipeline.py PROJ-123 https://yourapp.com")
+        print("Usage:")
+        print("  python pipeline.py 'your thought here'")
+        print("  python pipeline.py 'your thought here' http://localhost:3000")
+        print()
+        print("Examples:")
+        print("  python pipeline.py 'users should be able to reset their password'")
+        print("  python pipeline.py 'login should reject empty passwords' http://staging.yourapp.com")
         sys.exit(1)
 
-    ticket_id = sys.argv[1]
-    base_url  = sys.argv[2] if len(sys.argv) > 2 else "http://localhost:3000"
+    raw_thought = sys.argv[1]
+    base_url    = sys.argv[2] if len(sys.argv) > 2 else "http://localhost:3000"
 
-    success = run_pipeline(ticket_id, base_url)
+    # thought_to_ticket returns the ticket dict directly
+    ticket   = fetch_ticket(raw_thought, base_url)
+    success  = run_pipeline(ticket["id"], base_url)
     sys.exit(0 if success else 1)

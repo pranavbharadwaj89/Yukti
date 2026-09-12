@@ -1,34 +1,25 @@
 {
-  "score": 100,
+  "score": 90,
   "decision": "ship",
-  "summary": "High-confidence test suite with 100/100 quality score. Core requirements and scenarios verified cleanly.",
+  "summary": "High-confidence test suite with 90/100 quality score. Core requirements and scenarios verified cleanly.",
   "criteria_coverage": [
     {
-      "criterion": "User completes checkout",
+      "criterion": "users should be able to log in with email and password",
       "status": "covered",
       "covered_by": [
-        "Happy path: Implement automated checkout and payment confirmation flow for PROJ-123"
-      ],
-      "notes": "Verified against test execution report."
-    },
-    {
-      "criterion": "Payment API returns",
-      "status": "covered",
-      "covered_by": [
-        "Happy path: Implement automated checkout and payment confirmation flow for PROJ-123"
-      ],
-      "notes": "Verified against test execution report."
-    },
-    {
-      "criterion": "Application log contains OrderPlacedSuccessfully",
-      "status": "covered",
-      "covered_by": [
-        "Happy path: Implement automated checkout and payment confirmation flow for PROJ-123"
+        "Happy path: users should be able to log in with email and password",
+        "Edge case: Timeout and network failure recovery"
       ],
       "notes": "Verified against test execution report."
     }
   ],
-  "deductions": [],
+  "deductions": [
+    {
+      "reason": "Analyst flagged ambiguities that were never resolved and affect coverage",
+      "points": 10,
+      "detail": "1 ambiguity marker(s) left unclarified."
+    }
+  ],
   "gaps": [],
   "strengths": [
     "Strong alignment between acceptance criteria and test scenario assertions.",

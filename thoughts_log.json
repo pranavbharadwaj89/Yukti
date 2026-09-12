@@ -1,0 +1,13 @@
+[
+  {
+    "id": "THOUGHT-8EC2A8",
+    "summary": "users should be able to log in with email and password",
+    "description": "users should be able to log in with email and password",
+    "acceptance": "",
+    "type": "Story",
+    "priority": "Medium",
+    "source": "thought_intake",
+    "created_at": "2026-09-12T16:03:50.281966",
+    "base_url": "http://localhost:3000"
+  }
+]

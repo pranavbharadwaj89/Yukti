@@ -1,7 +1,7 @@
 [
   {
     "status": "success",
-    "filename": "test_ts_001_happy_path_implement_automated_checkout_.py",
+    "filename": "test_ts_001_happy_path_users_should_be_able_to_log_i.py",
     "scenario_id": "TS-001",
     "notes": "Generated with deterministic template"
   },
