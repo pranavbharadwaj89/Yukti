@@ -371,15 +371,15 @@
         },
         {
           "name": "Self-healing selectors / auto-repair",
-          "note": "",
+          "note": "OpenAiAssistantService.HealSelectorAsync with DOM attribute analysis and fallback",
           "type": "manual",
-          "status": "planned"
+          "status": "done"
         },
         {
           "name": "AI-powered flow suggestions",
-          "note": "",
+          "note": "OpenAiAssistantService.SuggestFlowAsync multi-module flow synthesizer",
           "type": "manual",
-          "status": "planned"
+          "status": "done"
         }
       ]
     }

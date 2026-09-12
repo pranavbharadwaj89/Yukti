@@ -15,6 +15,7 @@ import { skill as gitHooksSkill } from './skills/skill-git-hooks/index.mjs';
 import { DecisionEngine } from './core/decision-engine.mjs';
 import { runSemanticReview } from './rules/semantic-reviewer.mjs';
 import { formatTerminalOutput, writeGitHubStepSummary, emitGitHubAnnotations, postOrUpdatePRComment } from './formatters/github.mjs';
+import { OrchestratorAgent, AnalystAgent, CoderAgent, TesterAgent, ReviewerAgent, CREW_METADATA } from './agents/index.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,6 +51,51 @@ if (args.includes('--ledger')) {
     console.log('\n================================================================\n');
   }
   process.exit(0);
+}
+
+if (args.includes('--crew-list')) {
+  console.log('\n================================================================');
+  console.log('         🤖 SARVAGHNA 5-AGENT SPECIALIST CREW ROSTER           ');
+  console.log('================================================================');
+  CREW_METADATA.forEach(agent => {
+    console.log(`• ${agent.name} (${agent.color}) — ${agent.tagline}`);
+  });
+  console.log('================================================================\n');
+  process.exit(0);
+}
+
+if (args.includes('--crew') || args.includes('--mission')) {
+  const goalIndex = args.indexOf('--mission');
+  const goal = goalIndex !== -1 && args[goalIndex + 1]
+    ? args[goalIndex + 1]
+    : 'Execute end-to-end multi-agent architecture analysis, test generation, test execution, and quality scoring';
+
+  console.log('\n================================================================');
+  console.log('         🤖 SARVAGHNA 5-AGENT AUTONOMOUS CREW ACTIVATED         ');
+  console.log('================================================================');
+  console.log('Crew Members:');
+  CREW_METADATA.forEach((m, idx) => {
+    console.log(`  [${idx + 1}] ${m.name.padEnd(14)} | ${m.tagline}`);
+  });
+  console.log('----------------------------------------------------------------');
+  console.log(`🎯 Mission Goal: "${goal}"\n`);
+
+  const orchestrator = new OrchestratorAgent();
+  const mission = await orchestrator.executeMission(goal, {
+    repoRoot,
+    docPath: path.resolve(repoRoot, '..', 'New Text Document.txt')
+  });
+
+  console.log('📋 Crew Mission Execution Log:');
+  mission.log.forEach(entry => {
+    const icon = entry.status === 'SUCCESS' || entry.status === 'PASSED' || entry.status === 'APPROVED' ? '✅' : 'ℹ️';
+    console.log(`  ${icon} Step ${entry.step} [${entry.agent}]: ${entry.result}`);
+  });
+
+  console.log('\n================================================================');
+  console.log(`🏆 Crew Mission Verdict: [${mission.verdict}] (Confidence: ${Math.round(mission.confidence * 100)}%)`);
+  console.log('================================================================\n');
+  process.exit(mission.verdict === 'MISSION_ACCOMPLISHED' ? 0 : 1);
 }
 
 // 2. Load Configuration

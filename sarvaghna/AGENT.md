@@ -44,3 +44,44 @@ A dumb linter blindly counts lines and flags words. **SARVAGHNA is an agent with
    * A skill in `tools/sarvaghna/skills/`
    * An objective in `tools/sarvaghna/GOALS.md`
    SARVAGHNA dynamically absorbs it into its reasoning loop on the very next run.
+
+---
+
+## 3. The 5-Agent Specialist Crew
+
+Inside SARVAGHNA sits a specialized crew of 5 autonomous agents collaborating to analyze specifications, generate tests, execute suites, and score quality:
+
+```
+                            ┌───────────────────────────────────┐
+                            │      ORCHESTRATOR (#9B8FE0)       │
+                            │   "The boss — routes & decides"   │
+                            └─────────────────┬─────────────────┘
+                                              │
+               ┌──────────────────────────────┼──────────────────────────────┐
+               │                              │                              │
+     ┌─────────▼─────────┐          ┌─────────▼─────────┐          ┌─────────▼─────────┐
+     │  ANALYST (#1D9E75)│          │   CODER (#378ADD) │          │  TESTER (#EF9F27) │
+     │  Reads docs and   │          │ Writes and runs   │          │ Runs tests and    │
+     │  extracts meaning │          │ real code         │          │ reports results   │
+     └───────────────────┘          └───────────────────┘          └─────────┬─────────┘
+                                                                             │
+                                                                   ┌─────────▼─────────┐
+                                                                   │ REVIEWER (#D85A30)│
+                                                                   │ Scores quality &  │
+                                                                   │ gives feedback    │
+                                                                   └───────────────────┘
+```
+
+| Agent | Color | Tagline | Capabilities |
+| :--- | :--- | :--- | :--- |
+| **Orchestrator** | `#9B8FE0` | *The boss — routes and decides* | Decomposes high-level goals into subtasks, routes tasks to specialists, coordinates retry & error recovery loops. |
+| **Analyst** | `#1D9E75` | *Reads docs and extracts meaning* | Ingests PRDs, Jira tickets, and architecture specs (`New Text Document.txt`), extracts testable acceptance criteria, flags ambiguities. |
+| **Coder** | `#378ADD` | *Writes and runs real code* | Synthesizes Playwright / API / .NET test code, generates resilient selectors (`data-testid`, `aria-label`), auto-fixes syntax errors. |
+| **Tester** | `#EF9F27` | *Runs tests and reports results* | Triggers `dotnet test` / Playwright / vitest, parses test telemetry, writes plain-English failure summaries, diagnoses flakiness. |
+| **Reviewer** | `#D85A30` | *Scores quality and gives feedback* | Scores test coverage against requirements, audits zero-dependency domain constraints, detects secrets, delivers actionable code reviews. |
+
+Run the full crew anytime:
+```bash
+node sarvaghna/sarvaghna.mjs --crew
+```
+

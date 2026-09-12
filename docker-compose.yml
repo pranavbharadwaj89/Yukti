@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: yukti-postgres
+    environment:
+      POSTGRES_DB: yukti
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d yukti"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: yukti-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yukti-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      - ConnectionStrings__Yukti=${YUKTI_DB_CONNECTION}
+      - ConnectionStrings__Redis=redis:6379
+      - Deployment__SelfHosted=true
+      - Cors__AllowedOrigins__0=http://localhost:5173
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yukti-worker
+    entrypoint: ["dotnet", "./worker/Yukti.Worker.dll"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__Yukti=${YUKTI_DB_CONNECTION}
+      - ConnectionStrings__Redis=redis:6379
+      - Deployment__SelfHosted=true
+
+volumes:
+  postgres_data:
+  redis_data:

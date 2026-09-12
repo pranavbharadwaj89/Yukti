@@ -35,6 +35,9 @@ using Yukti.Infrastructure.InMemory;
 using Yukti.Infrastructure.InMemory.Modules;
 using Yukti.Infrastructure.ReadModels;
 using Yukti.Orchestration;
+using Microsoft.OpenApi.Models;
+using Yukti.Application.Ai;
+using Yukti.Infrastructure.Ai;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -312,7 +315,51 @@ builder.Services.AddScoped<RegisterUserCommandHandler>();
 builder.Services.AddScoped<AssignRoleCommandHandler>();
 builder.Services.AddScoped<UpdateRolePermissionsCommandHandler>();
 
+// ---- AI Planning & Capability Engine (Volume 3) ----
+builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
+
+// ---- OpenAPI / Swagger (FR-API-01) ----
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Yukti Unified Automation Platform API",
+        Version = "v1",
+        Description = "API for flow orchestration, capability modules, execution, scheduling, and reporting."
+    });
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Yukti API v1");
+    c.RoutePrefix = "swagger";
+});
 
 // FR-RT-01: wires Tier 1 domain events straight to SignalR groups —
 // see RunProgressBridge's own doc comment for why this is Tier 1 only.
@@ -941,6 +988,69 @@ app.MapPut($"{apiV1}/triggers/{{triggerId:guid}}/disable", async (Guid triggerId
 })
 .RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
 
+// ---- Webhook receiver: FR-SCHED-04 incoming webhook execution ----
+// Listens on /webhooks/{webhookPath} for external systems (GitHub, Stripe, custom CI)
+// to trigger automated flows. Validates HMAC signature if a secret is configured.
+app.MapPost("/webhooks/{webhookPath}", async (string webhookPath, HttpContext context, ITriggerRepository repo, TriggerFlowRunCommandHandler triggerHandler, IUnitOfWorkFactory uowFactory, ITenantContextAccessor tenantAccessor, CancellationToken ct) =>
+{
+    var trigger = await repo.GetByWebhookPath(webhookPath, ct);
+    if (trigger is null)
+        return ProblemResults.NotFound(context, "Webhook trigger not found.");
+
+    if (!trigger.IsEnabled)
+        return Results.Conflict(new { error = "Trigger is disabled." });
+
+    if (!string.IsNullOrEmpty(trigger.WebhookSecret))
+    {
+        var providedSecret = context.Request.Headers["X-Webhook-Secret"].FirstOrDefault();
+        var signature = context.Request.Headers["X-Webhook-Signature"].FirstOrDefault()
+                     ?? context.Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
+
+        bool authorized = false;
+        if (!string.IsNullOrEmpty(providedSecret) && CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(providedSecret),
+            System.Text.Encoding.UTF8.GetBytes(trigger.WebhookSecret)))
+        {
+            authorized = true;
+        }
+        else if (!string.IsNullOrEmpty(signature))
+        {
+            context.Request.EnableBuffering();
+            using var reader = new StreamReader(context.Request.Body, leaveOpen: true);
+            var body = await reader.ReadToEndAsync(ct);
+            context.Request.Body.Position = 0;
+            using var hmac = new HMACSHA256(System.Text.Encoding.UTF8.GetBytes(trigger.WebhookSecret));
+            var hash = Convert.ToHexString(hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(body))).ToLowerInvariant();
+            var sigNorm = signature.Replace("sha256=", "", StringComparison.OrdinalIgnoreCase).Trim();
+            if (CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(sigNorm.ToLowerInvariant()),
+                System.Text.Encoding.UTF8.GetBytes(hash)))
+            {
+                authorized = true;
+            }
+        }
+
+        if (!authorized)
+            return Results.Unauthorized();
+    }
+
+    if (tenantAccessor is HttpContextTenantAccessor httpTenant)
+    {
+        httpTenant.CurrentTenantId = trigger.TenantId;
+    }
+
+    var runId = await triggerHandler.Handle(
+        new TriggerFlowRunCommand(trigger.FlowId, RunTrigger.Webhook, null, trigger.TenantId, trigger.RegisteredBy), ct);
+
+    trigger.RecordFired(DateTimeOffset.UtcNow);
+    await repo.Save(trigger, ct);
+    await using var uow = uowFactory.Create();
+    await uow.Commit(ct);
+
+    return Results.Accepted($"{apiV1}/flows/{trigger.FlowId.Value}/runs/{runId.Value}", new { runId = runId.Value, status = "Triggered" });
+})
+.AllowAnonymous().WithTags("Webhooks");
+
 // ---- Audit: read-only, list-only (matches the backend's append-only, no-
 // query-until-now design). No dedicated AuditView permission exists in the
 // closed Permission enum — reusing ReportView as the closest honest fit
@@ -1013,6 +1123,19 @@ app.MapGet($"{apiV1}/flow-reports/{{flowId:guid}}/runs", async (Guid flowId, Cla
 // fetch FR-RT-02 requires on every reconnect) before trusting any
 // subsequently pushed event.
 app.MapHub<RunProgressHub>("/hubs/run-progress").RequireAuthorization();
+
+// ---- AI Capability Endpoints (Volume 3: Authoring & Maintenance Acceleration) ----
+app.MapPost($"{apiV1}/ai/assertions/generate", async (GenerateAssertionsRequest req, IAiAssistantService ai, CancellationToken ct) =>
+    Results.Ok(await ai.GenerateAssertionsAsync(req, ct)))
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+
+app.MapPost($"{apiV1}/ai/selectors/heal", async (HealSelectorRequest req, IAiAssistantService ai, CancellationToken ct) =>
+    Results.Ok(await ai.HealSelectorAsync(req, ct)))
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+
+app.MapPost($"{apiV1}/ai/flows/suggest", async (SuggestFlowRequest req, IAiAssistantService ai, CancellationToken ct) =>
+    Results.Ok(await ai.SuggestFlowAsync(req, ct)))
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
 
 app.MapGet("/", () => Results.Ok(new { service = "Yukti.Api", status = "running" }));
 

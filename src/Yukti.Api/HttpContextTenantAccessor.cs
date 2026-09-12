@@ -24,8 +24,17 @@ public sealed class HttpContextTenantAccessor : ITenantContextAccessor
     {
         get
         {
+            if (_httpContextAccessor.HttpContext?.Items.TryGetValue("TenantId", out var item) == true && item is TenantId tid)
+                return tid;
             var claim = _httpContextAccessor.HttpContext?.User.FindFirst("tenant")?.Value;
             return Guid.TryParse(claim, out var guid) ? new TenantId(guid) : null;
+        }
+        set
+        {
+            if (_httpContextAccessor.HttpContext != null)
+            {
+                _httpContextAccessor.HttpContext.Items["TenantId"] = value;
+            }
         }
     }
 }
