@@ -19,6 +19,10 @@ def analyse_ticket(ticket_id: str):
             "priority": "High"
         }
 
+    # Save ticket.json for Reviewer agent
+    with open("ticket.json", "w", encoding="utf-8") as f:
+        json.dump(ticket, f, indent=2)
+
     print("Running Analyst agent...")
     scenarios = run_analyst(ticket)
 

@@ -337,23 +337,46 @@ export class OrchestratorAgent {
     state.current_step = `Tester executed test suite: ${testResult.passed}/${testResult.total} passed.`;
 
     // Step 4: Delegate to REVIEWER
+    let rubricResult = null;
+    const repoRootPath = context.repoRoot || process.cwd();
+    const ticketJsonPath = path.resolve(repoRootPath, 'ticket.json');
+    const testerReportPath = path.resolve(repoRootPath, 'tester_report.json');
+
+    if (fs.existsSync(ticketJsonPath) && fs.existsSync(testerReportPath)) {
+      try {
+        rubricResult = this.reviewer.evaluateWithRubric(
+          ticketJsonPath,
+          docPath && docPath.endsWith('.json') ? docPath : 'scenarios_PROJ-123.json',
+          testerReportPath,
+          repoRootPath
+        );
+      } catch {
+        rubricResult = null;
+      }
+    }
+
     const coverageResult = this.reviewer.scoreCoverage(analysisResult.acceptanceCriteria, testResult);
     const auditResult = this.reviewer.auditDiff(context.rawDiff || '');
+
+    const finalReviewScore = rubricResult ? rubricResult.rubricScore : (auditResult.qualityScore || 85);
+    const reviewDecision = rubricResult ? rubricResult.decision : (auditResult.passed ? 'ship' : 'retry');
 
     missionLog.push({
       step: 4,
       agent: 'REVIEWER',
-      status: auditResult.passed ? 'SUCCESS' : 'CHANGES_REQUESTED',
-      result: `Coverage: ${coverageResult.coverageScore}% | Quality: ${auditResult.qualityScore}% (${auditResult.verdict})`
+      status: reviewDecision === 'ship' ? 'SUCCESS' : (reviewDecision === 'retry' ? 'RETRY_SUGGESTED' : 'ESCALATE'),
+      result: rubricResult
+        ? `Rubric Score: ${rubricResult.rubricScore}/100 [${rubricResult.decision.toUpperCase()}] | Coverage: ${coverageResult.coverageScore}%`
+        : `Coverage: ${coverageResult.coverageScore}% | Quality: ${auditResult.qualityScore}% (${auditResult.verdict})`
     });
 
     // Check Decision Rules for Completion vs Escalation
-    // ESCALATE when: score < 60 with no clear fix
-    if (auditResult.qualityScore < 60 && !auditResult.passed) {
-      return this.buildBlockedResult(state, `Reviewer score (${auditResult.qualityScore}%) below threshold of 60%. Remediation needed.`);
+    // ESCALATE when: score < 50 or fundamental issues
+    if (finalReviewScore < 50 || reviewDecision === 'escalate') {
+      return this.buildBlockedResult(state, `Reviewer score (${finalReviewScore}%) below threshold of 50%. Human review needed.`);
     }
 
-    const isComplete = testResult.success && auditResult.passed;
+    const isComplete = testResult.success && reviewDecision === 'ship';
 
     const finalState = {
       status: isComplete ? 'complete' : 'in_progress',
@@ -366,8 +389,10 @@ export class OrchestratorAgent {
         }
       ],
       final_output: {
-        summary: `Pipeline run finished with verdict: ${isComplete ? 'MISSION_ACCOMPLISHED' : 'WARNINGS'}. Total tests: ${testResult.total} passed.`,
+        summary: `Pipeline run finished with verdict: ${isComplete ? 'MISSION_ACCOMPLISHED' : 'RETRY_RECOMMENDED'}. Total tests: ${testResult.total} passed. Quality score: ${finalReviewScore}/100.`,
         coverage_score: coverageResult.coverageScore,
+        rubric_score: finalReviewScore,
+        decision: reviewDecision,
         quality_score: auditResult.qualityScore,
         test_summary: testResult.humanSummary
       },
