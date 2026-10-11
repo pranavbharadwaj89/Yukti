@@ -21,6 +21,7 @@ COPY tests/Yukti.Orchestration.Tests/Yukti.Orchestration.Tests.csproj tests/Yukt
 COPY tools/Yukti.LoadTest/Yukti.LoadTest.csproj tools/Yukti.LoadTest/
 
 RUN dotnet restore src/Yukti.Api/Yukti.Api.csproj
+RUN dotnet restore src/Yukti.Worker/Yukti.Worker.csproj
 
 # Copy full source and publish
 COPY src/ src/
