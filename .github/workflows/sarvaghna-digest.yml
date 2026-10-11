@@ -34,7 +34,7 @@ jobs:
 
       - name: Email SARVAGHNA digest report
         env:
-          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ID }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
         run: python sarvaghna/reporting/send_email.py /tmp/sarvaghna-digest.json
