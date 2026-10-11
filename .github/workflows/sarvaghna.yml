@@ -52,3 +52,21 @@ jobs:
 
       - name: Run Backend Test Suite
         run: dotnet test --no-build --configuration Release --verbosity normal
+
+      - name: Setup Python
+        if: always()
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate SARVAGHNA update report
+        if: always()
+        run: node sarvaghna/reporting/generate_report.mjs update > /tmp/sarvaghna-report.json
+
+      - name: Email SARVAGHNA update report
+        if: always()
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
+        run: python sarvaghna/reporting/send_email.py /tmp/sarvaghna-report.json
