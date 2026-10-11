@@ -11,12 +11,12 @@ Every task follows INSPECT first: done → add proof test · partial → complet
 ## Day 0 — Sun 11 Oct (tonight, owner)
 - [x] D0-T1 Pause the 6-hourly cloud routine that pushes to `main`
 - [ ] D0-T2 Commit SUTRADHAR.md (root, also as CLAUDE.md) and plan/PLAN.md on a branch `chore/sutradhar-plan`; merge it
-- [ ] D0-T3 Enable branch protection on `main` (PR required)
+- [ ] D0-T3 Enable branch protection on `main` (PR required) — **BLOCKED:** the owner's PAT lacks `Administration` permission on the repo (confirmed via a real API attempt: `403 Resource not accessible by personal access token`). Needs either a token with that scope added, or the owner doing it manually: repo → Settings → Branches → Add rule → `main` → "Require a pull request before merging".
 
 ## Day 1 — Mon 12 Oct · Audit, stabilize, gap matrix
-- [ ] D1-T1 Baseline: build and tests from a clean clone; record failures in STANDUP
-  ✔ `dotnet build -warnaserror` and `dotnet test` results recorded (pass OR listed failures)
-- [ ] D1-T2 Make the baseline green (fix broken build/tests only; no features)
+- [x] D1-T1 Baseline: build and tests from a clean clone; record failures in STANDUP
+  ✔ `dotnet build -warnaserror` and `dotnet test` results recorded (pass OR listed failures) — recorded: strict build FAILED (5× CA1416, DesktopUiModule), plain build/tests/frontend build all green
+- [x] D1-T2 Make the baseline green (fix broken build/tests only; no features)
   ✔ `dotnet build -warnaserror && dotnet test` → all green; `npm run build` green
 - [ ] D1-T3 `plan/GAP-MATRIX.md`: for each acceptance item P0-1…P0-8 + the frozen features (Vault, RLS, RBAC, audit, marketplace UI): status Exists / Partial / Missing, evidence (file paths, tests), and naming differences vs the blueprint vocabulary
   ✔ file exists; every row has evidence; owner approves
