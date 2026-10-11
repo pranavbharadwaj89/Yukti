@@ -1,0 +1,20 @@
+# Host-built artifacts — never copy these into the image. The CI job runs
+# `dotnet build`/`dotnet test` directly on the runner *before* `docker build .`
+# executes, so by the time Docker reads this context, every src/*/obj and
+# src/*/bin already exists on disk. Without this exclusion, `COPY src/ src/`
+# drags those host-platform build outputs into the image, where they conflict
+# with the fresh `dotnet restore`/`publish` the Dockerfile itself performs.
+**/bin/
+**/obj/
+
+.git/
+.github/
+
+apps/
+docs/
+tools/tracker/
+sarvaghna/
+
+**/node_modules/
+**/__pycache__/
+*.pyc
