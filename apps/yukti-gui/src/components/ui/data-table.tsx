@@ -116,6 +116,7 @@ export function DataTable<T>({
               {selectable && onSelectedChange && (
                 <th className="w-12 px-4 py-3 text-center">
                   <Checkbox
+                    ariaLabel="Select all rows on this page"
                     checked={!!allSelected}
                     onChange={(checked) => {
                       const next = new Set(selected);
@@ -177,7 +178,7 @@ export function DataTable<T>({
                     )}
                     {selectable && onSelectedChange && (
                       <td className="px-4 py-3 text-center">
-                        <Checkbox checked={!!isSelected} onChange={() => toggleRowSelected(id)} />
+                        <Checkbox ariaLabel="Select row" checked={!!isSelected} onChange={() => toggleRowSelected(id)} />
                       </td>
                     )}
                     {columns.map((col) => (

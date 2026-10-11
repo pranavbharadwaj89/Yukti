@@ -47,13 +47,20 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg text-ink">
-      <nav className="flex w-56 flex-shrink-0 flex-col border-r border-border bg-surface">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-ink"
+      >
+        Skip to main content
+      </a>
+      <nav aria-label="Primary" className="flex w-56 flex-shrink-0 flex-col border-r border-border bg-surface">
         <div className="px-4 py-4 font-mono text-sm font-semibold tracking-wide text-accent">YUKTI</div>
         <ul className="flex flex-col gap-0.5 px-2">
           {NAV_ITEMS.map((item) => (
             <li key={item.to}>
               <Link
                 to={item.to}
+                aria-current={pathname === item.to ? "page" : undefined}
                 className={`block rounded-md px-3 py-2 text-sm ${
                   pathname === item.to ? "bg-accent-soft text-accent" : "text-ink-dim hover:bg-surface-2 hover:text-ink"
                 }`}
@@ -78,6 +85,7 @@ export function AppShell() {
                   <li key={item.to}>
                     <Link
                       to={item.to}
+                      aria-current={pathname === item.to ? "page" : undefined}
                       className={`block rounded-md px-3 py-2 text-sm ${
                         pathname === item.to ? "bg-accent-soft text-accent" : "text-ink-dim hover:bg-surface-2 hover:text-ink"
                       }`}
@@ -120,6 +128,7 @@ export function AppShell() {
               <option value="high-contrast">High contrast</option>
             </select>
             <button
+              type="button"
               className="text-xs text-ink-dim hover:text-ink"
               onClick={() => {
                 clearSession();
@@ -131,7 +140,7 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-6">
+        <main id="main-content" tabIndex={-1} className="outline-none flex-1 overflow-auto p-6">
           <Outlet />
         </main>
       </div>

@@ -37,7 +37,7 @@ keeps it current automatically on every commit.
 
 | Area | Item | Status |
 |---|---|---|
-| Frontend | Full WCAG audit (contrast, screen reader pass) | planned — ongoing accessibility pass for all components |
+| Frontend | Full WCAG audit (contrast, screen reader pass) | partial — automated WCAG 2.1 AA done (token contrast tests in all themes, axe-core on app shell + 4 pages, skip link, labelled controls); still open: axe coverage for remaining pages (flows, projects, logs studio, marketplace, workflow canvas) and a manual screen-reader pass (NVDA/VoiceOver) |
 | Infra | Real secrets manager (Vault) | planned — InMemoryCredentialResolver is explicitly a demo-grade stand-in; ICredentialResolver is the real interface a Vault client swaps in against, zero other changes needed |
 
 

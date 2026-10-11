@@ -45,7 +45,7 @@ export function KeyValueEditor({
     <div className="flex flex-col gap-2">
       {rows.map((row) => (
         <div key={row.id} className="flex items-center gap-2">
-          <Checkbox checked={row.enabled} onChange={(enabled) => updateRow(row.id, { enabled })} />
+          <Checkbox ariaLabel="Enabled" checked={row.enabled} onChange={(enabled) => updateRow(row.id, { enabled })} />
           <Input
             className="flex-1"
             placeholder={keyPlaceholder}

@@ -10,12 +10,15 @@ export function Checkbox({
   onChange,
   disabled,
   label,
+  ariaLabel,
 }: {
   checked: boolean;
   indeterminate?: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   label?: ReactNode;
+  /** Accessible name when no visible `label` is rendered. */
+  ariaLabel?: string;
 }) {
   const id = useId();
   return (
@@ -23,6 +26,7 @@ export function Checkbox({
       <input
         id={id}
         type="checkbox"
+        aria-label={label ? undefined : ariaLabel}
         checked={checked}
         disabled={disabled}
         ref={(el) => {
@@ -50,12 +54,14 @@ export function Radio({
   disabled,
   label,
   name,
+  ariaLabel,
 }: {
   checked: boolean;
   onChange: () => void;
   disabled?: boolean;
   label?: ReactNode;
   name?: string;
+  ariaLabel?: string;
 }) {
   const id = useId();
   return (
@@ -63,6 +69,7 @@ export function Radio({
       <input
         id={id}
         type="radio"
+        aria-label={label ? undefined : ariaLabel}
         name={name}
         checked={checked}
         disabled={disabled}
@@ -94,6 +101,7 @@ export function Select<T extends string = string>({
   onChange,
   placeholder = "Select…",
   disabled,
+  ariaLabel,
 }: {
   id?: string;
   value: T | "";
@@ -101,6 +109,7 @@ export function Select<T extends string = string>({
   onChange: (value: T) => void;
   placeholder?: string;
   disabled?: boolean;
+  ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
@@ -200,6 +209,7 @@ export function Select<T extends string = string>({
         onClick={() => (open ? setOpen(false) : openList(selectedIndex))}
         onKeyDown={onButtonKeyDown}
         aria-haspopup="listbox"
+        aria-label={ariaLabel}
         aria-expanded={open}
         className="flex h-9 w-full items-center justify-between rounded-md border border-border bg-surface px-3 text-body text-ink disabled:cursor-not-allowed disabled:opacity-60"
       >

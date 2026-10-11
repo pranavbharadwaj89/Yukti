@@ -1,3 +1,4 @@
+import { wcagViolations } from "@/a11y/axe";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -106,5 +107,13 @@ describe("ReportsPage", () => {
     expect(await screen.findByText("TriggerFlowRunCommand")).toBeInTheDocument();
     expect(auditApi.getById).toHaveBeenCalledWith("a-1");
     expect(auditApi.getById).toHaveBeenCalledWith("a-2");
+  });
+
+  it("has no WCAG 2.1 A/AA axe violations", async () => {
+    vi.mocked(trendsApi.get).mockResolvedValue(trend);
+    vi.mocked(flowReportsApi.list).mockResolvedValue([flowReport]);
+    const { container } = renderPage();
+    await screen.findByText("Checkout smoke test");
+    expect(await wcagViolations(container)).toEqual([]);
   });
 });

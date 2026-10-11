@@ -1,3 +1,4 @@
+import { wcagViolations } from "@/a11y/axe";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -79,5 +80,13 @@ describe("SchedulerPage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Webhook trigger created" });
     expect(within(dialog).getByText("abc123deadbeef")).toBeInTheDocument();
+  });
+
+  it("has no WCAG 2.1 A/AA axe violations", async () => {
+    vi.mocked(triggersApi.list).mockResolvedValue([webhookTrigger]);
+    vi.mocked(flowsApi.list).mockResolvedValue(flows);
+    const { container } = renderPage();
+    await screen.findByText("abc123deadbeef");
+    expect(await wcagViolations(container)).toEqual([]);
   });
 });

@@ -67,9 +67,10 @@ export function ParamFields({
             {p.description && <span className="ml-2 text-caption text-ink-dim/70">{p.description}</span>}
           </label>
           {p.type === "Boolean" ? (
-            <Checkbox checked={values[p.name] === true} onChange={(checked) => setField(p.name, checked)} />
+            <Checkbox ariaLabel={p.name} checked={values[p.name] === true} onChange={(checked) => setField(p.name, checked)} />
           ) : p.type === "Object" || p.type === "Array" ? (
             <Textarea
+              aria-label={p.name}
               rows={3}
               placeholder={p.type === "Array" ? "[...]" : "{...}"}
               value={(values[p.name] as string) ?? ""}
@@ -77,6 +78,7 @@ export function ParamFields({
             />
           ) : (
             <Input
+              aria-label={p.name}
               type={p.type === "Number" ? "number" : "text"}
               value={(values[p.name] as string) ?? ""}
               onChange={(e) => setField(p.name, e.target.value)}

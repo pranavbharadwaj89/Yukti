@@ -200,7 +200,7 @@ export function RequestDesigner({
 
       <div className="flex items-center gap-2">
         <div className="w-32">
-          <Select value={method} options={METHODS} onChange={setMethod} />
+          <Select ariaLabel="HTTP method" value={method} options={METHODS} onChange={setMethod} />
         </div>
         <Input
           className="flex-1"

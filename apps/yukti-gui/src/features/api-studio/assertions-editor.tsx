@@ -123,7 +123,7 @@ export function AssertionsEditor({ drafts, onChange }: { drafts: AssertionDraft[
         <div key={d.id} className="flex flex-col gap-2 rounded-md border border-border p-3">
           <div className="flex items-center gap-2">
             <div className="w-48">
-              <Select value={d.type} options={ASSERTION_TYPES} onChange={(type) => updateDraft(d.id, { type: type as AssertionType })} />
+              <Select ariaLabel="Assertion type" value={d.type} options={ASSERTION_TYPES} onChange={(type) => updateDraft(d.id, { type: type as AssertionType })} />
             </div>
             <button
               type="button"
