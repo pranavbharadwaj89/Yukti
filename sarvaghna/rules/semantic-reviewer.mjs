@@ -17,7 +17,7 @@ export async function runSemanticReview(diffFiles, fullDiffText, config) {
     };
   }
 
-  const model = config.rules.aiReview?.model || 'gemini-2.5-flash';
+  const model = config.rules.aiReview?.model || 'gemini-3.8-flash';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   // Read active goals from GOALS.md dynamically
