@@ -38,6 +38,7 @@ using Yukti.Orchestration;
 using Microsoft.OpenApi.Models;
 using Yukti.Application.Ai;
 using Yukti.Infrastructure.Ai;
+using Yukti.Infrastructure.Secrets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -245,10 +246,23 @@ builder.Services.AddSignalR(options => options.EnableDetailedErrors = builder.En
 builder.Services.AddSingleton<InMemoryDomainEventDispatcher>();
 builder.Services.AddSingleton<IDomainEventDispatcher>(sp => sp.GetRequiredService<InMemoryDomainEventDispatcher>());
 
-// Credential resolution has no persistence need yet (Vault-backed
-// resolution is Volume 1 Part III §18.4/Volume 4's follow-up) — still the
-// in-memory stand-in.
-builder.Services.AddSingleton<ICredentialResolver, InMemoryCredentialResolver>();
+// Volume 1 Part III §18.4 / Volume 4 Part IV §14-15: real Vault-backed
+// credential resolution when configured (Vault:Address + Vault:Token, or
+// the VAULT_ADDR/VAULT_TOKEN env vars Vault's own CLI already uses) —
+// falling back to the in-memory stand-in only when no Vault connection is
+// configured at all, mirroring the exact "real capability when configured,
+// deterministic fallback otherwise, never a hard requirement to run"
+// pattern already established for the AI module's OpenAiAssistantService.
+var vaultConfigured =
+    !string.IsNullOrEmpty(builder.Configuration["Vault:Token"] ?? Environment.GetEnvironmentVariable("VAULT_TOKEN"));
+if (vaultConfigured)
+{
+    builder.Services.AddSingleton<ICredentialResolver, VaultCredentialResolver>();
+}
+else
+{
+    builder.Services.AddSingleton<ICredentialResolver, InMemoryCredentialResolver>();
+}
 
 // FR-OPS-01: the Scheduler (FR-SCHED), outbox relay (FR-EVT-01), and trend
 // batch job (FR-CQRS-03) now run in the separate Yukti.Worker deployable —

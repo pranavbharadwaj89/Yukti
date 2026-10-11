@@ -1,11 +1,17 @@
 # Yukti — Progress Summary
 
-Overall: **42 / 43 tracked items done (97.7%)** (Backend 12/12 100%, Frontend 16/17 94%, Infra 9/9 100%, AI 5/5 100%).
+Overall: **43 / 44 tracked items done (97.7%)** (Backend 12/12 100%, Frontend 16/17 94%, Infra 10/10 100%, AI 5/5 100%).
 Live, auto-detected breakdown: [docs/TRACKER.html](TRACKER.html) — regenerate with
 `node tools/tracker/generate-tracker.mjs` from the repo root; a local pre-commit hook
 keeps it current automatically on every commit.
 
 ## What shipped in this working session
+
+### 0. Real Vault-backed secrets manager (`src/Yukti.Infrastructure/Secrets/VaultCredentialResolver.cs`)
+- `ICredentialResolver` now has a genuine HashiCorp Vault KV v2 implementation — reads a single named credential reference per call (never a listing/enumeration), preserving the same least-privilege scoping `ExecutionContext`'s doc comment already specified.
+- `InMemoryCredentialResolver` remains as the local/offline fallback — `Program.cs` picks Vault automatically when `Vault:Token` (or `VAULT_TOKEN`) is configured, in-memory otherwise. No code anywhere else changed, exactly as the original interface's design promised.
+- Verified against a real, live local Vault dev server (not mocked): write a secret, resolve it back byte-for-byte; a missing reference resolves to `null` without throwing; an unreachable/unconfigured Vault also resolves to `null` without throwing (`VaultCredentialResolverTests.cs`, 4/4 passing). Full solution build + full test suite (71/71) still green after the change.
+- Configuration: `Vault:Address` (default `http://127.0.0.1:8200`), `Vault:Token`, `Vault:MountPath` (default `secret`), `Vault:BasePath` (default `yukti/credentials`) — or the standard `VAULT_ADDR`/`VAULT_TOKEN` env vars Vault's own CLI already uses.
 
 ### 1. SARVAGHNA 5-Agent Specialist Crew (`sarvaghna/agents/`)
 - **Orchestrator** (`#9B8FE0`): The boss — decomposes high-level goals, routes subtasks, manages execution pipelines.
@@ -38,7 +44,6 @@ keeps it current automatically on every commit.
 | Area | Item | Status |
 |---|---|---|
 | Frontend | Full WCAG audit (contrast, screen reader pass) | partial — automated WCAG 2.1 AA done (token contrast tests in all themes, axe-core on app shell + 4 pages, skip link, labelled controls); still open: axe coverage for remaining pages (flows, projects, logs studio, marketplace, workflow canvas) and a manual screen-reader pass (NVDA/VoiceOver) |
-| Infra | Real secrets manager (Vault) | planned — InMemoryCredentialResolver is explicitly a demo-grade stand-in; ICredentialResolver is the real interface a Vault client swaps in against, zero other changes needed |
 
 
 ## Getting this running on another machine
