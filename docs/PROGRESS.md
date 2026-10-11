@@ -43,7 +43,7 @@ keeps it current automatically on every commit.
 
 | Area | Item | Status |
 |---|---|---|
-| Frontend | Full WCAG audit (contrast, screen reader pass) | partial — automated WCAG 2.1 AA done (token contrast tests in all themes, axe-core on app shell + 4 pages, skip link, labelled controls); still open: axe coverage for remaining pages (flows, projects, logs studio, marketplace, workflow canvas) and a manual screen-reader pass (NVDA/VoiceOver) |
+| Frontend | Full WCAG audit (contrast, screen reader pass) | partial — every automatable check now done: token contrast tests in all themes, axe-core across all 9 pages (app shell, audit, scheduler, reports, api-studio, flows, flow detail/workflow canvas, projects, logs studio, marketplace), skip link, labelled controls, 0 axe violations anywhere. Only remaining item is a **manual** screen-reader pass (NVDA/VoiceOver) — this genuinely needs a human operating a screen reader, not something automatable |
 
 
 ## Getting this running on another machine
