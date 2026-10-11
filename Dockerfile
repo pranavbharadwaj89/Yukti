@@ -20,8 +20,13 @@ COPY tests/Yukti.Infrastructure.Tests/Yukti.Infrastructure.Tests.csproj tests/Yu
 COPY tests/Yukti.Orchestration.Tests/Yukti.Orchestration.Tests.csproj tests/Yukti.Orchestration.Tests/
 COPY tools/Yukti.LoadTest/Yukti.LoadTest.csproj tools/Yukti.LoadTest/
 
-RUN dotnet restore src/Yukti.Api/Yukti.Api.csproj
-RUN dotnet restore src/Yukti.Worker/Yukti.Worker.csproj
+# Restore the whole solution, not individual projects one at a time.
+# Yukti.Analyzers is consumed as a Roslyn analyzer reference (not a normal
+# ProjectReference), so a per-project `dotnet restore <csproj>` doesn't
+# reliably generate its own project.assets.json — and Yukti.Api's publish
+# needs that file to exist regardless. Solution-level restore covers every
+# project in one pass and removes this whole class of "forgot project X" bug.
+RUN dotnet restore Yukti.sln
 
 # Copy full source and publish
 COPY src/ src/
