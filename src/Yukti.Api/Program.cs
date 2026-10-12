@@ -695,6 +695,11 @@ flows.MapPost("/{flowId:guid}/publish", async (Guid flowId, HttpContext context,
     try
     {
         var result = await handler.Handle(new PublishFlowCommand(new FlowId(flowId), principal.GetUserId()), ct);
+        if (!result.Succeeded)
+        {
+            var errorResponses = result.Errors.Select(PublishErrorResponse.From).ToList();
+            return ProblemResults.UnprocessableEntity(context, "Flow failed publish validation.", errorResponses);
+        }
         return Results.Ok(PublishResponse.From(result));
     }
     catch (InvalidOperationException)

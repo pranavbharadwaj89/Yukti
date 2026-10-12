@@ -120,20 +120,30 @@ public sealed class ApiModule : IAutomationModule
                 .Select(a =>
                 {
                     var (passed, error) = AssertionEvaluator.Evaluate(a, assertionContext);
-                    return new { description = Describe(a), passed, error };
+                    return new Dictionary<string, object?> { ["description"] = Describe(a), ["passed"] = passed, ["error"] = error };
                 })
                 .ToList();
 
-            var data = new
+            // A Dictionary<string, object?>, not an anonymous object —
+            // VariableStore/ResolvePath only ever walks through
+            // IReadOnlyDictionary<string, object?> (same reason
+            // JsonPathEvaluator.ToPlainValue already converts the parsed
+            // body this way, below). An anonymous type here meant
+            // {{vars.<step>.body.id}}-style chaining silently failed to
+            // resolve past the first hop for every API step in the whole
+            // system, not something specific to one flow — found while
+            // building D2-T6's own demo chain, fixed at the source rather
+            // than worked around in the flow file.
+            var data = new Dictionary<string, object?>
             {
-                status = statusCode,
-                headers = responseHeaders,
-                body = bodyForOutput,
-                durationMs,
-                assertionResults,
+                ["status"] = statusCode,
+                ["headers"] = responseHeaders,
+                ["body"] = bodyForOutput,
+                ["durationMs"] = durationMs,
+                ["assertionResults"] = assertionResults,
             };
 
-            var failures = assertionResults.Where(r => !r.passed).Select(r => r.error).ToList();
+            var failures = assertionResults.Where(r => r["passed"] is false).Select(r => r["error"] as string).ToList();
             if (failures.Count > 0)
                 return StepOutcome.Failed(string.Join("; ", failures), data);
 

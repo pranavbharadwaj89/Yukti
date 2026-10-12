@@ -15,9 +15,11 @@ COPY src/Yukti.Analyzers/Yukti.Analyzers.csproj src/Yukti.Analyzers/
 COPY src/Yukti.Api/Yukti.Api.csproj src/Yukti.Api/
 COPY src/Yukti.Worker/Yukti.Worker.csproj src/Yukti.Worker/
 COPY src/Yukti.Host/Yukti.Host.csproj src/Yukti.Host/
+COPY src/Yukti.Cli/Yukti.Cli.csproj src/Yukti.Cli/
 COPY tests/Yukti.Analyzers.Tests/Yukti.Analyzers.Tests.csproj tests/Yukti.Analyzers.Tests/
 COPY tests/Yukti.Infrastructure.Tests/Yukti.Infrastructure.Tests.csproj tests/Yukti.Infrastructure.Tests/
 COPY tests/Yukti.Orchestration.Tests/Yukti.Orchestration.Tests.csproj tests/Yukti.Orchestration.Tests/
+COPY tests/Yukti.Cli.Tests/Yukti.Cli.Tests.csproj tests/Yukti.Cli.Tests/
 COPY tools/Yukti.LoadTest/Yukti.LoadTest.csproj tools/Yukti.LoadTest/
 
 # Restore the whole solution, not individual projects one at a time.

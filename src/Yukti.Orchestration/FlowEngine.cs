@@ -182,7 +182,7 @@ public sealed class FlowEngine
 
                 var result = new StepResult(
                     step.Id, step.Name, step.Module, step.Action,
-                    retryOutcome.FinalOutcome.Status, TimeSpan.Zero,
+                    retryOutcome.FinalOutcome.Status, dispatchStopwatch.Elapsed,
                     retryOutcome.FinalOutcome.Message, retryOutcome.FinalOutcome.Error, retryOutcome.FinalOutcome.Data,
                     retryOutcome.FinalOutcome.AiAttribution, retryOutcome.Attempts);
 

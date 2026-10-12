@@ -1,0 +1,47 @@
+{
+  "name": "API chain demo",
+  "description": "POST creates a resource, GET fetches it back via the chained id, asserts a field. Run with --var baseUrl=<your stub or test server>.",
+  "declaredVariables": ["baseUrl"],
+  "steps": [
+    {
+      "name": "Create resource",
+      "module": "api",
+      "action": "request",
+      "params": {
+        "url": "{{vars.baseUrl}}/items",
+        "method": "POST",
+        "body": { "name": "widget" },
+        "assert": [
+          { "type": "status", "expectedStatus": 201 }
+        ]
+      },
+      "saveAs": "created"
+    },
+    {
+      "name": "Fetch created resource",
+      "module": "api",
+      "action": "request",
+      "params": {
+        "url": "{{vars.baseUrl}}/items/{{vars.created.body.id}}",
+        "method": "GET",
+        "assert": [
+          { "type": "status", "expectedStatus": 200 },
+          { "type": "pathEquals", "path": "name", "equals": "widget" }
+        ]
+      }
+    },
+    {
+      "name": "List items includes it",
+      "module": "api",
+      "action": "request",
+      "params": {
+        "url": "{{vars.baseUrl}}/items",
+        "method": "GET",
+        "assert": [
+          { "type": "status", "expectedStatus": 200 },
+          { "type": "pathExists", "path": "[0].id" }
+        ]
+      }
+    }
+  ]
+}

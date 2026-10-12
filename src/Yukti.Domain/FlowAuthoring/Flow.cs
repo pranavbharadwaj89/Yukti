@@ -3,10 +3,19 @@ using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Domain.FlowAuthoring;
 
-public sealed record FlowPublishResult(bool Succeeded, IReadOnlyList<string> Errors)
+/// <summary>
+/// Field follows the plan's own convention: "steps[i].action" or
+/// "steps[i].params.&lt;name&gt;" (matching the step's position in
+/// publish-order, not its Order value verbatim if those ever diverge) —
+/// precise enough for a client to point the user straight at the bad step
+/// without re-deriving which one it was from Message alone.
+/// </summary>
+public sealed record FlowPublishError(string Field, string Code, string Message);
+
+public sealed record FlowPublishResult(bool Succeeded, IReadOnlyList<FlowPublishError> Errors)
 {
-    public static FlowPublishResult Success() => new(true, Array.Empty<string>());
-    public static FlowPublishResult Failure(IEnumerable<string> errors) => new(false, errors.ToList());
+    public static FlowPublishResult Success() => new(true, Array.Empty<FlowPublishError>());
+    public static FlowPublishResult Failure(IEnumerable<FlowPublishError> errors) => new(false, errors.ToList());
 }
 
 /// <summary>
@@ -29,6 +38,7 @@ public sealed class Flow : AggregateRoot<FlowId>
     public string Name { get; private set; }
     public string? Description { get; private set; }
     public FlowStatus Status { get; private set; }
+    public DateTimeOffset? PublishedAt { get; private set; }
     public bool ContinueOnFailure { get; private set; }
     public TenantId TenantId { get; private set; }
     public UserId CreatedBy { get; private set; }
@@ -79,7 +89,27 @@ public sealed class Flow : AggregateRoot<FlowId>
         };
         foreach (var step in _steps)
             next._steps.Add(step);
+        foreach (var (name, value) in _declaredVariables)
+            next._declaredVariables[name] = value;
         return next;
+    }
+
+    /// <summary>
+    /// Declares that `name` will be supplied from outside the flow (a run's
+    /// variable overrides — D2-T6's `--var`/the API's equivalent trigger-time
+    /// field), so Publish treats it as an already-available binding instead
+    /// of flagging every step that references it as "undeclared." Existed
+    /// as a persisted property (DeclaredVariables) with no way to ever set
+    /// it until D2-T6 — found while building the CLI's own demo flow,
+    /// which needs exactly this to pass a base URL in at run time.
+    /// </summary>
+    public void DeclareVariable(string name, object? defaultValue = null)
+    {
+        if (Status != FlowStatus.Draft)
+            throw new DomainException("Cannot modify a non-draft Flow. Create a new version instead.");
+        if (string.IsNullOrWhiteSpace(name))
+            throw new DomainException("Declared variable name cannot be empty.");
+        _declaredVariables[name] = defaultValue;
     }
 
     public void AddStep(string name, ModulePlugin.ModuleKind module, string action,
@@ -107,28 +137,52 @@ public sealed class Flow : AggregateRoot<FlowId>
     /// reference is an expected, reportable outcome, not exceptional
     /// program state (Architecture Principle 20.4).
     /// </summary>
-    public FlowPublishResult Publish(IModuleActionResolver resolver)
+    public async Task<FlowPublishResult> Publish(IModuleActionResolver resolver, CancellationToken ct)
     {
         if (Status != FlowStatus.Draft)
-            return FlowPublishResult.Failure(new[] { $"Flow is already {Status}; only Draft flows can be published." });
-
-        var errors = new List<string>();
-        var availableBindings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var step in _steps.OrderBy(s => s.Order))
-        {
-            if (!resolver.ActionExists(step.Module, step.Action))
-                errors.Add($"Step '{step.Name}' references action '{step.Module}.{step.Action}' which is not registered.");
-
-            foreach (var referencedPath in step.GetReferencedVariablePaths())
+            return FlowPublishResult.Failure(new[]
             {
-                // Referenced paths look like "vars.orderInfo.id" — the bound name is the second segment.
+                new FlowPublishError("status", "not_draft", $"Flow is already {Status}; only Draft flows can be published.")
+            });
+
+        var errors = new List<FlowPublishError>();
+        // Declared (run-time-supplied) variables are available from the
+        // very first step — unlike a saveAs binding, they don't come from
+        // an earlier step's output, so there's no "too early" for them.
+        var availableBindings = new HashSet<string>(_declaredVariables.Keys, StringComparer.OrdinalIgnoreCase);
+        var orderedSteps = _steps.OrderBy(s => s.Order).ToList();
+
+        for (var i = 0; i < orderedSteps.Count; i++)
+        {
+            var step = orderedSteps[i];
+            var schema = await resolver.TryGetActionSchema(step.Module, step.Action, ct);
+
+            if (schema is null)
+            {
+                errors.Add(new FlowPublishError($"steps[{i}].action", "unresolved_module_action",
+                    $"Step '{step.Name}' references action '{step.Module}.{step.Action}' which is not registered."));
+            }
+            else
+            {
+                foreach (var param in schema.Parameters.Where(p => p.Required))
+                    if (!step.Params.ContainsKey(param.Name))
+                        errors.Add(new FlowPublishError($"steps[{i}].params.{param.Name}", "missing_required_param",
+                            $"Step '{step.Name}' is missing required parameter '{param.Name}' for action '{step.Module}.{step.Action}'."));
+            }
+
+            // A later step's saveAs is deliberately not yet in
+            // availableBindings here — "produced earlier" is the whole
+            // point of this check, so a forward reference is unresolved
+            // exactly like one that's never produced at all.
+            foreach (var (field, referencedPath) in step.GetReferencedVariableReferences())
+            {
                 var segments = referencedPath.Split('.');
                 if (segments.Length < 2 || segments[0] != "vars")
                     continue;
                 var boundName = segments[1];
                 if (!availableBindings.Contains(boundName))
-                    errors.Add($"Step '{step.Name}' references undeclared variable '{boundName}'.");
+                    errors.Add(new FlowPublishError($"steps[{i}].{field}", "unresolved_variable",
+                        $"Step '{step.Name}' references undeclared variable '{boundName}'."));
             }
 
             if (step.SaveAs is not null)
@@ -139,6 +193,7 @@ public sealed class Flow : AggregateRoot<FlowId>
             return FlowPublishResult.Failure(errors);
 
         Status = FlowStatus.Published;
+        PublishedAt = DateTimeOffset.UtcNow;
         RaiseDomainEvent(new FlowPublishedEvent(Id, FamilyId, Version, TenantId, CreatedBy, DateTimeOffset.UtcNow));
         return FlowPublishResult.Success();
     }

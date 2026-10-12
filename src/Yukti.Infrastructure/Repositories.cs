@@ -398,7 +398,9 @@ public sealed class EfModuleActionResolver : IModuleActionResolver
 
     public EfModuleActionResolver(IModuleRegistrationRepository registrations) => _registrations = registrations;
 
-    public bool ActionExists(ModuleKind module, string action) =>
-        _registrations.GetByKind(module, null, CancellationToken.None).GetAwaiter().GetResult()
-            ?.HasAction(action) ?? false;
+    public async Task<ActionSchema?> TryGetActionSchema(ModuleKind module, string action, CancellationToken ct)
+    {
+        var registration = await _registrations.GetByKind(module, null, ct);
+        return registration?.Actions.FirstOrDefault(a => a.ActionName == action && !a.IsDeprecated)?.Schema;
+    }
 }

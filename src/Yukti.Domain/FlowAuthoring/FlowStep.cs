@@ -52,17 +52,27 @@ public sealed class FlowStep : Entity<FlowStepId>
         WhenCondition = whenCondition;
     }
 
-    /// <summary>Every {{vars.x.y}} reference across every param value, for publish-time validation.</summary>
-    public IEnumerable<string> GetReferencedVariablePaths()
+    /// <summary>
+    /// Every {{vars.x.y}} reference across every param value plus the when
+    /// condition, each paired with the field it came from — "params.name"
+    /// or "when" — so Flow.Publish can report a structured
+    /// steps[i].params.&lt;name&gt; error instead of just naming the step
+    /// (D2-T5). Only scans top-level string param values, matching this
+    /// method's pre-existing scope — a template nested inside an
+    /// object/array param isn't caught here (nor was it before); that's a
+    /// pre-existing gap in publish-time validation, not something D2-T5's
+    /// error-shape change introduces or fixes.
+    /// </summary>
+    public IEnumerable<(string Field, string Path)> GetReferencedVariableReferences()
     {
-        foreach (var value in Params.Values)
+        foreach (var (name, value) in Params)
         {
             if (value is string s && VariableExpression.TryParse(s, out var expr))
                 foreach (var path in expr!.ReferencedPaths)
-                    yield return path;
+                    yield return ($"params.{name}", path);
         }
         if (WhenCondition is not null && VariableExpression.TryParse(WhenCondition, out var whenExpr))
             foreach (var path in whenExpr!.ReferencedPaths)
-                yield return path;
+                yield return ("when", path);
     }
 }

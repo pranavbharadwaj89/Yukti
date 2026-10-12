@@ -23,6 +23,18 @@ public static class ProblemResults
     public static IResult Forbidden(HttpContext context, string detail) =>
         Build(context, StatusCodes.Status403Forbidden, "Forbidden", detail);
 
+    /// <summary>D2-T5: a failed flow publish is exactly the "validation
+    /// failed" case RFC 7807 §3.1 means a client to parse programmatically —
+    /// the structured errors[] array, not just a human-readable detail
+    /// string, is the point.</summary>
+    public static IResult UnprocessableEntity(HttpContext context, string detail, IReadOnlyList<PublishErrorResponse> errors)
+    {
+        var problem = new ProblemDetails { Status = StatusCodes.Status422UnprocessableEntity, Title = "Unprocessable Entity", Detail = detail };
+        problem.Extensions["correlationId"] = context.TraceIdentifier;
+        problem.Extensions["errors"] = errors;
+        return Results.Json(problem, statusCode: StatusCodes.Status422UnprocessableEntity, contentType: "application/problem+json");
+    }
+
     private static IResult Build(HttpContext context, int status, string title, string detail)
     {
         var problem = new ProblemDetails { Status = status, Title = title, Detail = detail };
