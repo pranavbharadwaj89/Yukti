@@ -21,7 +21,19 @@ public static class CliProcess
         if (dir is null)
             throw new InvalidOperationException("Could not locate repo root (Yukti.sln) from " + AppContext.BaseDirectory);
 
-        var dll = Path.Combine(dir, "src", "Yukti.Cli", "bin", "Debug", "net8.0", "Yukti.Cli.dll");
+        // This test assembly and Yukti.Cli are always built in the same
+        // configuration by the same `dotnet build`/`dotnet test` invocation
+        // — CI builds Release (ci.yml: `-c Release`), local dev defaults to
+        // Debug. Hardcoding either one here broke the other: this exact
+        // mismatch is what failed CI on the first real PR run (confirmed
+        // from the actual GitHub Actions log, not assumed) even though every
+        // local run was green. Deriving the configuration from this very
+        // assembly's own build removes the guess entirely.
+        // Assembly.Location is .../bin/<Configuration>/net8.0/Yukti.Cli.Tests.dll
+        var net8Dir = Path.GetDirectoryName(typeof(CliProcess).Assembly.Location);
+        var configuration = Path.GetFileName(Path.GetDirectoryName(net8Dir)) ?? "Debug";
+
+        var dll = Path.Combine(dir, "src", "Yukti.Cli", "bin", configuration, "net8.0", "Yukti.Cli.dll");
         if (!File.Exists(dll))
             throw new InvalidOperationException($"Yukti.Cli.dll not found at '{dll}' — build the solution before running these tests.");
         return dll;
