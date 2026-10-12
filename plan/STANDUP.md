@@ -102,3 +102,32 @@ Exit check:  on track
 Next:        D1-T5 — reconcile Days 2-6 against GAP-MATRIX.md (mark already-proven tasks
              `ALREADY DONE (evidence)`, add missing work under DISCOVERED), then start Day 2
              (module contract, variable interpolation, flow engine, CLI).
+
+## 2026-10-12 ~21:00 IST — Day 1 close-out (D1-T5)
+Done:        D1-T5 reconciliation complete, verified against real evidence (`dotnet test --list-tests`
+             + repo greps/globs for every Day 2-6 filter name), not just restated from Day-1 prose.
+             Ticked as ALREADY DONE (evidence): D3-T1 ApiModule (10/10 passing, no adaptation needed),
+             D6-T3 Vault (4/4 passing, no adaptation needed), D2-T4 Durability (filter adapted to
+             `GracefulShutdown`, re-confirmed 1/1 passing just now), D4-T3 RequestBuilder (filter
+             adapted to `api-studio-page`, re-confirmed 2/2 passing just now).
+Discovered:  Two Day-1 GAP-MATRIX claims were wrong and are now corrected in the file itself: (1)
+             claimed WebModule/LogsModule "each with dedicated passing tests" — false, zero dedicated
+             tests exist for either, confirmed by `dotnet test --list-tests` and a repo-wide glob for
+             `*WebModule*Test*.cs`/`*LogsModule*Test*.cs` (no files). (2) claimed SignalR live-run
+             "already built and tested" — false, the implementation is real
+             (services/signalr.ts, RunProgressHub.cs) but zero test files reference reconnect/signalr/
+             runprogress on either frontend or backend. Also found: D3-T4's named filter (`Report`)
+             technically matches one test but it's unrelated (idempotent event-consumer redelivery,
+             not a unified status model) — a false-positive match, flagged explicitly so it's never
+             mistaken for done. D4-T1's `generate:api`/`typecheck` npm scripts don't exist at all.
+             D5-T1's `IAiProvider` abstraction doesn't exist — only a concrete OpenAI integration
+             (`OpenAiAssistantService.cs`), no Anthropic anywhere. This is a vendor decision, not a
+             rename, so it was NOT decided unilaterally — flagged under GAP-MATRIX.md's DISCOVERED
+             section with 3 options for the owner, blocking Day 5 start (not Day 2-4, which don't
+             touch AI).
+Scope guards: none
+Exit check:  Day 1 fully closed — D1-T1 through D1-T5 all done, all evidence-based, 2 prior overclaims
+             caught and corrected rather than carried forward silently.
+Next:        Day 2 — D2-T1 (module registry + synthetic-module proof), the first unchecked task with
+             no upstream dependency. D2-T4 is already done (see above). AI vendor question (DISCOVERED
+             #1) needs an owner answer before Day 5, not blocking Day 2 start.
