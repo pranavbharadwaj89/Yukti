@@ -181,3 +181,36 @@ Scope guards: none — the fix is the minimal one the proof test demanded, not a
 Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 88/88 (was 77/77, +11 new).
 Next:        D2-T3 — flow engine semantics proof (retry/flaky with exact history-entry counts,
              fail-fast, ContinueOnFailure, when→Skipped), per the Day-2 spec's detailed acceptance list.
+
+Decided:     D2-T6 CLI packaging (the spec's own blocking open question) — owner wants **both** a .NET
+             tool (`dotnet tool install`) and a self-contained single-file exe built now, not deferring
+             the self-contained build to Day 6 as the spec itself recommended. Noted for when D2-T6
+             starts: `Yukti.Cli.csproj` needs `PackAsTool` + a separate publish profile
+             (`RuntimeIdentifier`, `PublishSingleFile`, `SelfContained`) producing both artifacts from
+             one project.
+
+Done:        D2-T3 (flow engine semantics, P0-3). Added
+             `tests/Yukti.Orchestration.Tests/FlowEngineSemanticsTests.cs` (7 tests) via a new
+             `ScriptedModule` (test-only, returns a scripted outcome sequence, tracks call count): all 4
+             retry/flaky criteria (2-fail-then-pass → Passed+flaky+2 history entries; 3-of-3 fail →
+             Failed+2 entries+not flaky; MaxAttempts:1 fail → Failed+0 history; first-try pass → not
+             flaky+empty history, including the flake-detected domain event firing exactly once/zero
+             times as appropriate) and all 4 fail-fast/ContinueOnFailure/when criteria (default stops
+             after step 2 of 4 with 2 results; ContinueOnFailure runs all 4 but still Failed overall;
+             a false `when` stays Skipped in its original position with Run never called; Passed+Skipped
+             mix with no failures is Passed).
+Discovered:  A real, more serious bug than D2-T2's: `RetryFlakeHandler.ExecuteWithRetry` was recording
+             the *final* attempt into `RetryHistory` regardless of whether it ultimately succeeded or
+             failed — only the success path skipped it (by returning before the `Add` line), the failure
+             path didn't. Caught by writing the two tests the spec explicitly asks for
+             (`MaxAttempts:1` failing once; `MaxAttempts:3` failing all three) — both would have reported
+             the wrong history count (1 instead of 0; 3 instead of 2) against a repo that had never had
+             a single test exercise a real retry before today (GAP-MATRIX, D1-T3: the one existing use of
+             `RetryPolicy` in a test used `MaxAttempts:1` for its own unrelated reason, so this path was
+             never reached). Fixed minimally: an attempt only joins `RetryHistory` if the loop is going
+             to retry past it; the attempt that actually produces the returned outcome (pass or fail)
+             never does, whether it's the first try or the last.
+Scope guards: none — minimal fix to the exact method the proof test targets, no redesign.
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 95/95 (was 88/88, +7 new).
+Next:        D2-T5 — publish validation + immutable versioning (P0-2). D2-T6 (CLI) after, now unblocked
+             on packaging (both .NET tool and self-contained exe, decided above).

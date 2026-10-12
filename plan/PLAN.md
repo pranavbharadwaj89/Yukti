@@ -49,8 +49,13 @@ Every task follows INSPECT first: done → add proof test · partial → complet
   `StepResult.Failed` that respects `ContinueOnFailure` like any other failure. Publish-time check that
   a referenced var was produced by an *earlier* step is D2-T5's job (`Publish validation`), not this one
   — this task proves the runtime resolution semantics only.
-- [ ] D2-T3 Flow engine: ordered steps, fail-fast, `ContinueOnFailure`, `when` → Skipped, retry policy, flaky classification with retry history
-  ✔ `dotnet test --filter "FullyQualifiedName~FlowEngine"`
+- [x] D2-T3 Flow engine: ordered steps, fail-fast, `ContinueOnFailure`, `when` → Skipped, retry policy, flaky classification with retry history
+  ✔ `dotnet test --filter "FullyQualifiedName~FlowEngine|FullyQualifiedName~RetryFlake"` → 7/7 passing
+  (`FlowEngineSemanticsTests.cs`, new). Real bug found + fixed in `RetryFlakeHandler`: the final attempt
+  — whether it succeeded or failed — was being added to `RetryHistory` alongside the genuine retries,
+  so `MaxAttempts:1` wrongly produced 1 history entry for a never-retried single try (spec wants 0), and
+  3-of-3 failures wrongly produced 3 entries instead of the 2 real retries (spec wants 2, final error on
+  the result itself). Fixed: only attempts that are followed by another attempt go into history.
 - [x] D2-T4 Per-step durable commit of StepResult; test kills execution after step 2 and finds steps 1–2 persisted
   ✔ ALREADY DONE (evidence), filter adapted per SUTRADHAR §2.8: `dotnet test --filter "FullyQualifiedName~GracefulShutdown"`
   → `GracefulShutdownTests.Step_in_flight_when_shutdown_is_requested_still_commits_its_result`, passing
