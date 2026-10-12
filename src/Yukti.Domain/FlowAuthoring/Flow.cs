@@ -89,7 +89,27 @@ public sealed class Flow : AggregateRoot<FlowId>
         };
         foreach (var step in _steps)
             next._steps.Add(step);
+        foreach (var (name, value) in _declaredVariables)
+            next._declaredVariables[name] = value;
         return next;
+    }
+
+    /// <summary>
+    /// Declares that `name` will be supplied from outside the flow (a run's
+    /// variable overrides — D2-T6's `--var`/the API's equivalent trigger-time
+    /// field), so Publish treats it as an already-available binding instead
+    /// of flagging every step that references it as "undeclared." Existed
+    /// as a persisted property (DeclaredVariables) with no way to ever set
+    /// it until D2-T6 — found while building the CLI's own demo flow,
+    /// which needs exactly this to pass a base URL in at run time.
+    /// </summary>
+    public void DeclareVariable(string name, object? defaultValue = null)
+    {
+        if (Status != FlowStatus.Draft)
+            throw new DomainException("Cannot modify a non-draft Flow. Create a new version instead.");
+        if (string.IsNullOrWhiteSpace(name))
+            throw new DomainException("Declared variable name cannot be empty.");
+        _declaredVariables[name] = defaultValue;
     }
 
     public void AddStep(string name, ModulePlugin.ModuleKind module, string action,
@@ -126,7 +146,10 @@ public sealed class Flow : AggregateRoot<FlowId>
             });
 
         var errors = new List<FlowPublishError>();
-        var availableBindings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Declared (run-time-supplied) variables are available from the
+        // very first step — unlike a saveAs binding, they don't come from
+        // an earlier step's output, so there's no "too early" for them.
+        var availableBindings = new HashSet<string>(_declaredVariables.Keys, StringComparer.OrdinalIgnoreCase);
         var orderedSteps = _steps.OrderBy(s => s.Order).ToList();
 
         for (var i = 0; i < orderedSteps.Count; i++)

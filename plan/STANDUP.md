@@ -256,3 +256,69 @@ Scope guards: none — every change is the minimal shape the task's own stated c
 Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 105/105 (was 95/95, +10 new).
 Next:        D2-T6 — the CLI. Packaging decided (both .NET tool + self-contained exe). Posting the CLI
              plan before writing any code, per the spec's own explicit checkpoint.
+
+Done:        D2-T6 (the CLI, P0-5) — **Day 2 is now fully closed, all 6 tasks done.** New project
+             `src/Yukti.Cli`: `System.CommandLine` 2.0.12 (ADR-0002, `plan/adr/0002-cli-system-
+             commandline.md`), packaged as both a .NET tool (`PackAsTool`) and a self-contained
+             single-file exe from one project (`RuntimeIdentifiers` + a `RuntimeIdentifier`-conditioned
+             property group) — owner's explicit call, both now rather than deferring the self-contained
+             build to Day 6. Verified both really work: `dotnet pack` produced installable nupkgs;
+             `dotnet publish -r win-x64` produced a real standalone `Yukti.Cli.exe` (161MB, bundled
+             runtime), smoke-tested directly with no system dotnet involved at all — ran the demo flow
+             correctly. `CliHost.cs` generalizes Yukti.Host's exact in-memory composition pattern (same
+             repos, same seeded admin user/role) from one fixed scenario into a reusable host.
+             `FlowLoader.cs` drives flow-file JSON through the identical `CreateFlowCommandHandler`/
+             `AddFlowStepCommandHandler`/`PublishFlowCommandHandler` the API uses — no parallel
+             validator. `ReportWriters.cs` builds JUnit XML (testsuite/testcase, skipped/failure/flaky
+             properties+system-out per the spec's exact mapping) and a JSON report shaped like the API's
+             FlowRunResponse/StepResultResponse (can't reference Yukti.Api itself — that would pull in
+             ASP.NET Core for a console tool). `tests/Yukti.Cli.Tests`: 8/8 process-level tests running
+             the actual built dll as a subprocess (never in-process), covering all 6 scenarios the spec
+             names plus secret redaction — pass (exit 0, 3 testcases via `demo/api_chain.json`), failing
+             assertion (exit 1), unregistered action (exit 2, step named on stderr), bad JSON (exit 2),
+             missing file (exit 2), flaky (exit 0, flaky property set — induced via a stub call-counter
+             and the engine's own real default retry policy, not a test-only module, since the CLI's
+             fixed process composition root has no way to register one), secret env var never appearing
+             in stdout/stderr/JUnit, and whole-run `--timeout` exceeded (exit 3). Day 2 exit check run
+             verbatim plus the one necessary addition (`--var baseUrl=<stub>` — the demo flow genuinely
+             needs a live server; no public API is safe to hardcode as a default without making the
+             check itself internet-dependent and flaky) → exit 0, valid XML, exactly 3 testcases, 0
+             failures.
+Discovered:  Building the demo flow's real 3-step chain surfaced three genuine, pre-existing bugs —
+             none specific to the CLI, all three silently broken on the API path too, just never
+             exercised by an actual end-to-end chained flow before today:
+             (1) **`ApiModule`'s `StepOutcome.Data` was an anonymous C# object**, not a
+             `Dictionary<string,object?>`. `VariableStore`/`ResolvePath` only ever walks
+             `IReadOnlyDictionary<string,object?>` — so `{{vars.<step>.body.field}}`-style chaining
+             silently failed to resolve past the first hop (`vars.<step>` itself) for every API step
+             anywhere in the system. The parsed response `body` itself was already correctly converted
+             (`JsonPathEvaluator.ToPlainValue`) — only the outer wrapper was wrong. Fixed:
+             `data`/`assertionResults` are now `Dictionary<string, object?>`.
+             (2) **`StepResult.Duration` was hardcoded to `TimeSpan.Zero`** in `FlowEngine.Execute`,
+             even though `dispatchStopwatch` was already measuring real elapsed time — just for
+             telemetry, never applied to the result itself. Every report's timing data (JUnit `time`,
+             JSON `durationMs`) was meaningless for every run that ever happened. One-line fix:
+             `dispatchStopwatch.Elapsed` instead of `TimeSpan.Zero`.
+             (3) **`Flow.DeclaredVariables` existed as a persisted domain property (with a real EF
+             column going back through migration history) with no method anywhere to ever set it**, and
+             `Flow.Publish` never checked it — so a flow had no way to declare "this variable is
+             supplied at trigger time" (the CLI's `--var`, or the API's existing
+             `TriggerFlowRunCommand.VariableOverrides` field) and have publish validation treat it as
+             available instead of flagging every step that references it as "undeclared variable." Added
+             `Flow.DeclareVariable(name, defaultValue)` (Draft-only, like `AddStep`), seeded into
+             `Publish`'s `availableBindings`, carried through `CreateNewVersion`, and exposed via the
+             flow file's `declaredVariables` field.
+             SARVAGHNA's pre-commit hook will be exercised again on this PR (carrying forward the async
+             fix discipline from D2-T5) — no new sync-over-async introduced here, confirmed by
+             inspection before committing, not by waiting for the hook to catch it.
+Scope guards: All three fixes above are minimal, targeted corrections to existing code the CLI's own
+             demo flow genuinely needed to work — not a FlowEngine/RetryFlakeHandler redesign (both
+             still explicitly protected), not scope creep. `Flow.DeclareVariable` is new surface, but
+             it's filling in a already-scaffolded, already-persisted property that had no way to be set
+             — completing an existing gap, not adding a new concept.
+Exit check:  **Day 2 fully closed.** `dotnet build -warnaserror` → 0/0. `dotnet test` → 113/113 (was
+             105/105, +8 new — Yukti.Cli.Tests). Day 2's own exit check command passes exactly as
+             specified (plus the one noted, necessary `--var` addition).
+Next:        Day 3 — API/Web/Logs module proofs + the UC-1 cross-module flow (P0-4). D3-T1 (API module)
+             already ALREADY DONE per D1-T5's reconciliation; start at D3-T2 (Web module, currently zero
+             dedicated tests despite the real Playwright implementation).

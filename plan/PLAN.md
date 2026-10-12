@@ -66,8 +66,26 @@ Every task follows INSPECT first: done → add proof test · partial → complet
   errors (was a plain `string` list), the `missing_required_param` check (didn't exist), `PublishedAt`
   timestamp (didn't exist), and the API publish endpoint actually returning 422 (it unconditionally
   returned 200 OK before, even on a failed publish — confirmed via source read, not assumed).
-- [ ] D2-T6 CLI (`yukti run <flow.json> --junit out.xml`), exit 0/1, runs without the API server
-  ✔ `dotnet run --project <Cli> -- run demo/api_chain.json --junit out.xml` → exit 0, valid XML
+- [x] D2-T6 CLI (`yukti run <flow.json> --junit out.xml`), exit 0/1, runs without the API server
+  ✔ `dotnet run --project src/Yukti.Cli -- run demo/api_chain.json --var baseUrl=<stub> --junit out.xml`
+  → exit 0, valid XML, 3 testcases, 0 failures. New project `src/Yukti.Cli`, `System.CommandLine`
+  2.0.12 (ADR-0002), packaged as both a .NET tool (`PackAsTool`) and a self-contained single-file exe
+  from one project (owner's call — both now, not deferred to Day 6). 8/8 process-level integration
+  tests passing (`tests/Yukti.Cli.Tests`) covering all 6 scenarios the spec names plus secret
+  redaction: pass/fail/unregistered-action/bad-JSON/missing-file/flaky(via the engine's own real retry
+  policy against a stub that fails once)/secret-never-leaks/timeout. Reuses the exact same
+  `PublishFlowCommandHandler`/`Flow.Publish`/`FlowEngine` the real API uses — no parallel validator or
+  engine. 3 real bugs found and fixed along the way (not specific to the CLI — all 3 affected the API
+  path equally, just never previously exercised by an end-to-end chained flow): (1) `ApiModule`'s
+  `StepOutcome.Data` was an anonymous object, not a `Dictionary<string,object?>` — `VariableStore` can
+  only walk dictionaries, so `{{vars.step.body.field}}`-style chaining silently failed past the first
+  hop for every API step in the whole system; (2) `StepResult.Duration` was hardcoded to
+  `TimeSpan.Zero` in `FlowEngine` even though the dispatch stopwatch was already being measured, just
+  never applied — every report's timing data was meaningless; (3) `Flow.DeclaredVariables` existed as
+  a persisted property (even has an EF column) with no method to ever set it and no check in
+  `Flow.Publish` — meaning a flow could never declare "this variable comes from outside" and have
+  publish validation respect it; added `Flow.DeclareVariable(name, default)`, wired into `Publish`'s
+  `availableBindings` seeding, and into the flow-file schema's `declaredVariables` field.
 - **Exit check:** chained 3-step API flow runs from the CLI with JUnit output.
 
 ## Day 3 — Wed 14 Oct · API, Web, Logs modules + UC-1 (P0-4)
