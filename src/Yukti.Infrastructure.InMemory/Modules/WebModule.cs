@@ -134,58 +134,58 @@ public sealed class WebModule : IAutomationModule
             switch (action)
             {
                 case "navigate":
-                {
-                    var url = parameters.GetValueOrDefault("url") as string
-                        ?? throw new ArgumentException("web.navigate requires a 'url' parameter.");
-                    await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
-                    return StepOutcome.Passed($"Navigated to {url}");
-                }
+                    {
+                        var url = parameters.GetValueOrDefault("url") as string
+                            ?? throw new ArgumentException("web.navigate requires a 'url' parameter.");
+                        await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+                        return StepOutcome.Passed($"Navigated to {url}");
+                    }
                 case "click":
-                {
-                    var selector = parameters.GetValueOrDefault("selector") as string
-                        ?? throw new ArgumentException("web.click requires a 'selector' parameter.");
-                    var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 5000f;
-                    await page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs });
-                    return StepOutcome.Passed($"Clicked {selector}");
-                }
+                    {
+                        var selector = parameters.GetValueOrDefault("selector") as string
+                            ?? throw new ArgumentException("web.click requires a 'selector' parameter.");
+                        var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 5000f;
+                        await page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs });
+                        return StepOutcome.Passed($"Clicked {selector}");
+                    }
                 case "fill":
-                {
-                    var selector = parameters.GetValueOrDefault("selector") as string
-                        ?? throw new ArgumentException("web.fill requires a 'selector' parameter.");
-                    var value = parameters.GetValueOrDefault("value") as string
-                        ?? throw new ArgumentException("web.fill requires a 'value' parameter.");
-                    await page.Locator(selector).FillAsync(value);
-                    return StepOutcome.Passed($"Filled {selector}");
-                }
+                    {
+                        var selector = parameters.GetValueOrDefault("selector") as string
+                            ?? throw new ArgumentException("web.fill requires a 'selector' parameter.");
+                        var value = parameters.GetValueOrDefault("value") as string
+                            ?? throw new ArgumentException("web.fill requires a 'value' parameter.");
+                        await page.Locator(selector).FillAsync(value);
+                        return StepOutcome.Passed($"Filled {selector}");
+                    }
                 case "assertText":
-                {
-                    var selector = parameters.GetValueOrDefault("selector") as string
-                        ?? throw new ArgumentException("web.assertText requires a 'selector' parameter.");
-                    var expected = parameters.GetValueOrDefault("expected") as string
-                        ?? throw new ArgumentException("web.assertText requires an 'expected' parameter.");
-                    var mode = parameters.GetValueOrDefault("mode") as string;
+                    {
+                        var selector = parameters.GetValueOrDefault("selector") as string
+                            ?? throw new ArgumentException("web.assertText requires a 'selector' parameter.");
+                        var expected = parameters.GetValueOrDefault("expected") as string
+                            ?? throw new ArgumentException("web.assertText requires an 'expected' parameter.");
+                        var mode = parameters.GetValueOrDefault("mode") as string;
 
-                    var actual = (await page.Locator(selector).TextContentAsync())?.Trim() ?? "";
-                    var matched = mode == "contains" ? actual.Contains(expected) : actual == expected;
-                    return matched
-                        ? StepOutcome.Passed($"Text of {selector} matched.")
-                        : StepOutcome.Failed($"Expected {selector} text {(mode == "contains" ? "to contain" : "to equal")} \"{expected}\", got \"{actual}\".");
-                }
+                        var actual = (await page.Locator(selector).TextContentAsync())?.Trim() ?? "";
+                        var matched = mode == "contains" ? actual.Contains(expected) : actual == expected;
+                        return matched
+                            ? StepOutcome.Passed($"Text of {selector} matched.")
+                            : StepOutcome.Failed($"Expected {selector} text {(mode == "contains" ? "to contain" : "to equal")} \"{expected}\", got \"{actual}\".");
+                    }
                 case "screenshot":
-                {
-                    var path = parameters.GetValueOrDefault("path") as string ?? $"screenshot-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png";
-                    var fullPage = parameters.GetValueOrDefault("fullPage") as bool? ?? false;
-                    await page.ScreenshotAsync(new PageScreenshotOptions { Path = path, FullPage = fullPage });
-                    return StepOutcome.Passed($"Screenshot saved to {path}", new { path });
-                }
+                    {
+                        var path = parameters.GetValueOrDefault("path") as string ?? $"screenshot-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png";
+                        var fullPage = parameters.GetValueOrDefault("fullPage") as bool? ?? false;
+                        await page.ScreenshotAsync(new PageScreenshotOptions { Path = path, FullPage = fullPage });
+                        return StepOutcome.Passed($"Screenshot saved to {path}", new { path });
+                    }
                 case "waitForSelector":
-                {
-                    var selector = parameters.GetValueOrDefault("selector") as string
-                        ?? throw new ArgumentException("web.waitForSelector requires a 'selector' parameter.");
-                    var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 10000f;
-                    await page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { Timeout = timeoutMs });
-                    return StepOutcome.Passed($"{selector} appeared.");
-                }
+                    {
+                        var selector = parameters.GetValueOrDefault("selector") as string
+                            ?? throw new ArgumentException("web.waitForSelector requires a 'selector' parameter.");
+                        var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 10000f;
+                        await page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { Timeout = timeoutMs });
+                        return StepOutcome.Passed($"{selector} appeared.");
+                    }
                 default:
                     return StepOutcome.Failed($"Unknown web action \"{action}\".");
             }

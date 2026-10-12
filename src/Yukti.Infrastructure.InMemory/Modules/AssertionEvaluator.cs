@@ -42,28 +42,28 @@ internal static class AssertionEvaluator
                     : (false, $"Path '{a.Path}' does not exist");
 
             case PathEqualsAssertion a:
-            {
-                if (context.Body is null)
-                    return (false, $"Path '{a.Path}' equals check failed: response body is not JSON");
-                if (!JsonPathEvaluator.TryGetByPath(context.Body.Value, a.Path, out var element))
-                    return (false, $"Path '{a.Path}' does not exist");
-                var actual = JsonPathEvaluator.ToPlainValue(element);
-                return PlainValueEquality.ValuesEqual(actual, a.ExpectedValue)
-                    ? (true, null)
-                    : (false, $"Path '{a.Path}' expected {Describe(a.ExpectedValue)}, got {Describe(actual)}");
-            }
+                {
+                    if (context.Body is null)
+                        return (false, $"Path '{a.Path}' equals check failed: response body is not JSON");
+                    if (!JsonPathEvaluator.TryGetByPath(context.Body.Value, a.Path, out var element))
+                        return (false, $"Path '{a.Path}' does not exist");
+                    var actual = JsonPathEvaluator.ToPlainValue(element);
+                    return PlainValueEquality.ValuesEqual(actual, a.ExpectedValue)
+                        ? (true, null)
+                        : (false, $"Path '{a.Path}' expected {Describe(a.ExpectedValue)}, got {Describe(actual)}");
+                }
 
             case PathContainsAssertion a:
-            {
-                if (context.Body is null)
-                    return (false, $"Path '{a.Path}' contains check failed: response body is not JSON");
-                if (!JsonPathEvaluator.TryGetByPath(context.Body.Value, a.Path, out var element))
-                    return (false, $"Path '{a.Path}' does not exist");
-                var actual = JsonPathEvaluator.ToPlainValue(element);
-                return ValueContains(actual, a.ExpectedFragment)
-                    ? (true, null)
-                    : (false, $"Path '{a.Path}' value {Describe(actual)} does not contain {Describe(a.ExpectedFragment)}");
-            }
+                {
+                    if (context.Body is null)
+                        return (false, $"Path '{a.Path}' contains check failed: response body is not JSON");
+                    if (!JsonPathEvaluator.TryGetByPath(context.Body.Value, a.Path, out var element))
+                        return (false, $"Path '{a.Path}' does not exist");
+                    var actual = JsonPathEvaluator.ToPlainValue(element);
+                    return ValueContains(actual, a.ExpectedFragment)
+                        ? (true, null)
+                        : (false, $"Path '{a.Path}' value {Describe(actual)} does not contain {Describe(a.ExpectedFragment)}");
+                }
 
             case HeaderExistsAssertion a:
                 return context.Headers.ContainsKey(a.HeaderName)
@@ -76,12 +76,12 @@ internal static class AssertionEvaluator
                     : (false, $"Cookie '{a.CookieName}' does not exist");
 
             case SchemaValidationAssertion a:
-            {
-                if (context.Body is null)
-                    return (false, "Schema validation failed: response body is not JSON");
-                var (valid, error) = MinimalJsonSchemaValidator.Validate(context.Body.Value, a.Schema);
-                return valid ? (true, null) : (false, $"Schema validation failed: {error}");
-            }
+                {
+                    if (context.Body is null)
+                        return (false, "Schema validation failed: response body is not JSON");
+                    var (valid, error) = MinimalJsonSchemaValidator.Validate(context.Body.Value, a.Schema);
+                    return valid ? (true, null) : (false, $"Schema validation failed: {error}");
+                }
 
             default:
                 return (false, $"Unsupported assertion type '{assertion.GetType().Name}'");

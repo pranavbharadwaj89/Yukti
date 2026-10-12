@@ -117,8 +117,11 @@ public sealed class LogsModule : IAutomationModule
 
         var data = new Dictionary<string, object?>
         {
-            ["mean"] = mean, ["stdDev"] = stdDev, ["threshold"] = threshold,
-            ["anomalousBuckets"] = anomalous, ["bucketsScanned"] = buckets.Count
+            ["mean"] = mean,
+            ["stdDev"] = stdDev,
+            ["threshold"] = threshold,
+            ["anomalousBuckets"] = anomalous,
+            ["bucketsScanned"] = buckets.Count
         };
 
         return anomalous.Count > 0
