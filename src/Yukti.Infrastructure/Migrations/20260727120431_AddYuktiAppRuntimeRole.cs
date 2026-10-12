@@ -23,7 +23,22 @@ namespace Yukti.Infrastructure.Migrations
             // rotated immediately after this migration applies, via
             // ALTER USER — the real password is never written to any
             // file that reaches source control, only to user-secrets.
-            migrationBuilder.Sql("CREATE USER IF NOT EXISTS yukti_app WITH PASSWORD 'placeholder-rotate-immediately';");
+            //
+            // "CREATE USER IF NOT EXISTS" is CockroachDB syntax, not
+            // PostgreSQL — this repo's actual target (Npgsql, docker-
+            // compose's postgres:16-alpine) rejects it outright with a
+            // syntax error, confirmed against a real local Postgres while
+            // bootstrapping a fresh database. The DO block below is the
+            // standard idempotent-create idiom real Postgres requires.
+            migrationBuilder.Sql("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'yukti_app') THEN
+                        CREATE USER yukti_app WITH PASSWORD 'placeholder-rotate-immediately';
+                    END IF;
+                END
+                $$;
+                """);
 
             // Full CRUD on every table except audit_entries.
             string[] fullCrudTables =
