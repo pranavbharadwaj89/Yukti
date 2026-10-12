@@ -24,7 +24,19 @@ namespace Yukti.Infrastructure.Migrations
             // context to set. yukti_worker is a role dedicated to exactly
             // that: BYPASSRLS, used only by Yukti.Worker, never by
             // Yukti.Api's per-tenant HTTP request path.
-            migrationBuilder.Sql("CREATE USER IF NOT EXISTS yukti_worker WITH PASSWORD 'placeholder-rotate-immediately' BYPASSRLS;");
+            // "CREATE USER IF NOT EXISTS" is CockroachDB syntax, not
+            // PostgreSQL — see AddYuktiAppRuntimeRole's comment for how
+            // this was found (a real syntax error against a real local
+            // Postgres instance, not assumed).
+            migrationBuilder.Sql("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'yukti_worker') THEN
+                        CREATE USER yukti_worker WITH PASSWORD 'placeholder-rotate-immediately' BYPASSRLS;
+                    END IF;
+                END
+                $$;
+                """);
 
             string[] fullCrudTables =
             {
