@@ -140,44 +140,44 @@ public sealed class MobileModule : IAutomationModule
             switch (action)
             {
                 case "tap":
-                {
-                    var selector = RequireString(parameters, "selector");
-                    ResolveElement(driver, selector).Click();
-                    return Task.FromResult(StepOutcome.Passed($"Tapped {selector}"));
-                }
+                    {
+                        var selector = RequireString(parameters, "selector");
+                        ResolveElement(driver, selector).Click();
+                        return Task.FromResult(StepOutcome.Passed($"Tapped {selector}"));
+                    }
                 case "type":
-                {
-                    var selector = RequireString(parameters, "selector");
-                    var value = RequireString(parameters, "value");
-                    ResolveElement(driver, selector).SendKeys(value);
-                    return Task.FromResult(StepOutcome.Passed($"Typed into {selector}"));
-                }
+                    {
+                        var selector = RequireString(parameters, "selector");
+                        var value = RequireString(parameters, "value");
+                        ResolveElement(driver, selector).SendKeys(value);
+                        return Task.FromResult(StepOutcome.Passed($"Typed into {selector}"));
+                    }
                 case "swipe":
-                {
-                    var fromX = RequireInt(parameters, "fromX");
-                    var fromY = RequireInt(parameters, "fromY");
-                    var toX = RequireInt(parameters, "toX");
-                    var toY = RequireInt(parameters, "toY");
+                    {
+                        var fromX = RequireInt(parameters, "fromX");
+                        var fromY = RequireInt(parameters, "fromY");
+                        var toX = RequireInt(parameters, "toX");
+                        var toY = RequireInt(parameters, "toY");
 
-                    var finger = new PointerInputDevice(PointerKind.Touch);
-                    var sequence = new ActionSequence(finger, 0);
-                    sequence.AddAction(finger.CreatePointerMove(CoordinateOrigin.Viewport, fromX, fromY, TimeSpan.Zero));
-                    sequence.AddAction(finger.CreatePointerDown(MouseButton.Left));
-                    sequence.AddAction(finger.CreatePointerMove(CoordinateOrigin.Viewport, toX, toY, TimeSpan.FromMilliseconds(300)));
-                    sequence.AddAction(finger.CreatePointerUp(MouseButton.Left));
-                    driver.PerformActions(new List<ActionSequence> { sequence });
-                    return Task.FromResult(StepOutcome.Passed($"Swiped ({fromX},{fromY}) -> ({toX},{toY})"));
-                }
+                        var finger = new PointerInputDevice(PointerKind.Touch);
+                        var sequence = new ActionSequence(finger, 0);
+                        sequence.AddAction(finger.CreatePointerMove(CoordinateOrigin.Viewport, fromX, fromY, TimeSpan.Zero));
+                        sequence.AddAction(finger.CreatePointerDown(MouseButton.Left));
+                        sequence.AddAction(finger.CreatePointerMove(CoordinateOrigin.Viewport, toX, toY, TimeSpan.FromMilliseconds(300)));
+                        sequence.AddAction(finger.CreatePointerUp(MouseButton.Left));
+                        driver.PerformActions(new List<ActionSequence> { sequence });
+                        return Task.FromResult(StepOutcome.Passed($"Swiped ({fromX},{fromY}) -> ({toX},{toY})"));
+                    }
                 case "assertVisible":
-                {
-                    var selector = RequireString(parameters, "selector");
-                    bool visible;
-                    try { visible = ResolveElement(driver, selector).Displayed; }
-                    catch { visible = false; }
-                    return Task.FromResult(visible
-                        ? StepOutcome.Passed($"{selector} is visible.")
-                        : StepOutcome.Failed($"{selector} is not visible."));
-                }
+                    {
+                        var selector = RequireString(parameters, "selector");
+                        bool visible;
+                        try { visible = ResolveElement(driver, selector).Displayed; }
+                        catch { visible = false; }
+                        return Task.FromResult(visible
+                            ? StepOutcome.Passed($"{selector} is visible.")
+                            : StepOutcome.Failed($"{selector} is not visible."));
+                    }
                 default:
                     return Task.FromResult(StepOutcome.Failed($"Unknown mobile action \"{action}\"."));
             }

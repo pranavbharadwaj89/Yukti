@@ -21,11 +21,42 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
-    - name: Build Solution
-      run: dotnet build --no-restore -c Release
+    - name: Verify formatting
+      run: dotnet format --verify-no-changes
+
+    - name: Build Solution (warnings as errors)
+      run: dotnet build --no-restore -warnaserror -c Release
 
     - name: Run .NET Unit & Integration Tests
       run: dotnet test --no-build -c Release --verbosity normal
 
     - name: Build Docker Container
       run: docker build -t yukti-platform:latest .
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/yukti-gui
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: apps/yukti-gui/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Lint
+      run: npm run lint
+
+    - name: Test
+      run: npm test
+
+    - name: Build
+      run: npm run build

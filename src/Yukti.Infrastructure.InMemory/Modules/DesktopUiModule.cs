@@ -88,42 +88,42 @@ public sealed class DesktopUiModule : IAutomationModule
             switch (action)
             {
                 case "click":
-                {
-                    var x = RequireInt(parameters, "x");
-                    var y = RequireInt(parameters, "y");
-                    Win32Input.MoveTo(x, y);
-                    Win32Input.LeftClick();
-                    return Task.FromResult(StepOutcome.Passed($"Clicked ({x}, {y})"));
-                }
+                    {
+                        var x = RequireInt(parameters, "x");
+                        var y = RequireInt(parameters, "y");
+                        Win32Input.MoveTo(x, y);
+                        Win32Input.LeftClick();
+                        return Task.FromResult(StepOutcome.Passed($"Clicked ({x}, {y})"));
+                    }
                 case "typeText":
-                {
-                    var text = RequireString(parameters, "text");
-                    Win32Input.TypeText(text);
-                    return Task.FromResult(StepOutcome.Passed($"Typed {text.Length} character(s)"));
-                }
+                    {
+                        var text = RequireString(parameters, "text");
+                        Win32Input.TypeText(text);
+                        return Task.FromResult(StepOutcome.Passed($"Typed {text.Length} character(s)"));
+                    }
                 case "pressKey":
-                {
-                    var key = RequireString(parameters, "key");
-                    Win32Input.PressKey(key);
-                    return Task.FromResult(StepOutcome.Passed($"Pressed {key}"));
-                }
+                    {
+                        var key = RequireString(parameters, "key");
+                        Win32Input.PressKey(key);
+                        return Task.FromResult(StepOutcome.Passed($"Pressed {key}"));
+                    }
                 case "findImage":
-                {
-                    var imagePath = RequireString(parameters, "imagePath");
-                    using var reference = new Bitmap(imagePath);
-                    using var screen = CaptureScreen();
-                    var match = ImageMatcher.Find(screen, reference, DefaultMatchConfidence);
-                    return Task.FromResult(match is { } m
-                        ? StepOutcome.Passed($"Found image at ({m.X}, {m.Y})", new { x = m.X, y = m.Y, confidence = m.Confidence })
-                        : StepOutcome.Failed($"Image {imagePath} not found on screen (confidence {DefaultMatchConfidence})"));
-                }
+                    {
+                        var imagePath = RequireString(parameters, "imagePath");
+                        using var reference = new Bitmap(imagePath);
+                        using var screen = CaptureScreen();
+                        var match = ImageMatcher.Find(screen, reference, DefaultMatchConfidence);
+                        return Task.FromResult(match is { } m
+                            ? StepOutcome.Passed($"Found image at ({m.X}, {m.Y})", new { x = m.X, y = m.Y, confidence = m.Confidence })
+                            : StepOutcome.Failed($"Image {imagePath} not found on screen (confidence {DefaultMatchConfidence})"));
+                    }
                 case "screenshot":
-                {
-                    var path = parameters.GetValueOrDefault("path") as string ?? $"ui-screenshot-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png";
-                    using var screen = CaptureScreen();
-                    screen.Save(path, ImageFormat.Png);
-                    return Task.FromResult(StepOutcome.Passed($"Screenshot saved to {path}", new { path }));
-                }
+                    {
+                        var path = parameters.GetValueOrDefault("path") as string ?? $"ui-screenshot-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png";
+                        using var screen = CaptureScreen();
+                        screen.Save(path, ImageFormat.Png);
+                        return Task.FromResult(StepOutcome.Passed($"Screenshot saved to {path}", new { path }));
+                    }
                 default:
                     return Task.FromResult(StepOutcome.Failed($"Unknown ui action \"{action}\"."));
             }
@@ -240,11 +240,23 @@ internal static class Win32Input
     {
         var map = new Dictionary<string, ushort>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Enter"] = 0x0D, ["Tab"] = 0x09, ["Escape"] = 0x1B, ["Space"] = 0x20,
-            ["Backspace"] = 0x08, ["Delete"] = 0x2E, ["Home"] = 0x24, ["End"] = 0x23,
-            ["PageUp"] = 0x21, ["PageDown"] = 0x22,
-            ["Left"] = 0x25, ["Up"] = 0x26, ["Right"] = 0x27, ["Down"] = 0x28,
-            ["Shift"] = 0x10, ["Control"] = 0x11, ["Alt"] = 0x12,
+            ["Enter"] = 0x0D,
+            ["Tab"] = 0x09,
+            ["Escape"] = 0x1B,
+            ["Space"] = 0x20,
+            ["Backspace"] = 0x08,
+            ["Delete"] = 0x2E,
+            ["Home"] = 0x24,
+            ["End"] = 0x23,
+            ["PageUp"] = 0x21,
+            ["PageDown"] = 0x22,
+            ["Left"] = 0x25,
+            ["Up"] = 0x26,
+            ["Right"] = 0x27,
+            ["Down"] = 0x28,
+            ["Shift"] = 0x10,
+            ["Control"] = 0x11,
+            ["Alt"] = 0x12,
         };
         for (var c = 'A'; c <= 'Z'; c++) map[c.ToString()] = (ushort)c;
         for (var d = '0'; d <= '9'; d++) map[d.ToString()] = (ushort)d;
