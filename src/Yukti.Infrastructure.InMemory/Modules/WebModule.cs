@@ -47,7 +47,7 @@ public sealed class WebModule : IAutomationModule
             Description = "Navigates the shared page to a URL.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "url", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "url", Type = ParamType.String, Required = true, Description = "The URL to navigate the shared page to." },
             }
         },
         new ActionSchema
@@ -56,8 +56,8 @@ public sealed class WebModule : IAutomationModule
             Description = "Clicks the first element matching a selector.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true },
-                new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = 5000 },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to click." },
+                new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = 5000, Description = "Milliseconds to wait for the element before failing." },
             }
         },
         new ActionSchema
@@ -66,8 +66,8 @@ public sealed class WebModule : IAutomationModule
             Description = "Fills the first element matching a selector with a value.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true },
-                new ParamSpec { Name = "value", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the input to fill." },
+                new ParamSpec { Name = "value", Type = ParamType.String, Required = true, Description = "Text value to type into the matched element." },
             }
         },
         new ActionSchema
@@ -76,8 +76,8 @@ public sealed class WebModule : IAutomationModule
             Description = "Asserts a selector's text content, exactly or via substring containment.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true },
-                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element whose text is checked." },
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Text the element's content is compared against." },
                 new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "\"contains\" for substring match; omit for exact match." },
             }
         },
@@ -88,7 +88,7 @@ public sealed class WebModule : IAutomationModule
             Parameters = new[]
             {
                 new ParamSpec { Name = "path", Type = ParamType.String, Required = false, Description = "Defaults to screenshot-<timestamp>.png." },
-                new ParamSpec { Name = "fullPage", Type = ParamType.Boolean, Required = false, DefaultValue = false },
+                new ParamSpec { Name = "fullPage", Type = ParamType.Boolean, Required = false, DefaultValue = false, Description = "Captures the full scrollable page instead of just the viewport." },
             }
         },
         new ActionSchema
@@ -97,8 +97,8 @@ public sealed class WebModule : IAutomationModule
             Description = "Waits for a selector to appear.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true },
-                new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = 10000 },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector to wait for." },
+                new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = 10000, Description = "Milliseconds to wait before failing with SelectorNotFound." },
             }
         },
     };
