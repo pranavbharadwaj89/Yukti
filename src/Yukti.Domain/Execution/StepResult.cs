@@ -78,5 +78,8 @@ public sealed class StepResult : Entity<StepResultId>
     public static StepResult Skipped(FlowStepId sourceStepId, string stepName, ModuleKind module, string action, string reason) =>
         new(sourceStepId, stepName, module, action, StepStatus.Skipped, TimeSpan.Zero, message: reason);
 
+    public static StepResult Failed(FlowStepId sourceStepId, string stepName, ModuleKind module, string action, string error) =>
+        new(sourceStepId, stepName, module, action, StepStatus.Failed, TimeSpan.Zero, error: error);
+
     public bool IsFlaky => Status == StepStatus.Passed && _retryHistory.Count > 0;
 }

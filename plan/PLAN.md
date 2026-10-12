@@ -41,8 +41,14 @@ Every task follows INSPECT first: done → add proof test · partial → complet
   task required would have broken startup — WebModule/LogsModule/MobileModule/DesktopUiModule had 25
   production ParamSpecs with no Description at all. Backfilled all 25 with real descriptions before
   adding the validation, not after — confirmed via full suite: 77/77 (was 71/71).
-- [ ] D2-T2 Variable interpolation `{{vars.a.b}}`, `saveAs`, publish-time check that referenced vars are produced earlier
-  ✔ `dotnet test --filter "FullyQualifiedName~Variable"`
+- [x] D2-T2 Variable interpolation `{{vars.a.b}}`, `saveAs`, publish-time check that referenced vars are produced earlier
+  ✔ `dotnet test --filter "FullyQualifiedName~Variable"` → 11/11 passing (`VariableStoreTests.cs`, new —
+  no prior coverage existed under any name). Real bug found + fixed: a missing `{{vars.x.y}}` path
+  silently became `null` (whole-match) or an empty string (embedded in a larger string) — now throws
+  `VariableResolutionException` naming the path, caught by `FlowEngine` and turned into a proper
+  `StepResult.Failed` that respects `ContinueOnFailure` like any other failure. Publish-time check that
+  a referenced var was produced by an *earlier* step is D2-T5's job (`Publish validation`), not this one
+  — this task proves the runtime resolution semantics only.
 - [ ] D2-T3 Flow engine: ordered steps, fail-fast, `ContinueOnFailure`, `when` → Skipped, retry policy, flaky classification with retry history
   ✔ `dotnet test --filter "FullyQualifiedName~FlowEngine"`
 - [x] D2-T4 Per-step durable commit of StepResult; test kills execution after step 2 and finds steps 1–2 persisted
