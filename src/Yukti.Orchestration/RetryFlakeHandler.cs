@@ -47,11 +47,19 @@ public sealed class RetryFlakeHandler : IRetryFlakeHandler
                 return new RetryOutcome(outcome, attempts);
             }
 
-            attempts.Add(new RetryAttempt(attemptNumber, outcome.Status, sw.Elapsed, outcome.Error, DateTimeOffset.UtcNow));
-
+            // RetryHistory records attempts that were *retried past* — not
+            // the attempt whose outcome this call actually returns. A failed
+            // final attempt belongs on the StepResult itself (Error/Status),
+            // not duplicated into history; recording it here too made
+            // MaxAttempts:1 wrongly produce 1 history entry for a single,
+            // never-retried try, and MaxAttempts:3-all-fail produce 3
+            // entries instead of the 2 genuine retries that preceded the
+            // final, returned failure.
             var isLastAttempt = attemptNumber == policy.MaxAttempts;
             if (isLastAttempt)
                 return new RetryOutcome(outcome, attempts);
+
+            attempts.Add(new RetryAttempt(attemptNumber, outcome.Status, sw.Elapsed, outcome.Error, DateTimeOffset.UtcNow));
 
             // Not yet the final word — a routine, expected retry, not an
             // error condition: Debug, matching FR-LOG-02's level semantics.
