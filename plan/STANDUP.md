@@ -356,3 +356,33 @@ Scope guards: none
 Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 119/119 (was 113/113, +6 new).
 Next:        D3-T2 — Web module proof. Add `select`/`assertVisible` actions, a typed selector-not-found
              error, and the Data-shape fix, then prove all 8 actions against FixtureApp.
+
+## 2026-10-13 01:29 IST — Day 3 (cont.)
+Done:        D3-T2 Web module proof. Added the two missing WebModule actions — `select` (SelectOptionAsync)
+             and `assertVisible` (IsVisibleAsync, never throws — missing and hidden both read as
+             not-visible). Added a typed `SelectorNotFoundException` + `WithSelectorNotFound` helper
+             wrapping every locator-based action (`click`, `fill`, `assertText`, `waitForSelector`) so a
+             missing selector always fails with a message naming the selector, instead of a bare
+             Playwright exception. Fixed `screenshot`'s `StepOutcome.Data` from an anonymous object to a
+             `Dictionary<string, object?>` (anonymous objects silently don't support the
+             `{{vars.step.field}}` variable-chaining path used everywhere else — same class of bug as
+             D2-T6's ApiModule fix). Extended `FixtureAppHost.cs`'s login/orders HTML with a `login-region`
+             `<select>` and a `hidden-field` (`display:none`) element so `select`/`assertVisible` have a
+             real target to prove against.
+Discovered:  `Microsoft.Playwright.TimeoutException` does not exist as a public type — it's internal to
+             `Microsoft.Playwright.Core`. The real public exception every Playwright call can throw is
+             `Microsoft.Playwright.PlaywrightException`. Confirmed by extracting type names directly from
+             the installed DLL's bytes after a first guess failed to compile. Also: this machine's
+             Playwright browser binaries weren't installed yet (`chromium_headless_shell` missing) — a
+             one-time `playwright.ps1 install chromium` was needed before any WebModule test could run at
+             all; not a code issue, just environment setup that will be needed on any fresh machine/CI
+             runner using this module.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` (tests/Yukti.Orchestration.Tests) → 0 warnings, 0
+             errors. `dotnet test --filter "FullyQualifiedName~WebModule"` → 5/5 passing. Full solution
+             `dotnet test` → 124/124 (17 Analyzers + 8 Cli + 8 Infrastructure + 91 Orchestration; was
+             119/119, +5 new WebModule tests).
+Next:        D3-T3 — Logs module proof. Add `logFile` param support to `LogsModule.checkRules`, make a
+             missing log file fail the step clearly instead of silently passing with 0 matched lines, add
+             time-window filtering (start/end), then prove pattern/severity/max-count/time-window against
+             FixtureApp's real `app.log`.

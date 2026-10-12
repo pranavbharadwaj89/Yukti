@@ -104,10 +104,18 @@ dropping its task ID.
   project `demo/fixtures/FixtureApp`). Hosted in-process via `WebApplication`/Kestrel bound to port 0 —
   no subprocess, no separate runtime resolution at all. Session via ASP.NET Core's built-in `ISession`;
   logging is a terminal middleware writing one line per request after the response is known.
-- [ ] D3-T2 Web module proof: navigate, click, fill, select, waitFor, assertText (contains + exact),
+- [x] D3-T2 Web module proof: navigate, click, fill, select, waitFor, assertText (contains + exact),
   assertVisible, screenshot — all against FixtureApp; missing selector → typed `SelectorNotFound` naming
   the selector and the step; screenshots stored with the step result
-  ✔ `dotnet test --filter "FullyQualifiedName~WebModule"`
+  ✔ `dotnet test --filter "FullyQualifiedName~WebModule"` → 5/5 passing (`WebModuleTests.cs`, new). Added
+  the two missing actions (`select`, `assertVisible`) to `WebModule.cs`; added a typed
+  `SelectorNotFoundException` + `WithSelectorNotFound` helper that converts Playwright's own
+  `PlaywrightException` (its real public exception — `Microsoft.Playwright.TimeoutException` doesn't
+  exist publicly) into a message naming the selector, wired through `click`/`fill`/`assertText`/
+  `waitForSelector`; fixed `screenshot`'s `Data` from an anonymous object to a `Dictionary<string,
+  object?>` so `{{vars.step.path}}`-style chaining works; `FixtureAppHost.cs` gained a select dropdown and
+  a hidden element for the new assertions to exercise. Full solution suite also re-run clean: 124/124
+  (17+8+8+91 across Analyzers/Cli/Infrastructure/Orchestration test projects).
 - [ ] D3-T3 Logs module proof: `checkRules` tested for pattern, severity, max count, and time window;
   matching lines included in the step result; a missing log file fails the step clearly, never passes
   ✔ `dotnet test --filter "FullyQualifiedName~LogsModule"`

@@ -101,6 +101,25 @@ public sealed class WebModule : IAutomationModule
                 new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = 10000, Description = "Milliseconds to wait before failing with SelectorNotFound." },
             }
         },
+        new ActionSchema
+        {
+            ActionName = "select",
+            Description = "Selects an option by value in the first <select> element matching a selector.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the <select> element." },
+                new ParamSpec { Name = "value", Type = ParamType.String, Required = true, Description = "The option value to select." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertVisible",
+            Description = "Asserts an element matching a selector is displayed. A missing or hidden element both read as not-visible, never an exception.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to check." },
+            }
+        },
     };
 
     public async Task Setup(ExecutionContext ctx, CancellationToken ct)
@@ -145,7 +164,7 @@ public sealed class WebModule : IAutomationModule
                         var selector = parameters.GetValueOrDefault("selector") as string
                             ?? throw new ArgumentException("web.click requires a 'selector' parameter.");
                         var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 5000f;
-                        await page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs });
+                        await WithSelectorNotFound(selector, () => page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }), ct);
                         return StepOutcome.Passed($"Clicked {selector}");
                     }
                 case "fill":
@@ -154,8 +173,17 @@ public sealed class WebModule : IAutomationModule
                             ?? throw new ArgumentException("web.fill requires a 'selector' parameter.");
                         var value = parameters.GetValueOrDefault("value") as string
                             ?? throw new ArgumentException("web.fill requires a 'value' parameter.");
-                        await page.Locator(selector).FillAsync(value);
+                        await WithSelectorNotFound(selector, () => page.Locator(selector).FillAsync(value), ct);
                         return StepOutcome.Passed($"Filled {selector}");
+                    }
+                case "select":
+                    {
+                        var selector = parameters.GetValueOrDefault("selector") as string
+                            ?? throw new ArgumentException("web.select requires a 'selector' parameter.");
+                        var value = parameters.GetValueOrDefault("value") as string
+                            ?? throw new ArgumentException("web.select requires a 'value' parameter.");
+                        await WithSelectorNotFound(selector, () => page.Locator(selector).SelectOptionAsync(value), ct);
+                        return StepOutcome.Passed($"Selected '{value}' on {selector}");
                     }
                 case "assertText":
                     {
@@ -165,35 +193,73 @@ public sealed class WebModule : IAutomationModule
                             ?? throw new ArgumentException("web.assertText requires an 'expected' parameter.");
                         var mode = parameters.GetValueOrDefault("mode") as string;
 
-                        var actual = (await page.Locator(selector).TextContentAsync())?.Trim() ?? "";
+                        var actual = (await WithSelectorNotFound(selector, () => page.Locator(selector).TextContentAsync(), ct))?.Trim() ?? "";
                         var matched = mode == "contains" ? actual.Contains(expected) : actual == expected;
                         return matched
                             ? StepOutcome.Passed($"Text of {selector} matched.")
                             : StepOutcome.Failed($"Expected {selector} text {(mode == "contains" ? "to contain" : "to equal")} \"{expected}\", got \"{actual}\".");
+                    }
+                case "assertVisible":
+                    {
+                        var selector = parameters.GetValueOrDefault("selector") as string
+                            ?? throw new ArgumentException("web.assertVisible requires a 'selector' parameter.");
+                        // IsVisibleAsync never waits/throws — a missing element
+                        // and a hidden one both just read as false, matching
+                        // MobileModule's own assertVisible semantics exactly.
+                        var visible = await page.Locator(selector).IsVisibleAsync();
+                        return visible
+                            ? StepOutcome.Passed($"{selector} is visible.")
+                            : StepOutcome.Failed($"Element '{selector}' is not visible (missing or hidden).");
                     }
                 case "screenshot":
                     {
                         var path = parameters.GetValueOrDefault("path") as string ?? $"screenshot-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png";
                         var fullPage = parameters.GetValueOrDefault("fullPage") as bool? ?? false;
                         await page.ScreenshotAsync(new PageScreenshotOptions { Path = path, FullPage = fullPage });
-                        return StepOutcome.Passed($"Screenshot saved to {path}", new { path });
+                        return StepOutcome.Passed($"Screenshot saved to {path}", new Dictionary<string, object?> { ["path"] = path });
                     }
                 case "waitForSelector":
                     {
                         var selector = parameters.GetValueOrDefault("selector") as string
                             ?? throw new ArgumentException("web.waitForSelector requires a 'selector' parameter.");
                         var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 10000f;
-                        await page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { Timeout = timeoutMs });
+                        await WithSelectorNotFound(selector, () => page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { Timeout = timeoutMs }), ct);
                         return StepOutcome.Passed($"{selector} appeared.");
                     }
                 default:
                     return StepOutcome.Failed($"Unknown web action \"{action}\".");
             }
         }
+        catch (SelectorNotFoundException ex)
+        {
+            return StepOutcome.Failed(ex.Message);
+        }
         catch (Exception ex)
         {
             return StepOutcome.Failed(ex.Message);
         }
+    }
+
+    /// <summary>Converts Playwright's own PlaywrightException (its public
+    /// surface for every action/protocol failure, including a selector
+    /// never becoming actionable in time — Playwright has no separate
+    /// public TimeoutException; the one that exists is internal to
+    /// Microsoft.Playwright.Core) into a SelectorNotFoundException that
+    /// always names the selector (D3-T2) — every locator-based action that
+    /// can legitimately fail to find its element goes through this, never a
+    /// bare Playwright call.</summary>
+    private static async Task WithSelectorNotFound(string selector, Func<Task> action, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        try { await action(); }
+        catch (Microsoft.Playwright.PlaywrightException) { throw new SelectorNotFoundException(selector); }
+    }
+
+    private static async Task<T> WithSelectorNotFound<T>(string selector, Func<Task<T>> action, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        try { return await action(); }
+        catch (Microsoft.Playwright.PlaywrightException) { throw new SelectorNotFoundException(selector); }
     }
 
     private static float? ToFloat(object? value) => value is null ? null : Convert.ToSingle(value);
