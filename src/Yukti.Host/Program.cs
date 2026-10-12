@@ -157,7 +157,7 @@ var publishResult = await publishHandler.Handle(new PublishFlowCommand(flowId, u
 Console.WriteLine($"Publish result: {(publishResult.Succeeded ? "SUCCEEDED" : "FAILED")}");
 if (!publishResult.Succeeded)
 {
-    foreach (var error in publishResult.Errors) Console.WriteLine($"  - {error}");
+    foreach (var error in publishResult.Errors) Console.WriteLine($"  - [{error.Code}] {error.Field}: {error.Message}");
     return;
 }
 

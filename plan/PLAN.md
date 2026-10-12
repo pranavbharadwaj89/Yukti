@@ -59,8 +59,13 @@ Every task follows INSPECT first: done → add proof test · partial → complet
 - [x] D2-T4 Per-step durable commit of StepResult; test kills execution after step 2 and finds steps 1–2 persisted
   ✔ ALREADY DONE (evidence), filter adapted per SUTRADHAR §2.8: `dotnet test --filter "FullyQualifiedName~GracefulShutdown"`
   → `GracefulShutdownTests.Step_in_flight_when_shutdown_is_requested_still_commits_its_result`, passing
-- [ ] D2-T5 Publish validation: unregistered action → 422 RFC 7807 naming the step; Published flows immutable (edit = new version)
-  ✔ `dotnet test --filter "FullyQualifiedName~Publish"`
+- [x] D2-T5 Publish validation: unregistered action → 422 RFC 7807 naming the step; Published flows immutable (edit = new version)
+  ✔ `dotnet test --filter "FullyQualifiedName~Publish"` → 10/10 passing (`FlowPublishValidationTests.cs`,
+  new). Partial before today: resolver pattern, step ordering, Draft-only-editable, `CreateNewVersion`
+  all already existed and needed only proving. Genuinely built: structured `{field, code, message}`
+  errors (was a plain `string` list), the `missing_required_param` check (didn't exist), `PublishedAt`
+  timestamp (didn't exist), and the API publish endpoint actually returning 422 (it unconditionally
+  returned 200 OK before, even on a failed publish — confirmed via source read, not assumed).
 - [ ] D2-T6 CLI (`yukti run <flow.json> --junit out.xml`), exit 0/1, runs without the API server
   ✔ `dotnet run --project <Cli> -- run demo/api_chain.json --junit out.xml` → exit 0, valid XML
 - **Exit check:** chained 3-step API flow runs from the CLI with JUnit output.

@@ -36,9 +36,14 @@ public sealed record FlowResponse(
         flow.Status.ToString(), flow.ContinueOnFailure, flow.Steps.Select(FlowStepResponse.From).ToList());
 }
 
-public sealed record PublishResponse(bool Succeeded, IReadOnlyList<string> Errors)
+public sealed record PublishErrorResponse(string Field, string Code, string Message)
 {
-    public static PublishResponse From(FlowPublishResult result) => new(result.Succeeded, result.Errors);
+    public static PublishErrorResponse From(FlowPublishError error) => new(error.Field, error.Code, error.Message);
+}
+
+public sealed record PublishResponse(bool Succeeded, IReadOnlyList<PublishErrorResponse> Errors)
+{
+    public static PublishResponse From(FlowPublishResult result) => new(result.Succeeded, result.Errors.Select(PublishErrorResponse.From).ToList());
 }
 
 public sealed record RetryAttemptResponse(int AttemptNumber, string Status, double DurationMs, string? Error);

@@ -129,12 +129,17 @@ public sealed class ModuleActionResolver : IModuleActionResolver
         _tenantId = tenantId;
     }
 
-    public bool ActionExists(ModuleKind module, string action)
+    public async Task<ActionSchema?> TryGetActionSchema(ModuleKind module, string action, CancellationToken ct)
     {
-        var registration = _registrations.GetByKind(module, null, CancellationToken.None).GetAwaiter().GetResult()
-            ?? (_tenantId is not null
-                ? _registrations.GetByKind(module, _tenantId, CancellationToken.None).GetAwaiter().GetResult()
-                : null);
-        return registration is not null && registration.HasAction(action);
+        var registration = await ResolveRegistration(module, ct);
+        return registration?.Actions.FirstOrDefault(a => a.ActionName == action && !a.IsDeprecated)?.Schema;
+    }
+
+    private async Task<ModuleRegistration?> ResolveRegistration(ModuleKind module, CancellationToken ct)
+    {
+        var registration = await _registrations.GetByKind(module, null, ct);
+        if (registration is not null || _tenantId is null)
+            return registration;
+        return await _registrations.GetByKind(module, _tenantId, ct);
     }
 }

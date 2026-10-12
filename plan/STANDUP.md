@@ -214,3 +214,45 @@ Scope guards: none — minimal fix to the exact method the proof test targets, n
 Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 95/95 (was 88/88, +7 new).
 Next:        D2-T5 — publish validation + immutable versioning (P0-2). D2-T6 (CLI) after, now unblocked
              on packaging (both .NET tool and self-contained exe, decided above).
+
+Done:        D2-T5 (publish validation + versioning, P0-2). Found more already built than GAP-MATRIX's
+             Day-1 pass suggested: `Flow.Publish(IModuleActionResolver)` already enforced Draft-only
+             editing, step ordering, and `CreateNewVersion()` (same FamilyId, Version+1) already existed
+             and worked correctly — these only needed proof tests, not building. Genuinely missing and
+             built: (1) `FlowPublishResult.Errors` was `IReadOnlyList<string>` (plain messages) — changed
+             to `IReadOnlyList<FlowPublishError>` with `{Field, Code, Message}`, matching the spec's exact
+             `steps[i].action` / `steps[i].params.<name>` / `unresolved_module_action` /
+             `unresolved_variable` / `missing_required_param` shape; (2) the `missing_required_param`
+             check didn't exist at all — added via a new `IModuleActionResolver.TryGetActionSchema`
+             method (implemented in both `ModuleActionResolver` and `EfModuleActionResolver`, the
+             in-memory and real EF-backed resolvers) so `Publish` can check each action's `ActionSchema`
+             for required params the step's `Params` dict is missing; (3) `Flow.PublishedAt` didn't exist
+             — added, set on successful publish; (4) **the real API publish endpoint
+             (`POST /api/v1/flows/{id}/publish`) returned 200 OK unconditionally, even when
+             `result.Succeeded` was false** — confirmed by reading `Program.cs` directly, not assumed —
+             fixed to return 422 `application/problem+json` (`ProblemResults.UnprocessableEntity`, new)
+             with the structured errors array and a `correlationId`, matching every other error response
+             in the API. `FlowStep.GetReferencedVariablePaths()` replaced with
+             `GetReferencedVariableReferences()` so each reference carries its originating
+             `params.<name>` or `when` field, not just the bare path.
+Discovered:  `FlowStep`'s variable-reference scan only looks at top-level string param values — a
+             `{{vars.x}}` template nested inside an object/array param (e.g. a JSON body field) isn't
+             caught at publish time, only at runtime via `VariableStore`. Pre-existing, not introduced or
+             widened by today's change (same scope as before); out of today's time-box, not silently
+             fixed — flagging here rather than either expanding scope or leaving it undiscovered.
+
+             SARVAGHNA's pre-commit hook blocked the first commit attempt (HIGH severity, Volume 5 §5.2 /
+             analyzer YUKTI002): my new `TryGetActionSchema` copied an existing
+             `.GetAwaiter().GetResult()` blocking pattern already present (unflagged) in both
+             `ActionExists` implementations. Rather than bypass the hook, fixed it properly: dropped
+             `ActionExists` entirely (it had no callers once `Flow.Publish` switched to the schema-based
+             check), made `IModuleActionResolver.TryGetActionSchema` genuinely `async Task<...>` with a
+             `CancellationToken`, and threaded that async all the way up through both real
+             implementations, `Flow.Publish` itself (now `async Task<FlowPublishResult>`), and
+             `PublishFlowCommandHandler.HandleCore` (already async, just needed `await`). `Yukti.Host`
+             needed no change — it only calls the command handler, already async at that layer.
+Scope guards: none — every change is the minimal shape the task's own stated criteria (plus the hook's
+             correctly-enforced async rule) require.
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 105/105 (was 95/95, +10 new).
+Next:        D2-T6 — the CLI. Packaging decided (both .NET tool + self-contained exe). Posting the CLI
+             plan before writing any code, per the spec's own explicit checkpoint.

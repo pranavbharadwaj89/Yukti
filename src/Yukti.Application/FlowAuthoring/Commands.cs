@@ -95,7 +95,7 @@ public sealed class PublishFlowCommandHandler : AuditableCommandHandler<PublishF
             ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
         _tenantGuard.EnsureAccessible(flow.TenantId); // FR-TENANT-01 Layer 3
 
-        var result = flow.Publish(_resolver);
+        var result = await flow.Publish(_resolver, ct);
 
         // FR-OPS-03: no commit here even when Succeeded — the outer
         // wrapper commits (staged state if Succeeded, nothing but the
