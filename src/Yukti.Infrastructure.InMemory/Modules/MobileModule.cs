@@ -59,8 +59,8 @@ public sealed class MobileModule : IAutomationModule
             Description = "Sets the value of the first element matching a selector.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true },
-                new ParamSpec { Name = "value", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "XPath (starting with /) or accessibility id." },
+                new ParamSpec { Name = "value", Type = ParamType.String, Required = true, Description = "Text to set on the matched element." },
             }
         },
         new ActionSchema
@@ -69,10 +69,10 @@ public sealed class MobileModule : IAutomationModule
             Description = "Synthesizes a touch swipe gesture from one point to another.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "fromX", Type = ParamType.Number, Required = true },
-                new ParamSpec { Name = "fromY", Type = ParamType.Number, Required = true },
-                new ParamSpec { Name = "toX", Type = ParamType.Number, Required = true },
-                new ParamSpec { Name = "toY", Type = ParamType.Number, Required = true },
+                new ParamSpec { Name = "fromX", Type = ParamType.Number, Required = true, Description = "Starting X coordinate of the swipe, in device pixels." },
+                new ParamSpec { Name = "fromY", Type = ParamType.Number, Required = true, Description = "Starting Y coordinate of the swipe, in device pixels." },
+                new ParamSpec { Name = "toX", Type = ParamType.Number, Required = true, Description = "Ending X coordinate of the swipe, in device pixels." },
+                new ParamSpec { Name = "toY", Type = ParamType.Number, Required = true, Description = "Ending Y coordinate of the swipe, in device pixels." },
             }
         },
         new ActionSchema
@@ -81,7 +81,7 @@ public sealed class MobileModule : IAutomationModule
             Description = "Asserts an element matching a selector is displayed. A missing or hidden element both read as not-visible.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "XPath (starting with /) or accessibility id." },
             }
         },
     };

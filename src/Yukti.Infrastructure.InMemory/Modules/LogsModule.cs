@@ -25,7 +25,7 @@ public sealed class LogsModule : IAutomationModule
             Description = "Runs a declarative regex rule engine over log text, failing if any rule's match count exceeds its threshold.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "logText", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "logText", Type = ParamType.String, Required = true, Description = "Raw log text to check the rules against." },
                 new ParamSpec { Name = "rules", Type = ParamType.Array, Required = true, Description = "Array of {name, pattern, maxAllowed}." },
             }
         },
@@ -35,8 +35,8 @@ public sealed class LogsModule : IAutomationModule
             Description = "Buckets log lines by minute and flags buckets whose error rate exceeds mean + N standard deviations.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "logText", Type = ParamType.String, Required = true },
-                new ParamSpec { Name = "stdDevThreshold", Type = ParamType.Number, Required = false, DefaultValue = 2.0 },
+                new ParamSpec { Name = "logText", Type = ParamType.String, Required = true, Description = "Raw log text to bucket and analyze." },
+                new ParamSpec { Name = "stdDevThreshold", Type = ParamType.Number, Required = false, DefaultValue = 2.0, Description = "Number of standard deviations above the mean error rate that flags a bucket as anomalous." },
             }
         }
     };

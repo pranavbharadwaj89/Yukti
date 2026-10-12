@@ -34,8 +34,13 @@ Every task follows INSPECT first: done → add proof test · partial → complet
 - **Exit check:** green baseline + CI + approved GAP-MATRIX. No feature code merged today.
 
 ## Day 2 — Tue 13 Oct · Module contract, flow engine, CLI (P0-1, P0-2, P0-3, P0-5)
-- [ ] D2-T1 `IAutomationModule` contract + registry; `GET /api/v1/modules/actions` returns all actions with schemas and non-empty descriptions; test registers a synthetic module with no other code change
-  ✔ `dotnet test --filter "FullyQualifiedName~ModuleRegistry"`
+- [x] D2-T1 `IAutomationModule` contract + registry; `GET /api/v1/modules` returns all actions with schemas and non-empty descriptions; test registers a synthetic module with no other code change
+  ✔ `dotnet test --filter "FullyQualifiedName~ModuleRegistry"` → 6/6 passing (`ModuleRegistryTests.cs`,
+  real route recorded: `GET {apiV1}/modules`, not `/modules/actions` as this line assumed — corrected).
+  DISCOVERED + fixed in the same PR: the new "every action/param needs a Description" validation this
+  task required would have broken startup — WebModule/LogsModule/MobileModule/DesktopUiModule had 25
+  production ParamSpecs with no Description at all. Backfilled all 25 with real descriptions before
+  adding the validation, not after — confirmed via full suite: 77/77 (was 71/71).
 - [ ] D2-T2 Variable interpolation `{{vars.a.b}}`, `saveAs`, publish-time check that referenced vars are produced earlier
   ✔ `dotnet test --filter "FullyQualifiedName~Variable"`
 - [ ] D2-T3 Flow engine: ordered steps, fail-fast, `ContinueOnFailure`, `when` → Skipped, retry policy, flaky classification with retry history

@@ -131,3 +131,27 @@ Exit check:  Day 1 fully closed — D1-T1 through D1-T5 all done, all evidence-b
 Next:        Day 2 — D2-T1 (module registry + synthetic-module proof), the first unchecked task with
              no upstream dependency. D2-T4 is already done (see above). AI vendor question (DISCOVERED
              #1) needs an owner answer before Day 5, not blocking Day 2 start.
+
+## 2026-10-12 ~21:30 IST — Day 2 begins (per owner's "Yukti — Day 2 Spec" doc)
+Done:        D2-T1 (synthetic-module proof, P0-1). Real actions route found: `GET {apiV1}/modules`
+             (Program.cs:1106) — the task line's `/modules/actions` was never real, corrected in
+             PLAN.md. Added `tests/Yukti.Orchestration.Tests/ModuleRegistryTests.cs`: a
+             `SyntheticXyzModule` defined only in the test project (`ModuleKind.Custom("synthetic-xyz")`,
+             action `doSomethingNovel`, 3 params matching the spec exactly) proves (a) it resolves
+             through the plain in-process `ModuleRegistry` with zero other code change, (b) its full
+             schema — descriptions included — is exactly what `GET /api/v1/modules` would serialize,
+             (c) a flow step actually dispatches to its `Run` with interpolated params through the real
+             `FlowEngine`, (d) no file under `src/` contains the word "synthetic" (source-scan negative),
+             (e)+(f) registering an action/param with a missing Description now throws `DomainException`
+             naming the action/param.
+Discovered:  Adding (e)/(f)'s validation to `ModuleRegistration.RegisterAction` would have broken real
+             app startup: `WebModule`, `LogsModule`, `MobileModule`, `DesktopUiModule` had 25 production
+             `ParamSpec`s with no `Description` at all (only `ApiModule` was fully documented). Not a
+             pre-existing bug anyone had filed — found by deliberately checking before wiring the
+             validation in, not after. Fixed by writing real descriptions for all 25 (file-by-file,
+             reviewed against each action's actual behavior), confirmed via source grep (0 missing
+             across all 5 built-ins) before adding the throw.
+Scope guards: none — the description backfill is in-scope: D2-T1's own negative-test criterion cannot
+             exist safely without it, so it's a precondition, not expansion.
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 77/77 (was 71/71, +6 new).
+Next:        D2-T2 — variable interpolation proof (P0-3 per the Day-2 spec's corrected mapping).

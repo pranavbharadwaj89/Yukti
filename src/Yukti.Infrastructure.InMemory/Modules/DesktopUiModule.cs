@@ -36,8 +36,8 @@ public sealed class DesktopUiModule : IAutomationModule
             Description = "Moves the mouse to (x, y) and left-clicks.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "x", Type = ParamType.Number, Required = true },
-                new ParamSpec { Name = "y", Type = ParamType.Number, Required = true },
+                new ParamSpec { Name = "x", Type = ParamType.Number, Required = true, Description = "Screen X coordinate, in pixels, to move the mouse to before clicking." },
+                new ParamSpec { Name = "y", Type = ParamType.Number, Required = true, Description = "Screen Y coordinate, in pixels, to move the mouse to before clicking." },
             }
         },
         new ActionSchema
@@ -46,7 +46,7 @@ public sealed class DesktopUiModule : IAutomationModule
             Description = "Types text at the current keyboard focus.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "text", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "text", Type = ParamType.String, Required = true, Description = "Text to type at whichever control currently has keyboard focus." },
             }
         },
         new ActionSchema
@@ -55,7 +55,7 @@ public sealed class DesktopUiModule : IAutomationModule
             Description = "Presses and releases a single named key (e.g. Enter, Tab, Escape, A, F1).",
             Parameters = new[]
             {
-                new ParamSpec { Name = "key", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "key", Type = ParamType.String, Required = true, Description = "Name of the key to press, e.g. Enter, Tab, Escape, A, F1." },
             }
         },
         new ActionSchema
@@ -64,7 +64,7 @@ public sealed class DesktopUiModule : IAutomationModule
             Description = "Searches the live screen for a region matching a reference image. Not-found is a normal failure, not an exception.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "imagePath", Type = ParamType.String, Required = true },
+                new ParamSpec { Name = "imagePath", Type = ParamType.String, Required = true, Description = "Path to the reference image to search the screen for." },
             }
         },
         new ActionSchema

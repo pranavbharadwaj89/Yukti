@@ -92,7 +92,22 @@ public sealed class ModuleRegistration : AggregateRoot<ModuleRegistrationId>
         TenantId = tenantId;
     }
 
-    public void RegisterAction(ActionSchema schema) => _actions.Add(new ModuleActionEntry(schema.ActionName, schema));
+    public void RegisterAction(ActionSchema schema)
+    {
+        // FR-ORCH-7's introspection surface is only as good as the
+        // descriptions it renders — a GUI built purely from ActionSchema
+        // (Principle 20.3) has nothing else to show the user. Enforced here,
+        // not just by convention, so a new module can't silently ship
+        // undocumented actions the way all five built-ins briefly did before
+        // D2-T1 backfilled them.
+        if (string.IsNullOrWhiteSpace(schema.Description))
+            throw new DomainException($"Action '{schema.ActionName}' on module '{Kind}' must have a non-empty Description.");
+        foreach (var param in schema.Parameters)
+            if (string.IsNullOrWhiteSpace(param.Description))
+                throw new DomainException($"Action '{schema.ActionName}' on module '{Kind}', parameter '{param.Name}', must have a non-empty Description.");
+
+        _actions.Add(new ModuleActionEntry(schema.ActionName, schema));
+    }
 
     public bool HasAction(string actionName) => _actions.Any(a => a.ActionName == actionName && !a.IsDeprecated);
 
