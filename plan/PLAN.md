@@ -11,7 +11,8 @@ Every task follows INSPECT first: done → add proof test · partial → complet
 ## Day 0 — Sun 11 Oct (tonight, owner)
 - [x] D0-T1 Pause the 6-hourly cloud routine that pushes to `main`
 - [ ] D0-T2 Commit SUTRADHAR.md (root, also as CLAUDE.md) and plan/PLAN.md on a branch `chore/sutradhar-plan`; merge it
-- [ ] D0-T3 Enable branch protection on `main` (PR required) — **BLOCKED:** the owner's PAT lacks `Administration` permission on the repo (confirmed via a real API attempt: `403 Resource not accessible by personal access token`). Needs either a token with that scope added, or the owner doing it manually: repo → Settings → Branches → Add rule → `main` → "Require a pull request before merging".
+- [x] D0-T3 Enable branch protection on `main` (PR required)
+  ✔ owner created a repository ruleset; confirmed live via `GET /repos/.../rules/branches/main` → `pull_request`, `deletion`, `non_fast_forward` all active; `GET /repos/.../branches/main` → `protected: true`
 
 ## Day 1 — Mon 12 Oct · Audit, stabilize, gap matrix
 - [x] D1-T1 Baseline: build and tests from a clean clone; record failures in STANDUP
