@@ -155,3 +155,29 @@ Scope guards: none — the description backfill is in-scope: D2-T1's own negativ
              exist safely without it, so it's a precondition, not expansion.
 Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 77/77 (was 71/71, +6 new).
 Next:        D2-T2 — variable interpolation proof (P0-3 per the Day-2 spec's corrected mapping).
+
+Done:        D2-T2 (variable interpolation proof, P0-3). No prior coverage existed under any name
+             (confirmed via `dotnet test --list-tests` + grep — matches GAP-MATRIX). Added
+             `tests/Yukti.Orchestration.Tests/VariableStoreTests.cs`: 11 tests covering top-level +
+             nested resolution, type preservation (`{{vars.x.count}}` stays an `int`, not `"42"`),
+             a genuinely-null value vs. a missing path, no-template passthrough, concurrent-run
+             isolation, `saveAs` ordering through the real `FlowEngine` (visible to later steps, never
+             earlier), and the missing-path failure mode end-to-end (fails only that step, respects
+             `ContinueOnFailure`/fail-fast like any other failure).
+Discovered:  A real bug, found by writing the test the spec asked for, not assumed: a `{{vars.x.y}}`
+             reference to a path no earlier step produced silently resolved to `null` (whole-parameter
+             match) or substituted an empty string (embedded in a larger string) — never an error,
+             contradicting the spec's explicit requirement and `FlowEngine.cs`'s "exceptions only for
+             the exceptional" convention (SUTRADHAR §7) being violated by silence instead. Fixed
+             minimally: `VariableStore` now throws a new `VariableResolutionException` naming the exact
+             path on an unresolved reference (distinguished from a path that resolves to a legitimate
+             `null` value, which is not an error); `FlowEngine.Execute` catches that one specific type
+             at the interpolation call site and turns it into a normal `StepResult.Failed`, going
+             through the identical fail-fast/`ContinueOnFailure` branch every other step failure already
+             uses — not a special case. Added `StepResult.Failed(...)` as a static factory, mirroring
+             the existing `StepResult.Skipped(...)`.
+Scope guards: none — the fix is the minimal one the proof test demanded, not a redesign; no ADR needed
+             per SUTRADHAR §5 step 8 ("a proof test exposes a real bug → minimal fix, noted here").
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 88/88 (was 77/77, +11 new).
+Next:        D2-T3 — flow engine semantics proof (retry/flaky with exact history-entry counts,
+             fail-fast, ContinueOnFailure, when→Skipped), per the Day-2 spec's detailed acceptance list.

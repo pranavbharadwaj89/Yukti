@@ -141,7 +141,31 @@ public sealed class FlowEngine
                 stepActivity?.SetTag("flow.step.module", step.Module.Value);
                 stepActivity?.SetTag("flow.step.action", step.Action);
 
-                var interpolatedParams = _variables.Interpolate(step.Params, run.Variables);
+                IReadOnlyDictionary<string, object?> interpolatedParams;
+                try
+                {
+                    interpolatedParams = _variables.Interpolate(step.Params, run.Variables);
+                }
+                catch (VariableResolutionException ex)
+                {
+                    // Never dispatches at all, so it gets no retry/telemetry —
+                    // same fail-fast/ContinueOnFailure decision as any other
+                    // Failed step, just reached one line earlier than usual.
+                    stepActivity?.SetTag("flow.step.status", StepStatus.Failed.ToString());
+                    run.RecordStepResult(StepResult.Failed(step.Id, step.Name, step.Module, step.Action, ex.Message));
+                    _logger.LogError("Step {StepName} ({Module}.{Action}) failed: {Error}",
+                        step.Name, step.Module, step.Action, ex.Message);
+                    await CommitRun(run, CancellationToken.None);
+
+                    if (!flow.ContinueOnFailure)
+                    {
+                        _logger.LogWarning("FlowRun {FlowRunId} stopping early — step {StepName} failed and ContinueOnFailure is false",
+                            run.Id.Value, step.Name);
+                        break;
+                    }
+                    continue;
+                }
+
                 var execCtx = new ExecutionContext
                 {
                     RunId = run.Id,

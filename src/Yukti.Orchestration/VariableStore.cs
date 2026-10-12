@@ -30,11 +30,18 @@ public sealed partial class VariableStore : IVariableStore
             case string s:
                 var wholeMatch = Regex.Match(s, @"^\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}$");
                 if (wholeMatch.Success)
-                    return ResolvePath(wholeMatch.Groups[1].Value, vars);
+                {
+                    var path = wholeMatch.Groups[1].Value;
+                    if (!TryResolvePath(path, vars, out var wholeValue))
+                        throw new VariableResolutionException(path);
+                    return wholeValue;
+                }
 
                 return TemplatePattern().Replace(s, m =>
                 {
-                    var resolved = ResolvePath(m.Groups[1].Value, vars);
+                    var path = m.Groups[1].Value;
+                    if (!TryResolvePath(path, vars, out var resolved))
+                        throw new VariableResolutionException(path);
                     return resolved?.ToString() ?? string.Empty;
                 });
 
@@ -52,11 +59,17 @@ public sealed partial class VariableStore : IVariableStore
         }
     }
 
-    private static object? ResolvePath(string path, IReadOnlyDictionary<string, object?> vars)
+    /// <summary>
+    /// False means "not found" (no step ever produced this path) —
+    /// distinct from "found, and its value happens to be null" — so
+    /// interpolation can throw on the former and never on the latter.
+    /// </summary>
+    private static bool TryResolvePath(string path, IReadOnlyDictionary<string, object?> vars, out object? value)
     {
+        value = null;
         var segments = path.Split('.');
         if (segments.Length == 0 || segments[0] != "vars")
-            return null;
+            return false;
 
         object? current = vars;
         foreach (var segment in segments.Skip(1))
@@ -64,9 +77,10 @@ public sealed partial class VariableStore : IVariableStore
             if (current is IReadOnlyDictionary<string, object?> dict && dict.TryGetValue(segment, out var next))
                 current = next;
             else
-                return null;
+                return false;
         }
-        return current;
+        value = current;
+        return true;
     }
 
     public bool EvaluateCondition(string? whenCondition, IReadOnlyDictionary<string, object?> vars)
@@ -74,7 +88,11 @@ public sealed partial class VariableStore : IVariableStore
         if (string.IsNullOrWhiteSpace(whenCondition))
             return true;
 
-        var resolved = ResolvePath(whenCondition.Trim(), vars);
+        // A `when` referencing a path no earlier step produced is treated as
+        // falsy, not an error — unlike Interpolate, a condition legitimately
+        // asks "is this present and truthy", and "absent" is itself a valid,
+        // meaningful answer (Skipped), never a run-breaking failure.
+        var resolved = TryResolvePath(whenCondition.Trim(), vars, out var found) ? found : null;
         return resolved switch
         {
             null => false,
