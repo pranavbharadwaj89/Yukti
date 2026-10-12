@@ -289,7 +289,15 @@ builder.Services.AddSingleton<ApiModule>();
 builder.Services.AddSingleton<LogsModule>();
 builder.Services.AddSingleton<WebModule>();
 builder.Services.AddSingleton<MobileModule>();
-builder.Services.AddSingleton<DesktopUiModule>();
+// DesktopUiModule is [SupportedOSPlatform("windows")] by design (Volume 1
+// Part III — Win32 SendInput automation has no cross-platform equivalent).
+// D1-T2: guard every touch point with OperatingSystem.IsWindows() so this
+// genuinely platform-specific module no longer needs CA1416 suppressed —
+// it's correctly absent from the registry entirely on non-Windows hosts.
+if (OperatingSystem.IsWindows())
+{
+    builder.Services.AddSingleton<DesktopUiModule>();
+}
 builder.Services.AddSingleton<IModuleRegistry>(sp =>
 {
     var registry = new ModuleRegistry();
@@ -297,7 +305,10 @@ builder.Services.AddSingleton<IModuleRegistry>(sp =>
     registry.Register(sp.GetRequiredService<LogsModule>());
     registry.Register(sp.GetRequiredService<WebModule>());
     registry.Register(sp.GetRequiredService<MobileModule>());
-    registry.Register(sp.GetRequiredService<DesktopUiModule>());
+    if (OperatingSystem.IsWindows())
+    {
+        registry.Register(sp.GetRequiredService<DesktopUiModule>());
+    }
     return registry;
 });
 // Scoped, not Singleton: ModuleDispatcher now depends on the Scoped EF
@@ -501,7 +512,6 @@ using (var scope = app.Services.CreateScope())
     var logsModule = scope.ServiceProvider.GetRequiredService<LogsModule>();
     var webModule = scope.ServiceProvider.GetRequiredService<WebModule>();
     var mobileModule = scope.ServiceProvider.GetRequiredService<MobileModule>();
-    var desktopUiModule = scope.ServiceProvider.GetRequiredService<DesktopUiModule>();
 
     // Bypasses RegisterModuleCommandHandler deliberately, same reasoning as
     // the admin/role seeding above: that handler's EnsurePermission goes
@@ -527,7 +537,11 @@ using (var scope = app.Services.CreateScope())
     await RegisterModuleIfMissing(ModuleKind.Logs, "Log Automation", logsModule.GetSupportedActions(), logsModule.ContractVersion);
     await RegisterModuleIfMissing(ModuleKind.Web, "Web Automation", webModule.GetSupportedActions(), webModule.ContractVersion);
     await RegisterModuleIfMissing(ModuleKind.Mobile, "Mobile Automation", mobileModule.GetSupportedActions(), mobileModule.ContractVersion);
-    await RegisterModuleIfMissing(ModuleKind.DesktopUi, "Desktop UI Automation", desktopUiModule.GetSupportedActions(), desktopUiModule.ContractVersion);
+    if (OperatingSystem.IsWindows())
+    {
+        var desktopUiModule = scope.ServiceProvider.GetRequiredService<DesktopUiModule>();
+        await RegisterModuleIfMissing(ModuleKind.DesktopUi, "Desktop UI Automation", desktopUiModule.GetSupportedActions(), desktopUiModule.ContractVersion);
+    }
 
     await using var moduleUow = uowFactory.Create();
     await moduleUow.Commit(default);
