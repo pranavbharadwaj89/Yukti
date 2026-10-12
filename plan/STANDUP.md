@@ -56,3 +56,21 @@ Exit check:  at risk, not failed — Day 1's own exit check ("no feature code me
 Next:        Owner reviews plan/GAP-MATRIX.md (esp. the P0-1..P0-8 naming inference and the
              /ai/flows/suggest vs /flows/generate naming question) and approves or corrects it.
              Once approved: D1-T4 (CI baseline workflow) and D1-T5 (reconcile Days 2-6), then Day 2.
+
+## 2026-10-12 ~20:15 IST — Day 0 close-out
+Done:        D0-T3 closed — owner created a GitHub repository ruleset on `main` (not classic branch
+             protection) with `pull_request`, `deletion`, `non_fast_forward` rules. First attempt had
+             an empty branch target (`conditions.ref_name.include: []`), so the ruleset existed but
+             enforced nothing (`GET /rules/branches/main` returned `[]`) — owner added "Include default
+             branch" as the target and re-saved. Re-verified: `GET /rules/branches/main` now lists all
+             3 rules active, `GET /branches/main` → `protected: true`.
+In progress: none
+Blocked:     none open
+Discovered:  none
+Scope guards: none
+Exit check:  Day 0 fully closed (D0-T1, D0-T2, D0-T3 all done)
+Next:        Merge `feature/D1-T1-T2-baseline-stabilization` and `feature/D1-T3-gap-matrix` into `main`
+             (owner — PAT still lacks `pull_request` write scope, confirmed via 403 on `POST /pulls`,
+             but with the ruleset active the owner can now merge via the GitHub UI directly, or open
+             the compare/merge page themselves). Then owner approval of GAP-MATRIX.md naming questions
+             unblocks D1-T4 (CI baseline) and D1-T5 (reconciliation), then Day 2.
