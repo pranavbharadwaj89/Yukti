@@ -9,6 +9,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Needed to reference WebApplication/WebApplicationBuilder directly
+         when hosting FixtureApp in-process (D3-T1) — a ProjectReference to
+         a Sdk.Web project doesn't propagate its implicit framework
+         reference to this plain Sdk project on its own. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
@@ -21,6 +29,7 @@
     <ProjectReference Include="..\..\src\Yukti.Application\Yukti.Application.csproj" />
     <ProjectReference Include="..\..\src\Yukti.Orchestration\Yukti.Orchestration.csproj" />
     <ProjectReference Include="..\..\src\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj" />
+    <ProjectReference Include="..\..\demo\fixtures\FixtureApp\FixtureApp.csproj" />
   </ItemGroup>
 
 </Project>
