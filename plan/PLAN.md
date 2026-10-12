@@ -21,8 +21,9 @@ Every task follows INSPECT first: done → add proof test · partial → complet
   ✔ `dotnet build -warnaserror && dotnet test` → all green; `npm run build` green
 - [ ] D1-T3 `plan/GAP-MATRIX.md`: for each acceptance item P0-1…P0-8 + the frozen features (Vault, RLS, RBAC, audit, marketplace UI): status Exists / Partial / Missing, evidence (file paths, tests), and naming differences vs the blueprint vocabulary
   ✔ file exists; every row has evidence; owner approves
-- [ ] D1-T4 CI baseline in GitHub Actions: build, test, `dotnet format --verify-no-changes`, frontend lint/test/build on every PR
-  ✔ workflow green on a PR
+- [x] D1-T4 CI baseline in GitHub Actions: build, test, `dotnet format --verify-no-changes`, frontend lint/test/build on every PR
+  ✔ workflow green on a PR — run 38267715485 on PR #3 (`feature/D1-T4-ci-baseline`), fixed once (Node 20→24
+  for jsdom's engines floor) after the first attempt failed, second run green on both jobs
 - [ ] D1-T5 Reconcile Days 2–6 below against GAP-MATRIX: mark tasks already proven as `ALREADY DONE (evidence)`; add missing work under DISCOVERED
   ✔ owner approves the reconciled plan
 - **Exit check:** green baseline + CI + approved GAP-MATRIX. No feature code merged today.

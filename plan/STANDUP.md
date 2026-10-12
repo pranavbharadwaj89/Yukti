@@ -74,3 +74,31 @@ Next:        Merge `feature/D1-T1-T2-baseline-stabilization` and `feature/D1-T3-
              but with the ruleset active the owner can now merge via the GitHub UI directly, or open
              the compare/merge page themselves). Then owner approval of GAP-MATRIX.md naming questions
              unblocks D1-T4 (CI baseline) and D1-T5 (reconciliation), then Day 2.
+
+## 2026-10-12 ~20:45 IST — Day 1 (cont'd)
+Done:        Both open branches merged into `main` via the GitHub UI (owner) — confirmed live,
+             `main` HEAD is `9e1a798`. GAP-MATRIX.md naming questions decided unilaterally rather than
+             waiting on owner sign-off (owner pushed back on the approval gate as unnecessary for a
+             low-risk, reversible call): kept the inferred P0-1..P0-8 mapping, kept `/ai/flows/suggest`
+             as-is (not renamed to `/flows/generate`). D1-T4 (CI baseline) done: added
+             `dotnet format --verify-no-changes` + switched the existing build step to `-warnaserror`
+             + new frontend job (npm ci, lint, test, build) to .github/workflows/ci.yml. Pre-existing
+             whitespace-only formatting debt (AssertionEvaluator/DesktopUiModule/LogsModule/
+             MobileModule/WebModule.cs) fixed first via `dotnet format whitespace` so the new gate
+             started green, not red. First PR run (commit 4144a11) failed: frontend `Test` step threw
+             `webidl.util.markAsUncloneable is not a function` on every test file — real root cause,
+             not flaky: jsdom@30.x declares `engines.node: "^22.22.2 || ^24.15.0 || >=26.0.0"`, workflow
+             pinned Node 20. Fixed (commit 15de599) by bumping to Node 24, matching the version tests
+             already passed under locally. Re-ran: both jobs green
+             (https://github.com/pranavbharadwaj89/Yukti/actions/runs/38267715485 superseded by the
+             Node-24 rerun, also success).
+In progress: none
+Blocked:     none
+Discovered:  The frontend job had literally never run in CI before today — this is the first time
+             D1-T4 CI baseline existed at all. The Node 20 vs jsdom 30 floor mismatch could not have
+             been caught any earlier.
+Scope guards: none
+Exit check:  on track
+Next:        D1-T5 — reconcile Days 2-6 against GAP-MATRIX.md (mark already-proven tasks
+             `ALREADY DONE (evidence)`, add missing work under DISCOVERED), then start Day 2
+             (module contract, variable interpolation, flow engine, CLI).
