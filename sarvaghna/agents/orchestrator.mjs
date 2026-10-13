@@ -248,7 +248,7 @@ export class OrchestratorAgent {
     }
 
     try {
-      analysisResult = this.analyst.analyzeDoc(docPath);
+      analysisResult = await this.analyst.analyzeDoc(docPath);
       missionLog.push({
         step: 1,
         agent: 'ANALYST',
@@ -260,7 +260,7 @@ export class OrchestratorAgent {
       // Retry once if missing required fields or fallback to goal text
       if (retryCounts.ANALYST < 1) {
         retryCounts.ANALYST++;
-        analysisResult = this.analyst.analyzeText(goalDescription, 'User Goal Text');
+        analysisResult = await this.analyst.analyzeText(goalDescription, 'User Goal Text');
         missionLog.push({
           step: 1,
           agent: 'ANALYST',
@@ -291,7 +291,7 @@ export class OrchestratorAgent {
         });
         state.current_step = `Coder generated test suite for ${analysisResult.scenariosData.test_scenarios.length} scenarios.`;
       } else {
-        codeGenResult = this.coder.generateTest(sampleCriterion, 'playwright');
+        codeGenResult = await this.coder.generateTest(sampleCriterion, 'playwright');
         missionLog.push({
           step: 2,
           agent: 'CODER',
@@ -337,37 +337,27 @@ export class OrchestratorAgent {
     state.current_step = `Tester executed test suite: ${testResult.passed}/${testResult.total} passed.`;
 
     // Step 4: Delegate to REVIEWER
-    let rubricResult = null;
-    const repoRootPath = context.repoRoot || process.cwd();
-    const ticketJsonPath = path.resolve(repoRootPath, 'ticket.json');
-    const testerReportPath = path.resolve(repoRootPath, 'tester_report.json');
-
-    if (fs.existsSync(ticketJsonPath) && fs.existsSync(testerReportPath)) {
-      try {
-        rubricResult = this.reviewer.evaluateWithRubric(
-          ticketJsonPath,
-          docPath && docPath.endsWith('.json') ? docPath : 'scenarios_PROJ-123.json',
-          testerReportPath,
-          repoRootPath
-        );
-      } catch {
-        rubricResult = null;
-      }
-    }
-
-    const coverageResult = this.reviewer.scoreCoverage(analysisResult.acceptanceCriteria, testResult);
+    // Both signals below are computed from THIS mission's live data only —
+    // analysisResult and testResult just produced by the Analyst and Tester
+    // above, plus context.rawDiff. Earlier this step silently read two
+    // unrelated leftover fixture files (ticket.json / tester_report.json,
+    // a generic "PROJ-123 checkout" demo dated Sept 12) and reported their
+    // score instead, regardless of what this mission actually did. That
+    // path is gone — nothing here can produce a score for work that didn't
+    // happen in this run.
+    const coverageResult = await this.reviewer.scoreCoverage(analysisResult.acceptanceCriteria, testResult);
     const auditResult = this.reviewer.auditDiff(context.rawDiff || '');
 
-    const finalReviewScore = rubricResult ? rubricResult.rubricScore : (auditResult.qualityScore || 85);
-    const reviewDecision = rubricResult ? rubricResult.decision : (auditResult.passed ? 'ship' : 'retry');
+    const finalReviewScore = Math.round((coverageResult.coverageScore + auditResult.qualityScore) / 2);
+    const reviewDecision = !auditResult.passed
+      ? 'escalate'
+      : (coverageResult.coverageScore >= 60 ? 'ship' : 'retry');
 
     missionLog.push({
       step: 4,
       agent: 'REVIEWER',
       status: reviewDecision === 'ship' ? 'SUCCESS' : (reviewDecision === 'retry' ? 'RETRY_SUGGESTED' : 'ESCALATE'),
-      result: rubricResult
-        ? `Rubric Score: ${rubricResult.rubricScore}/100 [${rubricResult.decision.toUpperCase()}] | Coverage: ${coverageResult.coverageScore}%`
-        : `Coverage: ${coverageResult.coverageScore}% | Quality: ${auditResult.qualityScore}% (${auditResult.verdict})`
+      result: `Coverage: ${coverageResult.coverageScore}% (${coverageResult.coverageMode}) | Quality: ${auditResult.qualityScore}% (${auditResult.verdict}) | ${coverageResult.feedback}`
     });
 
     // Check Decision Rules for Completion vs Escalation

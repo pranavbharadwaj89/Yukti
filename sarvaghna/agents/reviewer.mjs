@@ -8,6 +8,7 @@ import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { scanSecrets } from '../rules/secrets.mjs';
 import { checkArchitecture } from '../rules/architecture.mjs';
+import { callGeminiJson } from '../core/gemini-client.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,10 +38,15 @@ export class ReviewerAgent {
 
   /**
    * Scores coverage between extracted requirements and existing test suites.
+   * Tries a real Gemini judgment first (reads the actual criteria against
+   * the actual executed test names); falls back to deterministic keyword
+   * matching against real test names when AI is unavailable. Both paths
+   * genuinely use testResults now — previously this parameter was accepted
+   * but never read, and "coverage" was five hardcoded buzzwords.
    * @param {Array} acceptanceCriteria - Extracted criteria from Analyst.
-   * @param {Array} testResults - Executed test results from Tester.
+   * @param {Object} testResults - Result object from Tester.runSuite (needs .testCases).
    */
-  scoreCoverage(acceptanceCriteria = [], testResults = null) {
+  async scoreCoverage(acceptanceCriteria = [], testResults = null) {
     if (acceptanceCriteria.length === 0) {
       return {
         agent: this.name,
@@ -52,17 +58,102 @@ export class ReviewerAgent {
       };
     }
 
-    // Heuristic coverage matching
+    this.lastAiFallbackReason = null;
+    const aiResult = await this.scoreCoverageWithAi(acceptanceCriteria, testResults);
+    if (aiResult) return aiResult;
+
+    const fallback = this.scoreCoverageDeterministic(acceptanceCriteria, testResults);
+    if (this.lastAiFallbackReason) {
+      fallback.aiFallbackReason = this.lastAiFallbackReason;
+      fallback.feedback += ` [AI coverage unavailable: ${this.lastAiFallbackReason}]`;
+    }
+    return fallback;
+  }
+
+  /**
+   * AI-judged coverage: gives Gemini the real criteria and the real list of
+   * executed test names and asks for an honest semantic match. Returns null
+   * (never throws) on any failure or when there's nothing to judge against.
+   */
+  async scoreCoverageWithAi(acceptanceCriteria, testResults) {
+    const testCases = Array.isArray(testResults?.testCases) ? testResults.testCases : [];
+    if (testCases.length === 0) return null;
+
+    const criteriaList = acceptanceCriteria
+      .map((c, i) => `${i + 1}. ${c.title}${c.description ? ' — ' + c.description : ''}`)
+      .join('\n');
+    const testNames = testCases.map(t => `${t.status}: ${t.name}`).join('\n');
+
+    const prompt = `You are the Reviewer agent inside SARVAGHNA (सर्वज्ञ), the autonomous quality agent for the Yukti platform.
+
+Given these acceptance criteria and this list of actually-executed test names/results, judge honestly which criteria are genuinely covered by an existing test (real semantic match — a test name doesn't have to contain the same words, it has to test the same behavior) and which have no real coverage. Do not be generous; an unmatched criterion should be reported as missing.
+
+ACCEPTANCE CRITERIA:
+${criteriaList}
+
+EXECUTED TESTS (${testCases.length} total):
+${testNames}
+
+Return pure JSON:
+{
+  "coverageScore": 0-100,
+  "coveredCriteria": ["criterion title", ...],
+  "missingCriteria": ["criterion title", ...],
+  "feedback": "1-2 sentence honest assessment, naming the biggest real gap if any"
+}`;
+
+    const result = await callGeminiJson({ prompt, maxOutputTokens: 8192 });
+    if (!result.ok) {
+      this.lastAiFallbackReason = result.reason;
+      return null;
+    }
+
+    const data = result.data || {};
+    if (typeof data.coverageScore !== 'number') {
+      this.lastAiFallbackReason = 'model response had no numeric coverageScore';
+      return null;
+    }
+
+    return {
+      agent: this.name,
+      coverageScore: Math.round(data.coverageScore),
+      coveredCount: Array.isArray(data.coveredCriteria) ? data.coveredCriteria.length : 0,
+      missingCount: Array.isArray(data.missingCriteria) ? data.missingCriteria.length : 0,
+      totalCount: acceptanceCriteria.length,
+      coveredCriteria: data.coveredCriteria || [],
+      missingCriteria: data.missingCriteria || [],
+      coverageMode: 'ai',
+      feedback: data.feedback || 'AI coverage review completed.'
+    };
+  }
+
+  /**
+   * Deterministic fallback: matches each criterion's significant words
+   * against the real executed test names (not five hardcoded buzzwords).
+   * Still a heuristic, but now genuinely reads testResults.
+   */
+  scoreCoverageDeterministic(acceptanceCriteria, testResults) {
+    const testCases = Array.isArray(testResults?.testCases) ? testResults.testCases : [];
+    const testNames = testCases.map(t => t.name.toLowerCase());
+
+    // Generic words appear in nearly every Yukti test name, so matching on
+    // them alone reports near-100% coverage for anything. Exclude them and
+    // require 2+ specific words to land in the SAME test name.
+    const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'is', 'are',
+      'that', 'this', 'must', 'shall', 'should', 'invariant', 'needs', 'required', 'when', 'from', 'into', 'each',
+      'every', 'than', 'then', 'yukti', 'test', 'tests', 'flow', 'flows', 'step', 'steps', 'module', 'modules',
+      'run', 'runs', 'fails', 'passes', 'returns', 'with', 'without', 'only', 'never', 'always']);
+
     const covered = [];
     const missing = [];
 
     for (const criterion of acceptanceCriteria) {
-      const text = (criterion.title + ' ' + (criterion.description || '')).toLowerCase();
-      if (text.includes('api') || text.includes('status') || text.includes('flow') || text.includes('webhook') || text.includes('auth')) {
-        covered.push(criterion);
-      } else {
-        missing.push(criterion);
-      }
+      const text = `${criterion.title || ''} ${criterion.description || ''}`.toLowerCase();
+      const words = [...new Set((text.match(/[a-z0-9]{4,}/g) || []).filter(w => !stopWords.has(w)))];
+      const matched = words.length >= 2 && testNames.some(name => words.filter(w => name.includes(w)).length >= 2);
+
+      if (matched) covered.push(criterion);
+      else missing.push(criterion);
     }
 
     const coveragePercentage = Math.round((covered.length / acceptanceCriteria.length) * 100);
@@ -75,9 +166,12 @@ export class ReviewerAgent {
       totalCount: acceptanceCriteria.length,
       coveredCriteria: covered.map(c => c.title),
       missingCriteria: missing.map(c => c.title),
-      feedback: coveragePercentage >= 80
-        ? `Strong coverage (${coveragePercentage}%): Key quality paths and invariants are covered.`
-        : `Coverage gap (${coveragePercentage}%): ${missing.length} criteria still require dedicated automated checks.`
+      coverageMode: 'deterministic',
+      feedback: testCases.length === 0
+        ? `No individual test names were available from the Tester's run (suite '${testResults?.suiteType || 'unknown'}') — coverage could not be matched against real tests.`
+        : (coveragePercentage >= 80
+          ? `Strong coverage (${coveragePercentage}%): ${covered.length}/${acceptanceCriteria.length} criteria have a plausibly matching test by name.`
+          : `Coverage gap (${coveragePercentage}%): ${missing.length}/${acceptanceCriteria.length} criteria have no obviously matching test name.`)
     };
   }
 

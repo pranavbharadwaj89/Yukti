@@ -21,6 +21,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
+// 0. Load local-only secrets for manual CLI testing (e.g. GEMINI_API_KEY)
+// from sarvaghna/.env.local if present. Never committed — see .gitignore.
+// Real secrets already present in the environment (CI, a real shell export)
+// always take priority over this file.
+const envLocalPath = path.join(__dirname, '.env.local');
+if (fs.existsSync(envLocalPath)) {
+  for (const line of fs.readFileSync(envLocalPath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '');
+    if (key && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
 // 1. Handle Git Hook Inculcation & Ledger Commands
 const args = process.argv.slice(2);
 
@@ -98,6 +117,12 @@ if (args.includes('--scenarios') || args.includes('--coder-tests')) {
   process.exit(0);
 }
 
+// Paths that make network calls (Gemini) set process.exitCode instead of
+// calling process.exit(): an abrupt exit while fetch's keep-alive socket is
+// still closing trips a libuv assertion on Windows (src\win\async.c:94),
+// crashing with a non-zero code that the git hooks read as a rejection.
+let crewHandled = false;
+
 if (args.includes('--crew') || args.includes('--mission')) {
   const goalIndex = args.indexOf('--mission');
   const goal = goalIndex !== -1 && args[goalIndex + 1]
@@ -114,10 +139,26 @@ if (args.includes('--crew') || args.includes('--mission')) {
   console.log('----------------------------------------------------------------');
   console.log(`🎯 Mission Goal: "${goal}"\n`);
 
+  // Give the Reviewer's architecture/secrets audit something real to look
+  // at. Without this, auditDiff(context.rawDiff || '') always runs against
+  // an empty diff and trivially "passes" regardless of what's actually in
+  // the working tree.
+  let rawDiff = '';
+  try {
+    rawDiff = execSync('git diff origin/main...HEAD', { cwd: repoRoot, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+  } catch {
+    try {
+      rawDiff = execSync('git diff HEAD', { cwd: repoRoot, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+    } catch {
+      rawDiff = '';
+    }
+  }
+
   const orchestrator = new OrchestratorAgent();
   const mission = await orchestrator.executeMission(goal, {
     repoRoot,
-    docPath: path.resolve(repoRoot, '..', 'New Text Document.txt')
+    docPath: path.resolve(repoRoot, '..', 'New Text Document.txt'),
+    rawDiff
   });
 
   console.log('📋 Crew Mission Execution Log:');
@@ -132,7 +173,8 @@ if (args.includes('--crew') || args.includes('--mission')) {
   console.log('\n================================================================');
   console.log(`🏆 Crew Mission Verdict: [${mission.verdict}] (Confidence: ${Math.round(mission.confidence * 100)}%)`);
   console.log('================================================================\n');
-  process.exit(mission.verdict === 'MISSION_ACCOMPLISHED' ? 0 : 1);
+  process.exitCode = mission.verdict === 'MISSION_ACCOMPLISHED' ? 0 : 1;
+  crewHandled = true;
 }
 
 // 2. Load Configuration
@@ -336,14 +378,16 @@ async function run() {
   // Exit with error code if blocking issues found
   if (hasCritical) {
     console.error('❌ SARVAGHNA Mandate: Action REJECTED. Fix the blocking issues above.\n');
-    process.exit(1);
+    process.exitCode = 1;
   } else {
     console.log('✅ SARVAGHNA Mandate: Action AUTHORIZED & Cleared.\n');
-    process.exit(0);
+    process.exitCode = 0;
   }
 }
 
-run().catch(err => {
-  console.error(`[SARVAGHNA] Fatal execution error: ${err.stack || err.message}`);
-  process.exit(1);
-});
+if (!crewHandled) {
+  run().catch(err => {
+    console.error(`[SARVAGHNA] Fatal execution error: ${err.stack || err.message}`);
+    process.exitCode = 1;
+  });
+}
