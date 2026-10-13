@@ -4,6 +4,9 @@
 
 import fs from 'fs';
 import path from 'path';
+import { callGeminiJson } from '../core/gemini-client.mjs';
+
+const MAX_DOC_LENGTH = 35000; // matches Tier 4's diff truncation budget
 
 export class AnalystAgent {
   constructor(options = {}) {
@@ -19,14 +22,15 @@ export class AnalystAgent {
    * Reads a PRD, specification, requirement document, or Jira scenario JSON.
    * @param {string} filePath - Absolute or relative path to document.
    */
-  analyzeDoc(filePath) {
+  async analyzeDoc(filePath) {
     if (!fs.existsSync(filePath)) {
       throw new Error(`[Analyst] Document not found at path: ${filePath}`);
     }
 
     const content = fs.readFileSync(filePath, 'utf8');
 
-    // If it's a Jira scenarios JSON file (from jira_client / analyst_agent)
+    // If it's a Jira scenarios JSON file (from jira_client / analyst_agent),
+    // it's already structured — no need for AI or regex extraction.
     if (filePath.endsWith('.json')) {
       try {
         const data = JSON.parse(content);
@@ -63,11 +67,132 @@ export class AnalystAgent {
   }
 
   /**
-   * Analyzes raw requirement text.
+   * Analyzes raw requirement text. Tries real semantic extraction via
+   * Gemini first; falls back to deterministic regex extraction if
+   * GEMINI_API_KEY is absent or the call fails for any reason. Same
+   * graceful-degradation contract as Tier 4 (rules/semantic-reviewer.mjs) —
+   * AI is optional, the Analyst always returns a usable result.
    * @param {string} text - Document contents.
    * @param {string} sourceName - Document title or filename.
    */
-  analyzeText(text, sourceName = 'Requirement Spec') {
+  async analyzeText(text, sourceName = 'Requirement Spec') {
+    this.lastAiFallbackReason = null;
+    const aiResult = await this.analyzeTextWithAi(text, sourceName);
+    if (aiResult) return aiResult;
+
+    const fallback = this.analyzeTextDeterministic(text, sourceName);
+    if (this.lastAiFallbackReason) {
+      fallback.aiFallbackReason = this.lastAiFallbackReason;
+      fallback.summary += ` [AI analysis unavailable: ${this.lastAiFallbackReason}]`;
+    }
+    return fallback;
+  }
+
+  /**
+   * AI-powered extraction. Returns null (never throws) on any failure so
+   * the caller always falls back to the deterministic path.
+   */
+  async analyzeTextWithAi(text, sourceName) {
+    const lines = text.split(/\r?\n/);
+
+    // Split on line boundaries into chunks under MAX_DOC_LENGTH so the whole
+    // document is read, not just its first third. Each chunk keeps its real
+    // starting line number so the model's line estimates stay meaningful.
+    const chunks = [];
+    let current = [];
+    let currentLen = 0;
+    let startLine = 1;
+    for (let i = 0; i < lines.length; i++) {
+      if (currentLen + lines[i].length + 1 > MAX_DOC_LENGTH && current.length > 0) {
+        chunks.push({ startLine, body: current.join('\n') });
+        current = [];
+        currentLen = 0;
+        startLine = i + 1;
+      }
+      current.push(lines[i]);
+      currentLen += lines[i].length + 1;
+    }
+    if (current.length > 0) chunks.push({ startLine, body: current.join('\n') });
+
+    const results = await Promise.all(chunks.map((c, idx) => this.analyzeChunkWithAi(c, idx + 1, chunks.length, sourceName)));
+    if (results.some(r => r === null)) {
+      // Partial AI coverage of the document would silently under-report —
+      // all chunks succeed or the whole analysis falls back.
+      return null;
+    }
+
+    const userStories = results.flatMap(r => r.userStories);
+    const acceptanceCriteria = results.flatMap(r => r.acceptanceCriteria);
+    const architecturalRules = results.flatMap(r => r.architecturalRules);
+    const ambiguities = results.flatMap(r => r.ambiguities);
+
+    if (acceptanceCriteria.length === 0 && userStories.length === 0) {
+      return null;
+    }
+
+    return {
+      agent: this.name,
+      source: sourceName,
+      lineCount: lines.length,
+      userStoriesCount: userStories.length,
+      criteriaCount: acceptanceCriteria.length,
+      rulesCount: architecturalRules.length,
+      ambiguitiesCount: ambiguities.length,
+      userStories,
+      acceptanceCriteria,
+      architecturalRules,
+      ambiguities,
+      analysisMode: 'ai',
+      summary: `Analyzed '${sourceName}' (${lines.length} lines, ${chunks.length} chunk(s)) via Gemini semantic review: Extracted ${acceptanceCriteria.length} acceptance criteria, ${architecturalRules.length} architectural rules, and flagged ${ambiguities.length} ambiguities.`
+    };
+  }
+
+  async analyzeChunkWithAi(chunk, chunkIndex, chunkCount, sourceName) {
+    const truncated = chunk.body;
+
+    const prompt = `You are the Analyst agent inside SARVAGHNA (सर्वज्ञ), the autonomous quality agent for the Yukti platform.
+
+Read the following requirement/specification document and extract its real meaning — not just keyword matches. Identify:
+1. User stories (who wants what and why)
+2. Concrete, testable acceptance criteria (things a test suite could actually verify)
+3. Architectural rules or non-functional requirements (e.g. zero-dependency domain, tenant isolation, durability, idempotency)
+4. Genuine ambiguities — places where the spec is vague, contradictory, or leaves an open question a developer would have to guess at. Do not flag "TBD"/"TODO" as ambiguous unless the surrounding text is actually unclear; use judgment, not string matching.
+
+Return pure JSON matching this exact structure:
+{
+  "userStories": [{"story": "...", "section": "...", "line": 0}],
+  "acceptanceCriteria": [{"title": "...", "description": "...", "section": "...", "line": 0}],
+  "architecturalRules": [{"rule": "...", "section": "...", "line": 0}],
+  "ambiguities": [{"warning": "...", "section": "...", "line": 0}]
+}
+
+"line" should be the 1-indexed line number in the FULL source document. This excerpt is part ${chunkIndex} of ${chunkCount} and starts at line ${chunk.startLine}, so add ${chunk.startLine - 1} to any position you count within the excerpt. Approximate is fine.
+
+DOCUMENT EXCERPT (source: ${sourceName}, part ${chunkIndex}/${chunkCount}):
+"""
+${truncated}
+"""`;
+
+    const result = await callGeminiJson({ prompt, maxOutputTokens: 8192 });
+    if (!result.ok) {
+      this.lastAiFallbackReason = `chunk ${chunkIndex}/${chunkCount}: ${result.reason}`;
+      return null;
+    }
+
+    const data = result.data || {};
+    return {
+      userStories: Array.isArray(data.userStories) ? data.userStories : [],
+      acceptanceCriteria: Array.isArray(data.acceptanceCriteria) ? data.acceptanceCriteria : [],
+      architecturalRules: Array.isArray(data.architecturalRules) ? data.architecturalRules : [],
+      ambiguities: Array.isArray(data.ambiguities) ? data.ambiguities : []
+    };
+  }
+
+  /**
+   * Original deterministic regex-based extraction. Used when AI is
+   * unavailable or declines to return usable structured output.
+   */
+  analyzeTextDeterministic(text, sourceName = 'Requirement Spec') {
     const lines = text.split(/\r?\n/);
     const userStories = [];
     const acceptanceCriteria = [];
@@ -146,6 +271,7 @@ export class AnalystAgent {
       acceptanceCriteria,
       architecturalRules,
       ambiguities,
+      analysisMode: 'deterministic',
       summary: `Analyzed '${sourceName}' (${lines.length} lines): Extracted ${acceptanceCriteria.length} acceptance criteria, ${architecturalRules.length} architectural rules, and flagged ${ambiguities.length} ambiguities.`
     };
   }

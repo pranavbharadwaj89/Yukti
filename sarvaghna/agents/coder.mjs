@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { callGeminiJson } from '../core/gemini-client.mjs';
 
 export class CoderAgent {
   constructor(options = {}) {
@@ -207,20 +208,85 @@ ${testMethods}
 
   /**
    * Generates an automated test script based on criteria extracted by Analyst.
+   * Tries real Gemini-authored code first (reads the actual criterion and
+   * writes a test that checks it); falls back to the fixed template when
+   * GEMINI_API_KEY is absent or the call fails/returns something unusable.
    * @param {Object} spec - Acceptance criteria or feature description.
    * @param {'playwright' | 'dotnet' | 'flow'} targetType - Target framework.
    */
-  generateTest(spec, targetType = 'playwright') {
+  async generateTest(spec, targetType = 'playwright') {
     const title = spec.title || 'Automated Scenario';
     const desc = spec.description || spec.summary || 'Verify system behavior';
 
-    if (targetType === 'playwright') {
-      return this.generatePlaywrightTest(title, desc);
-    } else if (targetType === 'dotnet') {
-      return this.generateDotNetTest(title, desc);
-    } else {
+    if (targetType === 'flow') {
+      // Flow JSON generation stays deterministic — it's a fixed schema,
+      // not prose a model needs to interpret.
       return this.generateFlowDefinition(title, desc);
     }
+
+    this.lastAiFallbackReason = null;
+    const aiResult = await this.generateTestWithAi(title, desc, targetType);
+    if (aiResult) return aiResult;
+
+    const fallback = targetType === 'playwright'
+      ? this.generatePlaywrightTest(title, desc)
+      : this.generateDotNetTest(title, desc);
+    if (this.lastAiFallbackReason) {
+      fallback.aiFallbackReason = this.lastAiFallbackReason;
+      fallback.resilienceStrategy += ` [template — AI generation unavailable: ${this.lastAiFallbackReason}]`;
+    }
+    return fallback;
+  }
+
+  /**
+   * AI-authored test code for a single acceptance criterion. Returns null
+   * (never throws) on any failure so the caller always falls back to the
+   * template path.
+   */
+  async generateTestWithAi(title, desc, targetType) {
+    const frameworkInstructions = targetType === 'dotnet'
+      ? `Write a real xUnit test in C# for the Yukti platform (namespace Yukti.Tests.Scenarios), using FluentAssertions for assertions. The class should be named after the scenario and sealed. Prefer testing through Yukti's own Flow/FlowEngine abstractions when the criterion describes a flow step; otherwise write a focused unit test for the described behavior.`
+      : `Write a real Playwright test in TypeScript (import { test, expect } from '@playwright/test'). Use resilient selectors: prefer getByRole/getByLabel/data-testid over brittle CSS selectors. Write an assertion that actually checks the criterion described below, not a placeholder.`;
+
+    const prompt = `You are the Coder agent inside SARVAGHNA (सर्वज्ञ), the autonomous quality agent for the Yukti platform.
+
+Given this acceptance criterion extracted by the Analyst agent, write ONE real, runnable, specific test that verifies it. Do not write a generic placeholder test — the assertions must be concrete and tied to what this criterion actually describes.
+
+Criterion title: ${title}
+Criterion description: ${desc}
+
+${frameworkInstructions}
+
+Return pure JSON matching this exact structure:
+{
+  "filename": "suggested-file-name.ext",
+  "code": "the full file contents as a single string, including imports",
+  "resilienceStrategy": "one short phrase describing the selector/assertion strategy used",
+  "rationale": "one sentence on why this test verifies the criterion"
+}`;
+
+    const result = await callGeminiJson({ prompt, maxOutputTokens: 8192 });
+    if (!result.ok) {
+      this.lastAiFallbackReason = result.reason;
+      return null;
+    }
+
+    const data = result.data || {};
+    if (!data.code || typeof data.code !== 'string' || data.code.trim().length < 20) {
+      // Unusable output — don't ship a near-empty file, fall back to template.
+      this.lastAiFallbackReason = 'model returned no usable code';
+      return null;
+    }
+
+    return {
+      agent: this.name,
+      targetType,
+      filename: data.filename || `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.${targetType === 'dotnet' ? 'cs' : 'spec.ts'}`,
+      code: data.code,
+      resilienceStrategy: data.resilienceStrategy || 'AI-authored',
+      rationale: data.rationale,
+      generationMode: 'ai'
+    };
   }
 
   generatePlaywrightTest(title, desc) {
@@ -252,7 +318,8 @@ test.describe('${title.replace(/'/g, "\\'")}', () => {
       targetType: 'playwright',
       filename: `${slug}.spec.ts`,
       code,
-      resilienceStrategy: 'AriaRole + DataTestId fallback'
+      resilienceStrategy: 'AriaRole + DataTestId fallback',
+      generationMode: 'template'
     };
   }
 
@@ -278,7 +345,8 @@ public sealed class ${className}
       agent: this.name,
       targetType: 'dotnet',
       filename: `${className}.cs`,
-      code
+      code,
+      generationMode: 'template'
     };
   }
 

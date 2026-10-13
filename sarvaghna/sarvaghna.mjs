@@ -21,6 +21,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
+// 0. Load local-only secrets for manual CLI testing (e.g. GEMINI_API_KEY)
+// from sarvaghna/.env.local if present. Never committed — see .gitignore.
+// Real secrets already present in the environment (CI, a real shell export)
+// always take priority over this file.
+const envLocalPath = path.join(__dirname, '.env.local');
+if (fs.existsSync(envLocalPath)) {
+  for (const line of fs.readFileSync(envLocalPath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '');
+    if (key && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
 // 1. Handle Git Hook Inculcation & Ledger Commands
 const args = process.argv.slice(2);
 
@@ -114,10 +133,26 @@ if (args.includes('--crew') || args.includes('--mission')) {
   console.log('----------------------------------------------------------------');
   console.log(`🎯 Mission Goal: "${goal}"\n`);
 
+  // Give the Reviewer's architecture/secrets audit something real to look
+  // at. Without this, auditDiff(context.rawDiff || '') always runs against
+  // an empty diff and trivially "passes" regardless of what's actually in
+  // the working tree.
+  let rawDiff = '';
+  try {
+    rawDiff = execSync('git diff origin/main...HEAD', { cwd: repoRoot, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+  } catch {
+    try {
+      rawDiff = execSync('git diff HEAD', { cwd: repoRoot, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+    } catch {
+      rawDiff = '';
+    }
+  }
+
   const orchestrator = new OrchestratorAgent();
   const mission = await orchestrator.executeMission(goal, {
     repoRoot,
-    docPath: path.resolve(repoRoot, '..', 'New Text Document.txt')
+    docPath: path.resolve(repoRoot, '..', 'New Text Document.txt'),
+    rawDiff
   });
 
   console.log('📋 Crew Mission Execution Log:');

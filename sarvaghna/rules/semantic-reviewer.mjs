@@ -4,13 +4,13 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { callGeminiJson } from '../core/gemini-client.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export async function runSemanticReview(diffFiles, fullDiffText, config) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  if (!process.env.GEMINI_API_KEY) {
     return {
       enabled: false,
       reason: 'GEMINI_API_KEY not configured. Deterministic rules (Tiers 1-3) ran at full fidelity.'
@@ -18,7 +18,6 @@ export async function runSemanticReview(diffFiles, fullDiffText, config) {
   }
 
   const model = config.rules.aiReview?.model || 'gemini-3.8-flash';
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   // Read active goals from GOALS.md dynamically
   let activeGoalsText = '';
@@ -82,54 +81,23 @@ ${truncatedDiff}
 \`\`\`
 `;
 
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }]
-          }
-        ],
-        generationConfig: {
-          temperature: config.rules.aiReview?.temperature || 0.2,
-          maxOutputTokens: config.rules.aiReview?.maxOutputTokens || 4096,
-          responseMimeType: 'application/json'
-        }
-      })
-    });
+  const result = await callGeminiJson({
+    prompt,
+    model,
+    temperature: config.rules.aiReview?.temperature || 0.2,
+    maxOutputTokens: config.rules.aiReview?.maxOutputTokens || 4096
+  });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      return {
-        enabled: false,
-        reason: `Gemini API returned error ${response.status}: ${errText.substring(0, 200)}`
-      };
-    }
-
-    const data = await response.json();
-    const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!candidateText) {
-      return {
-        enabled: false,
-        reason: 'Empty response received from AI model.'
-      };
-    }
-
-    const parsed = JSON.parse(candidateText);
-    return {
-      enabled: true,
-      verdict: parsed.verdict || 'COMMENT',
-      summary: parsed.summary || 'Code analysis completed.',
-      strengths: parsed.strengths || [],
-      lineReviews: parsed.lineReviews || []
-    };
-  } catch (err) {
-    return {
-      enabled: false,
-      reason: `Semantic review failed: ${err.message}`
-    };
+  if (!result.ok) {
+    return { enabled: false, reason: result.reason };
   }
+
+  const parsed = result.data || {};
+  return {
+    enabled: true,
+    verdict: parsed.verdict || 'COMMENT',
+    summary: parsed.summary || 'Code analysis completed.',
+    strengths: parsed.strengths || [],
+    lineReviews: parsed.lineReviews || []
+  };
 }

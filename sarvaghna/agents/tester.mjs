@@ -18,7 +18,9 @@ export class TesterAgent {
    * @param {string} cwd - Working directory.
    */
   runSuite(suiteType = 'dotnet', cwd = process.cwd()) {
-    let command = 'dotnet test';
+    // Normal console verbosity is what prints one "Passed <Name> [n ms]" line
+    // per test; the default minimal verbosity only prints assembly totals.
+    let command = 'dotnet test --logger "console;verbosity=normal"';
     if (suiteType === 'frontend') {
       command = 'npm.cmd test -- --run';
     } else if (suiteType === 'pytest') {
@@ -105,6 +107,24 @@ export class TesterAgent {
       total = 1;
     }
 
+    // Also capture individual test case names ("Passed Namespace.Class.Method [12 ms]")
+    // so downstream agents (Reviewer) can match criteria against real tests
+    // instead of aggregate counts alone.
+    const testCases = [];
+    for (const m of stdout.matchAll(/^\s*(Passed|Failed|Skipped)\s+([^\s\[]+)/gm)) {
+      testCases.push({ name: m[2], status: m[1] });
+    }
+
+    // Normal verbosity prints "Total tests: N / Passed: N" instead of the
+    // one-line minimal summary the regex above expects — derive totals from
+    // the real per-test lines rather than falling back to a fake "1 test".
+    if (matches.length === 0 && testCases.length > 0) {
+      passed = testCases.filter(t => t.status === 'Passed').length;
+      failed = testCases.filter(t => t.status === 'Failed').length;
+      skipped = testCases.filter(t => t.status === 'Skipped').length;
+      total = testCases.length;
+    }
+
     const humanSummary = exitCode === 0
       ? `All ${total} tests passed cleanly across all test assemblies in ${(durationMs / 1000).toFixed(1)}s.`
       : `Test run failed with ${failed} failure(s) out of ${total} total tests.`;
@@ -128,7 +148,8 @@ export class TesterAgent {
       skipped,
       durationMs,
       humanSummary,
-      failureDetails
+      failureDetails,
+      testCases
     };
   }
 
