@@ -154,8 +154,23 @@ dropping its task ID.
   schema (no `.Produces<T>()` anywhere), so response types stay hand-written in `services/types.ts` —
   see DISCOVERED. `generated/` is gitignored from hand-edits via its own header comment + an
   `.oxlintrc.json` ignore pattern, not from version control (it IS committed, so drift is visible in PRs).
-- [ ] D4-T2 Flow list + editor using `SchemaDrivenParamEditor`; ESLint rule bans module-kind branching
-  ✔ `npm test -- SchemaDrivenParamEditor` (includes synthetic-module render test)
+- [x] D4-T2 Flow list + editor using `SchemaDrivenParamEditor`; ESLint rule bans module-kind branching
+  ✔ Filter adapted → `schema-driven-param-editor.test.tsx` (vitest filters by file path; kebab-case is this
+  repo's convention, so the file isn't literally named `SchemaDrivenParamEditor`) — 6/6 passing, includes
+  the synthetic-module (D2-T1's `SyntheticXyzModule`, mirrored exactly) render test: required fields
+  marked, the Number param's real default pre-filled without being asked, the Object param rendered as a
+  JSON textarea, and an unrecognized param type falling back to a JSON field with a visible warning.
+  `ParamFields` (flow-authoring's and the Tests tabs' shared editor since before this task — exported as
+  `SchemaDrivenParamEditor` too now) already had zero module-kind branching; gained default-prefill and
+  the unknown-type fallback. The one real violation found: `module-test-form.tsx`'s Mobile device-config
+  panel was `moduleKind === "mobile"`. Moved into `src/features/shared/module-extras.ts` (`MODULE_EXTRAS`,
+  a plain object keyed by module kind — the one sanctioned place a module kind is a literal) and the
+  panel itself into `testing/mobile-pre-run-panel.tsx`; `module-test-form.tsx` now does a lookup, not a
+  comparison. New ESLint rule `no-module-kind-branching` (`eslint-rules/`, wired into `npm run lint`
+  alongside oxlint — oxlint can't run custom JS rules) flags `moduleKind === "..."` and `switch
+  (moduleKind)` outside that lookup; proven with a real `RuleTester` suite (4 invalid cases including a
+  planted violation, 4 valid including the registry lookup itself) — 4/4 passing.
+  ✔ `npm run lint && npm test -- schema-driven-param-editor` → both pass; `npm test` → 210/210 overall.
 - [x] D4-T3 API request builder + response viewer (status, timing, JSON tree) — reuse existing components
   ✔ ALREADY DONE (evidence), filter adapted per SUTRADHAR §2.8: `npm test -- api-studio-page` →
   `ApiStudioPage > renders the explorer tree and request designer panes`, passing
@@ -227,3 +242,7 @@ dropping its task ID.
   request bodies. Response types in `apps/yukti-gui/src/services/types.ts` stay hand-written until this
   is done. Found during D4-T1; scoped out of it deliberately (it's ~20 endpoints in `Program.cs`, purely
   additive metadata, no behavior change, but a separate task from "wire the frontend to generated types").
+- [ ] DISC-4 `MobilePreRunPanel`'s form fields (`testing/mobile-pre-run-panel.tsx`) use a `<label>` that
+  isn't associated with its `<input>` (no `htmlFor`/`id`, not nested) — fails `getByLabelText`, invisible
+  to a screen reader. Pre-existing (moved verbatim out of `module-test-form.tsx` during D4-T2, not
+  introduced by it); belongs with the Day 4 WCAG/axe pass, not fixed here to stay in scope.

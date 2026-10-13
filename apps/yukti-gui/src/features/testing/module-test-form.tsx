@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { flowsApi, getActionParams, modulesApi, runsApi, ApiError } from "@/services/api-client";
 import type { FlowRunResponse } from "@/services/types";
-import { Button, Card, Input, Spinner, StatusPill } from "@/components/ui/primitives";
+import { Button, Card, Spinner, StatusPill } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/form-controls";
 import { useToastStore } from "@/store/toast-store";
 import { useSelectedEnvironmentVariables } from "@/hooks";
 import { ParamFields, buildParamsFromFields, type FieldValue } from "@/features/shared/param-fields";
+import { MODULE_EXTRAS } from "@/features/shared/module-extras";
 
 // Each Tests tab (Web/Mobile/API) is a standalone single-action test runner
 // against its module's real plugin — no dependency on the Flows builder UI.
@@ -18,32 +19,6 @@ import { ParamFields, buildParamsFromFields, type FieldValue } from "@/features/
 
 function isTerminal(status: string) {
   return status === "Passed" || status === "Failed" || status === "Cancelled";
-}
-
-// MobileModule.Setup (src/Yukti.Infrastructure.InMemory/Modules/MobileModule.cs)
-// only opens an Appium session if ctx.Variables.mobile is populated — that
-// dictionary comes from TriggerFlowRunCommand.VariableOverrides, not step
-// params. Without this panel there was no way to supply it, so every
-// Mobile test failed with "not set up" regardless of what the user filled
-// into the action form above.
-interface MobileDeviceConfig {
-  platformName: string;
-  deviceName: string;
-  automationName: string;
-  appiumUrl: string;
-  app: string;
-}
-
-const emptyDeviceConfig: MobileDeviceConfig = { platformName: "", deviceName: "", automationName: "", appiumUrl: "", app: "" };
-
-function buildMobileVariableOverrides(config: MobileDeviceConfig): Record<string, unknown> | undefined {
-  const mobile: Record<string, unknown> = {};
-  if (config.platformName.trim()) mobile.platformName = config.platformName.trim();
-  if (config.deviceName.trim()) mobile.deviceName = config.deviceName.trim();
-  if (config.automationName.trim()) mobile.automationName = config.automationName.trim();
-  if (config.appiumUrl.trim()) mobile.appiumUrl = config.appiumUrl.trim();
-  if (config.app.trim()) mobile.app = config.app.trim();
-  return Object.keys(mobile).length > 0 ? { mobile } : undefined;
 }
 
 function isPathData(data: unknown): data is { path: string } {
@@ -67,7 +42,8 @@ export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; titl
   const [action, setAction] = useState("");
   const [fieldValues, setFieldValues] = useState<Record<string, FieldValue>>({});
   const [runId, setRunId] = useState<string | null>(null);
-  const [deviceConfig, setDeviceConfig] = useState<MobileDeviceConfig>(emptyDeviceConfig);
+  const extra = MODULE_EXTRAS[moduleKind];
+  const [extraConfig, setExtraConfig] = useState<unknown>(extra?.emptyConfig);
   const environmentVariables = useSelectedEnvironmentVariables();
 
   const module = modulesQuery.data?.find((m) => m.kind === moduleKind);
@@ -88,14 +64,12 @@ export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; titl
       const publishResult = await flowsApi.publish(flowId);
       if (!publishResult.succeeded) throw new Error(publishResult.errors.join("; "));
       // Environment variables are the base (e.g. a Project's saved Mobile
-      // device config); the form's own Device config panel — if filled —
-      // takes priority, since a manual override at run time is more
-      // specific than the saved default.
-      const manualMobileOverride = moduleKind === "mobile" ? buildMobileVariableOverrides(deviceConfig) : undefined;
+      // device config); the form's own pre-run panel — if filled — takes
+      // priority, since a manual override at run time is more specific
+      // than the saved default.
+      const manualOverride = extra?.buildVariableOverrides(extraConfig);
       const variableOverrides =
-        environmentVariables || manualMobileOverride
-          ? { ...environmentVariables, ...manualMobileOverride }
-          : undefined;
+        environmentVariables || manualOverride ? { ...environmentVariables, ...manualOverride } : undefined;
       return flowsApi.triggerRun(flowId, variableOverrides);
     },
     onSuccess: (run: FlowRunResponse) => {
@@ -116,51 +90,7 @@ export function ModuleTestForm({ moduleKind, title }: { moduleKind: string; titl
     <div className="flex flex-col gap-4">
       <h1 className="text-h1 text-ink">{title}</h1>
 
-      {moduleKind === "mobile" && (
-        <Card className="flex flex-col gap-3 p-4">
-          <h2 className="text-body-sm font-medium text-ink">Device config</h2>
-          <p className="text-caption text-ink-dim">
-            Required for the module to open an Appium session — without this, every action fails with "not set up".
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-body-sm text-ink-dim">Platform name*</label>
-              <Input
-                placeholder="Android or iOS"
-                value={deviceConfig.platformName}
-                onChange={(e) => setDeviceConfig((c) => ({ ...c, platformName: e.target.value }))}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-body-sm text-ink-dim">Device name*</label>
-              <Input
-                value={deviceConfig.deviceName}
-                onChange={(e) => setDeviceConfig((c) => ({ ...c, deviceName: e.target.value }))}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-body-sm text-ink-dim">Automation name*</label>
-              <Input
-                placeholder="UiAutomator2 or XCUITest"
-                value={deviceConfig.automationName}
-                onChange={(e) => setDeviceConfig((c) => ({ ...c, automationName: e.target.value }))}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-body-sm text-ink-dim">Appium URL</label>
-              <Input
-                placeholder="http://localhost:4723"
-                value={deviceConfig.appiumUrl}
-                onChange={(e) => setDeviceConfig((c) => ({ ...c, appiumUrl: e.target.value }))}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-body-sm text-ink-dim">App</label>
-              <Input value={deviceConfig.app} onChange={(e) => setDeviceConfig((c) => ({ ...c, app: e.target.value }))} />
-            </div>
-          </div>
-        </Card>
-      )}
+      {extra && <extra.PreRunPanel config={extraConfig} onChange={setExtraConfig} />}
 
       <Card className="flex flex-col gap-3 p-4">
         <Select
