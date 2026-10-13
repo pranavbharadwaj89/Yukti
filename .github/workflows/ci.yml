@@ -27,6 +27,9 @@ jobs:
     - name: Build Solution (warnings as errors)
       run: dotnet build --no-restore -warnaserror -c Release
 
+    - name: Install Playwright browsers
+      run: pwsh tests/Yukti.Orchestration.Tests/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+
     - name: Run .NET Unit & Integration Tests
       run: dotnet test --no-build -c Release --verbosity normal
 
