@@ -322,3 +322,37 @@ Exit check:  **Day 2 fully closed.** `dotnet build -warnaserror` → 0/0. `dotne
 Next:        Day 3 — API/Web/Logs module proofs + the UC-1 cross-module flow (P0-4). D3-T1 (API module)
              already ALREADY DONE per D1-T5's reconciliation; start at D3-T2 (Web module, currently zero
              dedicated tests despite the real Playwright implementation).
+
+## 2026-10-13 ~00:30 IST — Day 3 begins (per owner's "Continuity Spec: Day 3 to Production" doc)
+Done:        D3-T1 (new numbering — `demo/fixtures/FixtureApp`). The Continuity Spec renumbers Day 3
+             around a real local fixture app instead of a public site, folding the old D3-T4 "unified
+             report" task into D3-T4's own UC-1 exit criteria; `plan/PLAN.md` updated to match (old D3-T1
+             "API module" kept as evidence, not re-listed as its own task — it's already proven and gets
+             exercised again for free inside UC-1's API step). New project `demo/fixtures/FixtureApp`:
+             `/login` (known `data-testid`s) → `POST /login` sets an `ISession`-backed order id, 302s to
+             `/orders` → `/orders` shows the order id → `GET /api/orders/{id}` returns
+             `{id, status:"confirmed"}`. Every request logged to a configurable path (default
+             `demo/fixtures/app.log`) via a terminal middleware: timestamp, level, order id; `?fail=1`
+             forces that line to ERROR. Hosted in-process on port 0 — `WebApplication`/Kestrel inside the
+             same test process, no subprocess, no apphost/runtime-resolution step at all (sidesteps this
+             machine's .NET-8-SDK-but-only-.NET-10-runtime quirk entirely for the test path).
+Discovered:  Found while reading WebModule.cs/LogsModule.cs ahead of D3-T2/D3-T3 (not yet fixed, noted
+             for those tasks): (1) WebModule is missing two actions the spec explicitly lists —
+             `select` and `assertVisible` — only navigate/click/fill/assertText/screenshot/
+             waitForSelector exist today. (2) A missing/not-found selector currently falls through to a
+             bare `catch (Exception ex)` producing Playwright's own generic timeout message, not a
+             named, typed "selector not found" error — the spec's D3-T2 bar wants the selector and step
+             named explicitly. (3) `screenshot`'s `StepOutcome.Data` is an anonymous C# object (`new
+             { path }`) — the identical bug class D2-T6 found and fixed in ApiModule; same fix needed
+             here for consistency/chainability. (4) `LogsModule.checkRules` only ever reads an inline
+             `logText` parameter — there is no way to point it at a real file on disk at all, and a
+             missing/absent `logText` silently defaults to an empty string (0 lines scanned, "all rules
+             within threshold" — PASSES), which is exactly backwards from the spec's explicit D3-T3
+             requirement ("a missing log file fails the step clearly; it isn't treated as passing").
+             Also no time-window filtering exists on `checkRules` at all (only `detectAnomalies` buckets
+             by time, a different action). All four are real build items for D3-T2/D3-T3, not just
+             proof-writing.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 119/119 (was 113/113, +6 new).
+Next:        D3-T2 — Web module proof. Add `select`/`assertVisible` actions, a typed selector-not-found
+             error, and the Data-shape fix, then prove all 8 actions against FixtureApp.

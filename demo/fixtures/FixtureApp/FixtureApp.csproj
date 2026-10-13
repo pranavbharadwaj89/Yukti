@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FixtureApp</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Test-only fixture, never shipped: a believable stand-in third-party
+         app (D3-T1) for Web/Logs module proofs and UC-1 to run against,
+         so neither depends on a real site staying up. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

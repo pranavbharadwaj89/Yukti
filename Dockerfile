@@ -16,6 +16,7 @@ COPY src/Yukti.Api/Yukti.Api.csproj src/Yukti.Api/
 COPY src/Yukti.Worker/Yukti.Worker.csproj src/Yukti.Worker/
 COPY src/Yukti.Host/Yukti.Host.csproj src/Yukti.Host/
 COPY src/Yukti.Cli/Yukti.Cli.csproj src/Yukti.Cli/
+COPY demo/fixtures/FixtureApp/FixtureApp.csproj demo/fixtures/FixtureApp/
 COPY tests/Yukti.Analyzers.Tests/Yukti.Analyzers.Tests.csproj tests/Yukti.Analyzers.Tests/
 COPY tests/Yukti.Infrastructure.Tests/Yukti.Infrastructure.Tests.csproj tests/Yukti.Infrastructure.Tests/
 COPY tests/Yukti.Orchestration.Tests/Yukti.Orchestration.Tests.csproj tests/Yukti.Orchestration.Tests/

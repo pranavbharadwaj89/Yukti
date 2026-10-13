@@ -88,20 +88,37 @@ Every task follows INSPECT first: done → add proof test · partial → complet
   `availableBindings` seeding, and into the flow-file schema's `declaredVariables` field.
 - **Exit check:** chained 3-step API flow runs from the CLI with JUnit output.
 
-## Day 3 — Wed 14 Oct · API, Web, Logs modules + UC-1 (P0-4)
-- [x] D3-T1 API module: request (GET/POST/PUT/PATCH/DELETE, headers, body, timeout) + status / path equals / contains / exists assertions
-  ✔ ALREADY DONE (evidence): `dotnet test --filter "FullyQualifiedName~ApiModule"` → 10/10 passing in
-  `ApiModuleAssertionTests.cs`
-- [ ] D3-T2 Web module on Microsoft.Playwright: navigate, click, fill, select, waitFor, assertText, assertVisible, screenshot; typed SelectorNotFound
+## Day 3 — Tue 13 Oct · Cross-module proof (P0-4)
+**Superseded 2026-10-13 by the owner's "Continuity Spec: Day 3 to Production" doc** — renumbers this
+day around a real local fixture app instead of a public site, and folds the old D3-T4 "unified report"
+into D3-T4's own exit criteria rather than keeping it as a separate task. Old D3-T1 (API module) is not
+re-listed as its own task — it's `ALREADY DONE` (10/10 passing, `ApiModuleAssertionTests.cs`, confirmed
+2026-10-12) and gets exercised again for free inside the new D3-T4's UC-1 chain, so nothing regresses by
+dropping its task ID.
+- [x] D3-T1 `demo/fixtures/FixtureApp`: small ASP.NET minimal-API app (tests/demos only) — `/login` page
+  with known `data-testid` attrs, sets a session, redirects to `/orders`; orders page shows a generated
+  order ID; `GET /api/orders/{id}` → `{id, status:"confirmed"}`; every request logged to
+  `demo/fixtures/app.log` (timestamp, level, order ID), `?fail=1` logs an ERROR for that order; starts on
+  a random port inside tests (no internet dependency, no third-party-site flakiness)
+  ✔ `dotnet test --filter "FullyQualifiedName~FixtureApp"` → 6/6 passing (`FixtureAppTests.cs`, new
+  project `demo/fixtures/FixtureApp`). Hosted in-process via `WebApplication`/Kestrel bound to port 0 —
+  no subprocess, no separate runtime resolution at all. Session via ASP.NET Core's built-in `ISession`;
+  logging is a terminal middleware writing one line per request after the response is known.
+- [ ] D3-T2 Web module proof: navigate, click, fill, select, waitFor, assertText (contains + exact),
+  assertVisible, screenshot — all against FixtureApp; missing selector → typed `SelectorNotFound` naming
+  the selector and the step; screenshots stored with the step result
   ✔ `dotnet test --filter "FullyQualifiedName~WebModule"`
-- [ ] D3-T3 Logs module: checkRules (pattern, severity, maxOccurrences, optional time window)
+- [ ] D3-T3 Logs module proof: `checkRules` tested for pattern, severity, max count, and time window;
+  matching lines included in the step result; a missing log file fails the step clearly, never passes
   ✔ `dotnet test --filter "FullyQualifiedName~LogsModule"`
-- [ ] D3-T4 Unified report: one status model across modules, JSON + JUnit
-  ✔ `dotnet test --filter "FullyQualifiedName~Report"`
-- [ ] D3-T5 `demo/uc1_flow.json`: Web login (local fixture page or the-internet.herokuapp.com) → saveAs → API call using it → Logs check on `demo/fixtures/app.log`
-  ✔ CLI run of uc1_flow.json → Passed
-- [ ] D3-T6 Flake run UC-1 ×50, rate recorded in STANDUP
-  ✔ flake rate < 2%
+- [ ] D3-T4 UC-1 flow (`demo/uc1_flow.json`): Web login → read the order ID from the page, `saveAs: order`
+  → API `GET /api/orders/{{vars.order.id}}` asserting `status` is `confirmed` → Logs check: no ERROR
+  lines for that order ID in the run's time window. Runs from the CLI with **no CLI code changes** (Day
+  2's leading indicator). With `?fail=1`, the Logs step fails, exit code 1, JUnit names the Logs step.
+  ✔ `yukti run demo/uc1_flow.json --junit out.xml` → exit 0, one unified report
+- [ ] D3-T5 Flake run: UC-1 × 50
+  ✔ flake rate < 2%, recorded in STANDUP; every flaky occurrence's cause written down
+- **Exit check:** `yukti run demo/uc1_flow.json --junit out.xml` exits 0 on `main`, flake rate < 2%.
 - **Exit check:** UC-1 passes via CLI with one unified report.
 
 ## Day 4 — Thu 15 Oct · API testing UI + live runs (P0-6)
