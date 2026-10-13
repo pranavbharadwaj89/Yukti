@@ -170,6 +170,10 @@ if (args.includes('--crew') || args.includes('--mission')) {
   console.log('\n📦 Orchestrator Structured State JSON:');
   console.log(JSON.stringify(mission.state, null, 2));
 
+  // Give the mission a durable record — previously it vanished with the
+  // process, invisible to the ledger and the digest email alike.
+  DecisionEngine.recordCrewMission(mission);
+
   console.log('\n================================================================');
   console.log(`🏆 Crew Mission Verdict: [${mission.verdict}] (Confidence: ${Math.round(mission.confidence * 100)}%)`);
   console.log('================================================================\n');
