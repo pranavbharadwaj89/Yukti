@@ -143,8 +143,17 @@ dropping its task ID.
 - **Exit check:** UC-1 passes via CLI with one unified report.
 
 ## Day 4 — Thu 15 Oct · API testing UI + live runs (P0-6)
-- [ ] D4-T1 Generated TS types from the backend OpenAPI document wired into the frontend build
-  ✔ `npm run generate:api && npm run typecheck`
+- [x] D4-T1 Generated TS types from the backend OpenAPI document wired into the frontend build
+  ✔ `npm run generate:api && npm run typecheck && git diff --exit-code src/api/generated` → all pass.
+  `openapi-typescript` generates `src/api/generated/schema.ts` from the live `swagger.json`; every
+  hand-written request-body type in `services/api-client.ts` now comes from `components["schemas"]`
+  (`satisfies`/intersection so required fields stay enforced). New CI job `api-types-drift`: builds the
+  backend, migrates a throwaway Postgres, boots the API, regenerates, fails on `git diff`. Verified the
+  whole migrate→boot→generate sequence locally against a fresh database before writing the workflow.
+  Scope found and NOT expanded into: every endpoint's Swagger entry is a bare `200: OK` with no response
+  schema (no `.Produces<T>()` anywhere), so response types stay hand-written in `services/types.ts` —
+  see DISCOVERED. `generated/` is gitignored from hand-edits via its own header comment + an
+  `.oxlintrc.json` ignore pattern, not from version control (it IS committed, so drift is visible in PRs).
 - [ ] D4-T2 Flow list + editor using `SchemaDrivenParamEditor`; ESLint rule bans module-kind branching
   ✔ `npm test -- SchemaDrivenParamEditor` (includes synthetic-module render test)
 - [x] D4-T3 API request builder + response viewer (status, timing, JSON tree) — reuse existing components
@@ -213,3 +222,8 @@ dropping its task ID.
 - [ ] DISC-2 CLI JUnit failure body prints nested params via `ToString()`
   (`rules=System.Collections.Generic.List`1[System.Object]`). Render them as JSON. Found in D3-T4;
   deferred because D3-T4 forbids CLI code changes.
+- [ ] DISC-3 No `Yukti.Api` minimal-API endpoint declares `.Produces<T>()`, so Swagger has zero response
+  schemas (every endpoint is a bare `200: OK`) — `openapi-typescript` can only generate real types for
+  request bodies. Response types in `apps/yukti-gui/src/services/types.ts` stay hand-written until this
+  is done. Found during D4-T1; scoped out of it deliberately (it's ~20 endpoints in `Program.cs`, purely
+  additive metadata, no behavior change, but a separate task from "wire the frontend to generated types").

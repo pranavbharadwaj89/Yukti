@@ -1,7 +1,9 @@
 // Typed DTOs mirroring Yukti.Api's actual response shapes (Yukti.Api/Dtos.cs
-// and the endpoint definitions in Program.cs) — hand-written against the
-// live contract verified this session, not generated, since the backend
-// has no OpenAPI document exposed yet.
+// and the endpoint definitions in Program.cs) — hand-written, not generated.
+// D4-T1: request bodies ARE generated now (src/api/generated/schema.ts,
+// `npm run generate:api`). Responses still aren't: every minimal-API
+// endpoint's swagger.json entry is a bare `200: OK` with no schema, because
+// none of them declare `.Produces<T>()` yet. See PLAN.md DISCOVERED.
 
 export interface ProblemDetails {
   title: string;

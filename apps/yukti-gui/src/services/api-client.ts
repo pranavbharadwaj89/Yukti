@@ -18,6 +18,14 @@ import type {
   TrendAggregateResponse,
   TriggerResponse,
 } from "@/services/types";
+// D4-T1: request-body shapes come from the generated OpenAPI schema
+// (src/api/generated/schema.ts), not hand-written inline types. Response
+// shapes still come from services/types.ts — Yukti.Api's minimal-API
+// endpoints don't yet declare `.Produces<T>()`, so Swashbuckle has nothing
+// to infer a response schema from (every endpoint shows bare `200: OK` in
+// swagger.json). See PLAN.md DISCOVERED for that follow-up.
+import type { components } from "@/api/generated/schema";
+type Req<K extends keyof components["schemas"]> = components["schemas"][K];
 
 // FR-STRUCT-05: the one typed API client every feature calls through —
 // nothing else in this app calls fetch() directly. FR-API-03/FR-UX-05:
@@ -129,27 +137,32 @@ export const authApi = {
   register: (email: string, password: string, displayName: string) =>
     request<{ userId: string }>("/api/v1/auth/register", {
       method: "POST",
-      body: { email, password, displayName },
+      body: { email, password, displayName } satisfies Req<"RegisterRequest">,
       auth: false,
     }),
   login: (email: string, password: string) =>
-    request<TokenResponse>("/api/v1/auth/login", { method: "POST", body: { email, password }, auth: false }),
+    request<TokenResponse>("/api/v1/auth/login", {
+      method: "POST",
+      body: { email, password } satisfies Req<"LoginRequest">,
+      auth: false,
+    }),
 };
 
 export const flowsApi = {
   list: () => request<FlowSummary[]>("/api/v1/flows"),
   get: (flowId: string) => request<FlowResponse>(`/api/v1/flows/${flowId}`),
   create: (name: string, description: string | undefined, projectId?: string) =>
-    request<{ flowId: string }>("/api/v1/flows", { method: "POST", body: { name, description, projectId } }),
-  addStep: (
-    flowId: string,
-    step: { name: string; module: string; action: string; params: Record<string, unknown>; saveAs?: string; when?: string },
-  ) => request<void>(`/api/v1/flows/${flowId}/steps`, { method: "POST", body: step }),
+    request<{ flowId: string }>("/api/v1/flows", {
+      method: "POST",
+      body: { name, description, projectId } satisfies Req<"CreateFlowRequest">,
+    }),
+  addStep: (flowId: string, step: Req<"AddStepRequest"> & { name: string; module: string; action: string }) =>
+    request<void>(`/api/v1/flows/${flowId}/steps`, { method: "POST", body: step }),
   publish: (flowId: string) => request<FlowPublishResponse>(`/api/v1/flows/${flowId}/publish`, { method: "POST" }),
   triggerRun: (flowId: string, variableOverrides?: Record<string, unknown>, idempotencyKey?: string) =>
     request<FlowRunResponse>(`/api/v1/flows/${flowId}/runs`, {
       method: "POST",
-      body: variableOverrides ? { variableOverrides } : undefined,
+      body: variableOverrides ? ({ variableOverrides } satisfies Req<"TriggerRunRequest">) : undefined,
       headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
     }),
 };
@@ -166,18 +179,22 @@ export const modulesApi = {
 export const apiCollectionsApi = {
   list: () => request<ApiCollectionResponse[]>("/api/v1/api-collections"),
   create: (name: string, description: string | undefined, projectId?: string) =>
-    request<{ collectionId: string }>("/api/v1/api-collections", { method: "POST", body: { name, description, projectId } }),
+    request<{ collectionId: string }>("/api/v1/api-collections", {
+      method: "POST",
+      body: { name, description, projectId } satisfies Req<"CreateApiCollectionRequest">,
+    }),
   rename: (collectionId: string, name: string, description: string | undefined) =>
-    request<void>(`/api/v1/api-collections/${collectionId}`, { method: "PUT", body: { name, description } }),
+    request<void>(`/api/v1/api-collections/${collectionId}`, {
+      method: "PUT",
+      body: { name, description } satisfies Req<"RenameApiCollectionRequest">,
+    }),
   delete: (collectionId: string) => request<void>(`/api/v1/api-collections/${collectionId}`, { method: "DELETE" }),
-  addRequest: (
-    collectionId: string,
-    req: { name: string; method: string; url: string; headers?: Record<string, unknown>; queryParams?: Record<string, unknown>; body?: unknown; assertions?: unknown },
-  ) => request<{ requestId: string }>(`/api/v1/api-collections/${collectionId}/requests`, { method: "POST", body: req }),
+  addRequest: (collectionId: string, req: Req<"AddApiRequestRequest"> & { name: string; method: string; url: string }) =>
+    request<{ requestId: string }>(`/api/v1/api-collections/${collectionId}/requests`, { method: "POST", body: req }),
   updateRequest: (
     collectionId: string,
     requestId: string,
-    req: { name: string; method: string; url: string; headers?: Record<string, unknown>; queryParams?: Record<string, unknown>; body?: unknown; assertions?: unknown },
+    req: Req<"UpdateApiRequestRequest"> & { name: string; method: string; url: string },
   ) => request<void>(`/api/v1/api-collections/${collectionId}/requests/${requestId}`, { method: "PUT", body: req }),
   deleteRequest: (collectionId: string, requestId: string) =>
     request<void>(`/api/v1/api-collections/${collectionId}/requests/${requestId}`, { method: "DELETE" }),
@@ -186,9 +203,15 @@ export const apiCollectionsApi = {
 export const projectsApi = {
   list: () => request<ProjectResponse[]>("/api/v1/projects"),
   create: (name: string, description: string | undefined) =>
-    request<{ projectId: string }>("/api/v1/projects", { method: "POST", body: { name, description } }),
+    request<{ projectId: string }>("/api/v1/projects", {
+      method: "POST",
+      body: { name, description } satisfies Req<"CreateProjectRequest">,
+    }),
   rename: (projectId: string, name: string, description: string | undefined) =>
-    request<void>(`/api/v1/projects/${projectId}`, { method: "PUT", body: { name, description } }),
+    request<void>(`/api/v1/projects/${projectId}`, {
+      method: "PUT",
+      body: { name, description } satisfies Req<"RenameProjectRequest">,
+    }),
   delete: (projectId: string) => request<void>(`/api/v1/projects/${projectId}`, { method: "DELETE" }),
 };
 
@@ -197,12 +220,12 @@ export const environmentsApi = {
   create: (projectId: string, name: string, variables: Record<string, unknown>) =>
     request<{ environmentId: string }>(`/api/v1/projects/${projectId}/environments`, {
       method: "POST",
-      body: { name, variables },
+      body: { name, variables } satisfies Req<"CreateTestEnvironmentRequest">,
     }),
   update: (projectId: string, environmentId: string, name: string, variables: Record<string, unknown>) =>
     request<void>(`/api/v1/projects/${projectId}/environments/${environmentId}`, {
       method: "PUT",
-      body: { name, variables },
+      body: { name, variables } satisfies Req<"UpdateTestEnvironmentRequest">,
     }),
   delete: (projectId: string, environmentId: string) =>
     request<void>(`/api/v1/projects/${projectId}/environments/${environmentId}`, { method: "DELETE" }),
@@ -210,7 +233,7 @@ export const environmentsApi = {
 
 export const triggersApi = {
   list: () => request<TriggerResponse[]>("/api/v1/triggers"),
-  create: (flowId: string, req: { kind: "Cron" | "Webhook" | "FileWatch"; cronExpression?: string; webhookSecret?: string; watchPath?: string }) =>
+  create: (flowId: string, req: Req<"CreateTriggerRequest"> & { kind: "Cron" | "Webhook" | "FileWatch" }) =>
     request<{ triggerId: string }>(`/api/v1/flows/${flowId}/triggers`, { method: "POST", body: req }),
   enable: (triggerId: string) => request<void>(`/api/v1/triggers/${triggerId}/enable`, { method: "PUT" }),
   disable: (triggerId: string) => request<void>(`/api/v1/triggers/${triggerId}/disable`, { method: "PUT" }),
