@@ -176,8 +176,21 @@ dropping its task ID.
   `ApiStudioPage > renders the explorer tree and request designer panes`, passing
 - [ ] D4-T4 Trigger run + live progress via SignalR; refetch run state on reconnect
   ✔ `npm test -- LiveRun` + backend hub test
-- [ ] D4-T5 Marketplace UI and new editor coexist; marketplace-installed module actions render in the editor
-  ✔ `npm test -- ModulePicker`
+- [x] D4-T5 Honest marketplace: real registered modules only, install disabled (v0.2 scope), no fake list
+  **Superseded by the owner's Day 4 spec** — install/publish backend is explicitly v0.2+; this task is
+  "the marketplace never shows fake data", not "install wires a new module into the editor".
+  ✔ `npm test -- marketplace-page` → 9/9 passing. The page rendered a hardcoded 8-module array (two of
+  which — a SQL module, a Kafka module — don't exist in the backend at all) with a fake install toggle
+  that flipped local state and congratulated the user on "registering" a module never contacted. Rewrote
+  it onto `modulesApi.list()` — the exact same `GET /api/v1/modules` call the flow editor's step picker
+  already uses, so there's one source of truth and the two can't drift. Each card shows real
+  kind/trust/contractVersion/action count. Loading, empty (0 real modules — distinct from a filtered
+  search), search-no-match, and error+retry states are all tested and visually distinct from each other.
+  Install is `aria-disabled` (not `disabled`, which removes it from the tab order) with a tooltip
+  ("Publishing and install arrive in v0.2") that's keyboard-reachable and screen-reader-announced via
+  `aria-describedby`, verified by focusing it and reading the tooltip's accessible text. 0 axe violations.
+  A source-check test fails the suite if the old hardcoded identifier or any of its fake module names
+  (e.g. "Apache Kafka") ever reappear in the file.
 - [ ] D4-T6 Variable autocomplete from earlier steps' saveAs
   ✔ `npm test -- autocomplete`
 - **Exit check:** author → publish → run an API flow fully in the browser, no hand-typed JSON.
