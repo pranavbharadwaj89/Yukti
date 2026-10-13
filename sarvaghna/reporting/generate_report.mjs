@@ -81,14 +81,14 @@ if (mode === 'digest') {
   const crewText = crew
     ? [
         `Crew mission (${crew.timestamp}): ${crew.verdict} (confidence ${Math.round(crew.confidence * 100)}%)`,
-        `  Coverage: ${crew.metrics.coverageScore ?? 'n/a'}% | Quality: ${crew.metrics.qualityScore ?? 'n/a'}% | Tests: ${crew.metrics.testsPassed ?? '?'}/${crew.metrics.testsTotal ?? '?'} | Analysis: ${crew.metrics.analysisMode ?? 'n/a'}`,
+        `  Coverage: ${crew.metrics?.coverageScore ?? 'n/a'}% | Quality: ${crew.metrics?.qualityScore ?? 'n/a'}% | Tests: ${crew.metrics?.testsPassed ?? '?'}/${crew.metrics?.testsTotal ?? '?'} | Analysis: ${crew.metrics?.analysisMode ?? 'n/a'}`,
         `  ${crew.rationale}`
       ].join('\n')
     : 'Crew mission: did not run this cycle.';
 
   const crewHtml = crew
     ? `<p><b>Crew mission</b> (${crew.timestamp}): <b>${crew.verdict}</b> (confidence ${Math.round(crew.confidence * 100)}%)<br/>
-         Coverage: ${crew.metrics.coverageScore ?? 'n/a'}% | Quality: ${crew.metrics.qualityScore ?? 'n/a'}% | Tests: ${crew.metrics.testsPassed ?? '?'}/${crew.metrics.testsTotal ?? '?'} | Analysis: ${crew.metrics.analysisMode ?? 'n/a'}<br/>
+         Coverage: ${crew.metrics?.coverageScore ?? 'n/a'}% | Quality: ${crew.metrics?.qualityScore ?? 'n/a'}% | Tests: ${crew.metrics?.testsPassed ?? '?'}/${crew.metrics?.testsTotal ?? '?'} | Analysis: ${crew.metrics?.analysisMode ?? 'n/a'}<br/>
          <i>${crew.rationale}</i></p>`
     : '<p><b>Crew mission:</b> did not run this cycle.</p>';
 
