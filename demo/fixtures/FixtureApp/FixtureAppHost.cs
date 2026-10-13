@@ -88,6 +88,11 @@ public static class FixtureAppHost
           <form method="post" action="/login">
             <input data-testid="username" name="username" type="text" />
             <input data-testid="password" name="password" type="password" />
+            <select data-testid="login-region" name="region">
+              <option value="">Choose a region</option>
+              <option value="us">United States</option>
+              <option value="eu">Europe</option>
+            </select>
             <button data-testid="login-submit" type="submit">Sign in</button>
           </form>
         </body>
@@ -100,6 +105,8 @@ public static class FixtureAppHost
         <body>
           <h1>Your order</h1>
           <p data-testid="order-id">{orderId}</p>
+          <p data-testid="order-status">pending</p>
+          <p data-testid="hidden-field" style="display:none">internal-only</p>
         </body>
         </html>
         """;
