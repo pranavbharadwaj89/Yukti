@@ -42,6 +42,34 @@ export const DecisionEngine = {
     return decisionRecord;
   },
 
+  /**
+   * Records a 5-agent crew mission result. Crew missions previously left no
+   * trace anywhere once the CLI process exited — not the ledger, not any
+   * report. This gives them the same durable record diff reviews get.
+   */
+  recordCrewMission(mission) {
+    const record = {
+      timestamp: new Date().toISOString(),
+      actor: 'SARVAGHNA (सर्वज्ञ) Crew',
+      mandate: 'pranavbharadwaj89',
+      target: mission.goal || 'crew-mission',
+      verdict: mission.verdict,
+      confidence: mission.confidence,
+      rationale: mission.state?.final_output?.summary || mission.state?.block_reason || '',
+      blockers: mission.state?.block_reason ? [mission.state.block_reason] : [],
+      metrics: {
+        coverageScore: mission.state?.final_output?.coverage_score ?? null,
+        qualityScore: mission.state?.final_output?.quality_score ?? null,
+        testsPassed: mission.crew?.tester?.passed ?? null,
+        testsTotal: mission.crew?.tester?.total ?? null,
+        criteriaCount: mission.crew?.analyst?.criteriaCount ?? null,
+        analysisMode: mission.crew?.analyst?.analysisMode ?? null
+      }
+    };
+    this.recordToLedger(record);
+    return record;
+  },
+
   recordToLedger(record) {
     try {
       if (!fs.existsSync(ledgerDir)) {

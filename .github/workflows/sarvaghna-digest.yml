@@ -24,6 +24,28 @@ jobs:
         with:
           node-version: 22
 
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore .NET Dependencies
+        run: dotnet restore Yukti.sln
+
+      - name: Build Solution
+        run: dotnet build Yukti.sln --configuration Release --no-restore
+
+      - name: Install Playwright browsers
+        run: pwsh tests/Yukti.Orchestration.Tests/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+
+      - name: Run SARVAGHNA 5-Agent Crew
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node sarvaghna/sarvaghna.mjs --crew || true
+        # The crew's own exit code reflects mission verdict (ship vs retry),
+        # not pipeline health — a low coverage score is a finding to report
+        # in the digest, not a reason to fail this workflow.
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:

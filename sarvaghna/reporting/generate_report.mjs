@@ -9,9 +9,15 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { DecisionEngine } from '../core/decision-engine.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..', '..');
+
+function latestCrewMission() {
+  const recent = DecisionEngine.readRecentDecisions(50);
+  return [...recent].reverse().find(r => r.actor === 'SARVAGHNA (सर्वज्ञ) Crew') || null;
+}
 
 function sh(cmd, fallback = '') {
   try {
@@ -70,6 +76,21 @@ let subject, bodyText, bodyHtml;
 if (mode === 'digest') {
   const today = new Date().toISOString().slice(0, 10);
   const recentCommits = sh('git log -10 --date=short --format="%h %ad %s"');
+  const crew = latestCrewMission();
+
+  const crewText = crew
+    ? [
+        `Crew mission (${crew.timestamp}): ${crew.verdict} (confidence ${Math.round(crew.confidence * 100)}%)`,
+        `  Coverage: ${crew.metrics.coverageScore ?? 'n/a'}% | Quality: ${crew.metrics.qualityScore ?? 'n/a'}% | Tests: ${crew.metrics.testsPassed ?? '?'}/${crew.metrics.testsTotal ?? '?'} | Analysis: ${crew.metrics.analysisMode ?? 'n/a'}`,
+        `  ${crew.rationale}`
+      ].join('\n')
+    : 'Crew mission: did not run this cycle.';
+
+  const crewHtml = crew
+    ? `<p><b>Crew mission</b> (${crew.timestamp}): <b>${crew.verdict}</b> (confidence ${Math.round(crew.confidence * 100)}%)<br/>
+         Coverage: ${crew.metrics.coverageScore ?? 'n/a'}% | Quality: ${crew.metrics.qualityScore ?? 'n/a'}% | Tests: ${crew.metrics.testsPassed ?? '?'}/${crew.metrics.testsTotal ?? '?'} | Analysis: ${crew.metrics.analysisMode ?? 'n/a'}<br/>
+         <i>${crew.rationale}</i></p>`
+    : '<p><b>Crew mission:</b> did not run this cycle.</p>';
 
   subject = `[Yukti] Daily Status Digest — ${today}`;
   bodyText = [
@@ -79,6 +100,8 @@ if (mode === 'digest') {
     '',
     'Still open:',
     markdownTableToText(openTable),
+    '',
+    crewText,
     '',
     'Last 10 commits on main:',
     recentCommits,
@@ -91,6 +114,8 @@ if (mode === 'digest') {
     <p><b>${headline}</b></p>
     <h3>Still open</h3>
     ${markdownTableToHtml(openTable)}
+    <h3>5-Agent Crew</h3>
+    ${crewHtml}
     <h3>Last 10 commits on main</h3>
     <pre style="font-size:12px">${recentCommits.replace(/</g, '&lt;')}</pre>
     <p><a href="${serverUrl}/${repoSlug}">${repoSlug}</a></p>
