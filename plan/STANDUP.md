@@ -386,3 +386,31 @@ Next:        D3-T3 — Logs module proof. Add `logFile` param support to `LogsMo
              missing log file fail the step clearly instead of silently passing with 0 matched lines, add
              time-window filtering (start/end), then prove pattern/severity/max-count/time-window against
              FixtureApp's real `app.log`.
+
+## 2026-10-13 09:32 IST — Day 3 (close)
+Done:        D3-T3, D3-T4, D3-T5 — Day 3 complete.
+             D3-T3: LogsModule.checkRules gained logFile (missing file now FAILS naming the path — it
+             previously read as "0 lines, all rules passed"), per-rule severity, since/until window, and
+             matched lines in the step data. 6/6 LogsModuleTests against a real FixtureApp app.log.
+             D3-T4: demo/uc1_flow.json runs Web login → web.getText (saveAs order) → API GET
+             /api/orders/{{vars.order.text}} asserting status=confirmed → Logs no-ERROR check. Zero
+             src/Yukti.Cli changes. Exit 0, 7/7. demo/uc1_flow_fail.json (?fail=1) → exit 1, JUnit
+             names "No ERROR logged for this order" (logs.checkRules) with the ERROR line in the body.
+             D3-T5: UC-1 × 50 → 50 passed, 0 failed, 0 flaky. Flake rate 0% (target < 2%).
+             Also: applied SARVAGHNA's two PR #14 review notes (SelectorNotFoundException keeps the
+             Playwright inner exception; assertVisible checks the CancellationToken).
+Discovered:  1. No WebModule action returned page text as data — added web.getText ({text}).
+             2. FixtureApp logged AFTER sending the response; FixtureAppTests papered over it with
+                Task.Delay(50), and UC-1's Logs step could have raced the API step's log line (false
+                pass on the ?fail=1 variant). Moved the write to Response.OnStarting; delays removed.
+             3. A run-scoped time window can't live in LogsModule: FR-PLUGIN-07's contract test forbids
+                instance state. Did not move it to a static to dodge the test. UC-1 is scoped by its
+                per-login order id instead. Engine-level {{vars.run.startedAt}} → DISC-1.
+             4. CLI JUnit failure body prints nested params via ToString() → DISC-2 (D3-T4 forbids CLI
+                changes, so deferred).
+             5. demo/fixtures/app.log was not gitignored — fixed (plus out.xml).
+Scope guards: none
+Exit check:  on track. dotnet build -warnaserror → 0/0. dotnet format --verify-no-changes → clean.
+             dotnet test → 131/131 (17 Analyzers + 8 Cli + 8 Infrastructure + 98 Orchestration).
+             `yukti run demo/uc1_flow.json --junit out.xml` → exit 0 locally; re-run on main after merge.
+Next:        Day 4 D4-T1 — API testing UI + live runs (P0-6).

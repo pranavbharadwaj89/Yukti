@@ -1,0 +1,61 @@
+{
+  "name": "UC-1: order confirmed end to end",
+  "description": "Web login reads the server-assigned order id, the API confirms that order, and the app log shows no ERROR for it. Needs FixtureApp running: dotnet run --project demo/fixtures/FixtureApp (from the repo root).",
+  "steps": [
+    {
+      "name": "Open login page",
+      "module": "web",
+      "action": "navigate",
+      "params": { "url": "http://127.0.0.1:5082/login" }
+    },
+    {
+      "name": "Enter username",
+      "module": "web",
+      "action": "fill",
+      "params": { "selector": "[data-testid=username]", "value": "demo-user" }
+    },
+    {
+      "name": "Enter password",
+      "module": "web",
+      "action": "fill",
+      "params": { "selector": "[data-testid=password]", "value": "demo-pass" }
+    },
+    {
+      "name": "Submit login",
+      "module": "web",
+      "action": "click",
+      "params": { "selector": "[data-testid=login-submit]" }
+    },
+    {
+      "name": "Read order id",
+      "module": "web",
+      "action": "getText",
+      "params": { "selector": "[data-testid=order-id]" },
+      "saveAs": "order"
+    },
+    {
+      "name": "API confirms the order",
+      "module": "api",
+      "action": "request",
+      "params": {
+        "url": "http://127.0.0.1:5082/api/orders/{{vars.order.text}}",
+        "method": "GET",
+        "assert": [
+          { "type": "status", "expectedStatus": 200 },
+          { "type": "pathEquals", "path": "status", "equals": "confirmed" }
+        ]
+      }
+    },
+    {
+      "name": "No ERROR logged for this order",
+      "module": "logs",
+      "action": "checkRules",
+      "params": {
+        "logFile": "demo/fixtures/app.log",
+        "rules": [
+          { "name": "no-errors-for-order", "pattern": "orderId={{vars.order.text}} ", "severity": "ERROR", "maxAllowed": 0 }
+        ]
+      }
+    }
+  ]
+}

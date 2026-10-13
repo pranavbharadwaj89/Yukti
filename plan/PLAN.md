@@ -116,16 +116,29 @@ dropping its task ID.
   object?>` so `{{vars.step.path}}`-style chaining works; `FixtureAppHost.cs` gained a select dropdown and
   a hidden element for the new assertions to exercise. Full solution suite also re-run clean: 124/124
   (17+8+8+91 across Analyzers/Cli/Infrastructure/Orchestration test projects).
-- [ ] D3-T3 Logs module proof: `checkRules` tested for pattern, severity, max count, and time window;
+- [x] D3-T3 Logs module proof: `checkRules` tested for pattern, severity, max count, and time window;
   matching lines included in the step result; a missing log file fails the step clearly, never passes
-  ✔ `dotnet test --filter "FullyQualifiedName~LogsModule"`
-- [ ] D3-T4 UC-1 flow (`demo/uc1_flow.json`): Web login → read the order ID from the page, `saveAs: order`
+  ✔ `dotnet test --filter "FullyQualifiedName~LogsModule"` → 6/6 passing (`LogsModuleTests.cs`, new),
+  against a real `app.log` written by FixtureApp. `LogsModule` gained `logFile` (missing file → step
+  fails naming the path, previously read as "0 lines, all rules passed"), per-rule `severity`,
+  `since`/`until` window, and matched lines returned in the step data (as dictionaries, so `{{vars}}`
+  chaining works). Module stays stateless — `ModulePluginContractTests` (FR-PLUGIN-07) still green.
+  FixtureApp now writes each log line in `Response.OnStarting` (before the client gets any byte), which
+  removed the `Task.Delay(50)` race from `FixtureAppTests` and made UC-1's Logs step race-free.
+- [x] D3-T4 UC-1 flow (`demo/uc1_flow.json`): Web login → read the order ID from the page, `saveAs: order`
   → API `GET /api/orders/{{vars.order.id}}` asserting `status` is `confirmed` → Logs check: no ERROR
   lines for that order ID in the run's time window. Runs from the CLI with **no CLI code changes** (Day
   2's leading indicator). With `?fail=1`, the Logs step fails, exit code 1, JUnit names the Logs step.
-  ✔ `yukti run demo/uc1_flow.json --junit out.xml` → exit 0, one unified report
-- [ ] D3-T5 Flake run: UC-1 × 50
+  ✔ `yukti run demo/uc1_flow.json --junit out.xml` → exit 0, 7/7 passed, one JUnit report.
+  `demo/uc1_flow_fail.json` (adds `?fail=1`) → exit 1, JUnit `<testcase name="No ERROR logged for this
+  order" classname="yukti.logs.checkRules">` with the offending ERROR line in the failure body. Zero
+  `src/Yukti.Cli` changes. Needed one module addition: `web.getText` (no action returned page text as
+  data). The order id is read as `{{vars.order.text}}`. "Run's time window" is enforced by the order id
+  itself (FixtureApp generates a fresh one per login), not a timestamp — see DISCOVERED.
+- [x] D3-T5 Flake run: UC-1 × 50
   ✔ flake rate < 2%, recorded in STANDUP; every flaky occurrence's cause written down
+  → 50/50 passed, 0 failed, 0 flaky (0%), 156s total. Cross-checked: all 50 CLI summaries and all 50
+  JUnit `<testsuite>` elements report 7 tests / 0 failures. No flaky occurrences, so no causes to record.
 - **Exit check:** `yukti run demo/uc1_flow.json --junit out.xml` exits 0 on `main`, flake rate < 2%.
 - **Exit check:** UC-1 passes via CLI with one unified report.
 
@@ -193,3 +206,10 @@ dropping its task ID.
 
 ## DISCOVERED
 <!-- Sutradhar adds new tasks here only -->
+- [ ] DISC-1 Engine-provided run metadata (`{{vars.run.startedAt}}`): lets a Logs step bound its time
+  window to the current run without per-run state in the module (FR-PLUGIN-07 forbids instance state,
+  so the module can't record it itself). Needs `Flow.Publish` to treat `run.*` as an available binding.
+  Found during D3-T3/T4; UC-1 is correct today because it scopes by a per-run order id.
+- [ ] DISC-2 CLI JUnit failure body prints nested params via `ToString()`
+  (`rules=System.Collections.Generic.List`1[System.Object]`). Render them as JSON. Found in D3-T4;
+  deferred because D3-T4 forbids CLI code changes.
