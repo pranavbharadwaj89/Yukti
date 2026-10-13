@@ -116,6 +116,11 @@ jobs:
     # uses). Its connection string is still assembled from separate PG*
     # pieces at shell runtime, rather than written as one literal string, so
     # it never looks like a real committed credential in the diff.
+    # dotnet ef's --connection flag doesn't stop the design-time tooling
+    # (via Program.cs's own host build, or YuktiDbContextFactory - EF tries
+    # both) from independently reading ConnectionStrings:Yukti, and throwing
+    # if it's missing. Locally that quietly succeeds via dotnet user-secrets;
+    # CI has no such file, so this env var is what actually supplies it here.
     - name: Apply EF migrations to the throwaway database
       env:
         PGHOST: localhost
@@ -129,6 +134,7 @@ jobs:
         CONN="$CONN;Database=$PGDATABASE"
         CONN="$CONN;Username=$PGUSERNAME"
         CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
         dotnet ef database update --project src/Yukti.Infrastructure --startup-project src/Yukti.Api --connection "$CONN"
 
     - name: Start the API against it
