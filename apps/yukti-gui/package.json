@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "typecheck": "tsc -b --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "generate:api": "openapi-typescript http://localhost:5000/swagger/v1/swagger.json -o src/api/generated/schema.ts"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
@@ -43,10 +45,16 @@
     "eslint": "^10.8.0",
     "eslint-plugin-boundaries": "^7.1.0",
     "jsdom": "^30.0.1",
+    "openapi-typescript": "^7.13.0",
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   }
 }

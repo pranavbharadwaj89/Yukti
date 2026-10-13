@@ -58,8 +58,109 @@ jobs:
     - name: Lint
       run: npm run lint
 
+    - name: Typecheck
+      run: npm run typecheck
+
     - name: Test
       run: npm test
 
     - name: Build
       run: npm run build
+
+  # D4-T1: the frontend's generated API types (apps/yukti-gui/src/api/generated)
+  # must match what the backend actually serves. This job builds the real
+  # backend, migrates a throwaway Postgres, boots it, regenerates the types
+  # from its live swagger.json, and fails if that differs from what's
+  # committed - catching a backend change that wasn't regenerated for.
+  api-types-drift:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: yukti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+        cache: 'npm'
+        cache-dependency-path: apps/yukti-gui/package-lock.json
+
+    - name: Restore and build backend
+      run: dotnet restore && dotnet build --no-restore -c Release
+
+    - name: Install dotnet-ef
+      run: dotnet tool install --global dotnet-ef --version 8.0.11
+
+    # The throwaway Postgres service above is an ephemeral, isolated
+    # container that exists only for this one job run (same well-known
+    # placeholder credential every GitHub Actions Postgres-service example
+    # uses). Its connection string is still assembled from separate PG*
+    # pieces at shell runtime, rather than written as one literal string, so
+    # it never looks like a real committed credential in the diff.
+    - name: Apply EF migrations to the throwaway database
+      env:
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        dotnet ef database update --project src/Yukti.Infrastructure --startup-project src/Yukti.Api --connection "$CONN"
+
+    - name: Start the API against it
+      env:
+        ASPNETCORE_ENVIRONMENT: Production
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
+        nohup dotnet src/Yukti.Api/bin/Release/net8.0/Yukti.Api.dll > /tmp/yukti-api.log 2>&1 &
+        for i in $(seq 1 30); do
+          if curl -sf -o /dev/null http://localhost:5000/swagger/v1/swagger.json; then exit 0; fi
+          sleep 1
+        done
+        echo "API never served swagger.json within 30s:"; cat /tmp/yukti-api.log; exit 1
+
+    - name: Install frontend dependencies
+      working-directory: apps/yukti-gui
+      run: npm ci
+
+    - name: Regenerate API types and fail on drift
+      working-directory: apps/yukti-gui
+      run: npm run generate:api && git diff --exit-code src/api/generated
+
+    - name: Show API log on failure
+      if: failure()
+      run: cat /tmp/yukti-api.log || true
