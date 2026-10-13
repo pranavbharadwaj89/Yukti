@@ -117,6 +117,12 @@ if (args.includes('--scenarios') || args.includes('--coder-tests')) {
   process.exit(0);
 }
 
+// Paths that make network calls (Gemini) set process.exitCode instead of
+// calling process.exit(): an abrupt exit while fetch's keep-alive socket is
+// still closing trips a libuv assertion on Windows (src\win\async.c:94),
+// crashing with a non-zero code that the git hooks read as a rejection.
+let crewHandled = false;
+
 if (args.includes('--crew') || args.includes('--mission')) {
   const goalIndex = args.indexOf('--mission');
   const goal = goalIndex !== -1 && args[goalIndex + 1]
@@ -167,7 +173,8 @@ if (args.includes('--crew') || args.includes('--mission')) {
   console.log('\n================================================================');
   console.log(`🏆 Crew Mission Verdict: [${mission.verdict}] (Confidence: ${Math.round(mission.confidence * 100)}%)`);
   console.log('================================================================\n');
-  process.exit(mission.verdict === 'MISSION_ACCOMPLISHED' ? 0 : 1);
+  process.exitCode = mission.verdict === 'MISSION_ACCOMPLISHED' ? 0 : 1;
+  crewHandled = true;
 }
 
 // 2. Load Configuration
@@ -371,14 +378,16 @@ async function run() {
   // Exit with error code if blocking issues found
   if (hasCritical) {
     console.error('❌ SARVAGHNA Mandate: Action REJECTED. Fix the blocking issues above.\n');
-    process.exit(1);
+    process.exitCode = 1;
   } else {
     console.log('✅ SARVAGHNA Mandate: Action AUTHORIZED & Cleared.\n');
-    process.exit(0);
+    process.exitCode = 0;
   }
 }
 
-run().catch(err => {
-  console.error(`[SARVAGHNA] Fatal execution error: ${err.stack || err.message}`);
-  process.exit(1);
-});
+if (!crewHandled) {
+  run().catch(err => {
+    console.error(`[SARVAGHNA] Fatal execution error: ${err.stack || err.message}`);
+    process.exitCode = 1;
+  });
+}
