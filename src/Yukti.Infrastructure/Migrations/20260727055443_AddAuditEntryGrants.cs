@@ -20,24 +20,30 @@ namespace Yukti.Infrastructure.Migrations
             // environment gaps — Redis-backed rate limiting, real OTLP
             // collector), verified live via AuditEntryGrantsTests: this
             // REVOKE has no practical effect, because the app connects as
-            // "pranav", the same role that owns audit_entries (it created
-            // the table via migrations) — Postgres/CockroachDB table
-            // owners retain implicit DML privileges independent of
-            // GRANT/REVOKE. Closing this for real requires migrations to
-            // run as a separate owner/admin role while the app's runtime
-            // connection string uses a distinct, lower-privileged role
-            // that only ever receives this grant — a live infrastructure
-            // change (new role + credential + updated connection string),
-            // not something this migration alone can accomplish.
+            // whichever role ran these migrations (CURRENT_USER below), the
+            // same role that owns audit_entries (it created the table via
+            // migrations) — Postgres/CockroachDB table owners retain
+            // implicit DML privileges independent of GRANT/REVOKE. Closing
+            // this for real requires migrations to run as a separate
+            // owner/admin role while the app's runtime connection string
+            // uses a distinct, lower-privileged role that only ever
+            // receives this grant — a live infrastructure change (new role
+            // + credential + updated connection string), not something
+            // this migration alone can accomplish.
+            //
+            // CURRENT_USER (not a hardcoded name) so this runs correctly
+            // whatever role applies the migration — a named developer
+            // account locally, "postgres" against a fresh CI/CD database,
+            // or a future dedicated migrations role.
             migrationBuilder.Sql("REVOKE UPDATE, DELETE ON audit_entries FROM public;");
-            migrationBuilder.Sql("REVOKE UPDATE, DELETE ON audit_entries FROM pranav;");
-            migrationBuilder.Sql("GRANT SELECT, INSERT ON audit_entries TO pranav;");
+            migrationBuilder.Sql("REVOKE UPDATE, DELETE ON audit_entries FROM CURRENT_USER;");
+            migrationBuilder.Sql("GRANT SELECT, INSERT ON audit_entries TO CURRENT_USER;");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql("GRANT UPDATE, DELETE ON audit_entries TO pranav;");
+            migrationBuilder.Sql("GRANT UPDATE, DELETE ON audit_entries TO CURRENT_USER;");
         }
     }
 }
