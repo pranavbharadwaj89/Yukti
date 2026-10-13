@@ -30,22 +30,28 @@ public static class FixtureAppHost
         var app = builder.Build();
         app.UseSession();
 
-        // Terminal middleware: every request gets exactly one app.log line,
-        // written after the response so the real status code is known. The
-        // order id is whatever the endpoint below recorded in HttpContext.Items
-        // ("-" if none — e.g. the first GET /login before any order exists).
+        // Every request gets exactly one app.log line, written in OnStarting —
+        // after the endpoint has set the status code and order id, but BEFORE
+        // the client receives any byte of the response. So by the time a
+        // caller has the response, its log line is already on disk; a Logs
+        // step that runs right after an API step can't race it. The order id
+        // is whatever the endpoint recorded in HttpContext.Items ("-" if none).
         app.Use(async (context, next) =>
         {
-            await next();
+            context.Response.OnStarting(() =>
+            {
+                var sink = context.RequestServices.GetRequiredService<LogSink>();
+                var orderId = context.Items.TryGetValue("orderId", out var id) ? id as string ?? "-" : "-";
+                var forcedFailure = context.Request.Query.ContainsKey("fail");
+                var level = forcedFailure ? "ERROR" : "INFO";
+                var detail = forcedFailure
+                    ? "simulated failure requested via ?fail=1"
+                    : $"-> {context.Response.StatusCode}";
+                sink.Write($"{DateTimeOffset.UtcNow:O} {level} orderId={orderId} {context.Request.Method} {context.Request.Path}{context.Request.QueryString} {detail}");
+                return Task.CompletedTask;
+            });
 
-            var sink = context.RequestServices.GetRequiredService<LogSink>();
-            var orderId = context.Items.TryGetValue("orderId", out var id) ? id as string ?? "-" : "-";
-            var forcedFailure = context.Request.Query.ContainsKey("fail");
-            var level = forcedFailure ? "ERROR" : "INFO";
-            var detail = forcedFailure
-                ? "simulated failure requested via ?fail=1"
-                : $"-> {context.Response.StatusCode}";
-            sink.Write($"{DateTimeOffset.UtcNow:O} {level} orderId={orderId} {context.Request.Method} {context.Request.Path}{context.Request.QueryString} {detail}");
+            await next();
         });
 
         app.MapGet("/login", () => Results.Content(LoginPageHtml, "text/html"));

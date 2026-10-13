@@ -27,3 +27,7 @@ sarvaghna/ledger/decisions.jsonl
 ## Sarvaghna local-only secrets for manual CLI testing (never committed)
 sarvaghna/.env.local
 
+## FixtureApp runtime log (written on every request) and CLI report outputs
+demo/fixtures/app.log
+out.xml
+

@@ -80,7 +80,6 @@ public sealed class FixtureAppTests : IAsyncLifetime
     public async Task Every_request_is_logged_with_timestamp_level_and_order_id()
     {
         await Client.GetAsync("/api/orders/log-check-1");
-        await Task.Delay(50); // the logging middleware writes after the response is sent
         var logText = await File.ReadAllTextAsync(_logPath);
 
         Assert.Contains("orderId=log-check-1", logText);
@@ -92,7 +91,6 @@ public sealed class FixtureAppTests : IAsyncLifetime
     public async Task A_fail_query_param_logs_an_ERROR_line_for_that_order()
     {
         await Client.GetAsync("/api/orders/log-check-2?fail=1");
-        await Task.Delay(50);
         var logText = await File.ReadAllTextAsync(_logPath);
 
         var errorLine = Assert.Single(logText.Split('\n', StringSplitOptions.RemoveEmptyEntries), l => l.Contains("log-check-2"));

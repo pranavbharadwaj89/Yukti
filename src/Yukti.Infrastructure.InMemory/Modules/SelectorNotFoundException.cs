@@ -10,8 +10,8 @@ public sealed class SelectorNotFoundException : Exception
 {
     public string Selector { get; }
 
-    public SelectorNotFoundException(string selector)
-        : base($"Selector not found: '{selector}'")
+    public SelectorNotFoundException(string selector, Exception? inner = null)
+        : base($"Selector not found: '{selector}'", inner)
     {
         Selector = selector;
     }

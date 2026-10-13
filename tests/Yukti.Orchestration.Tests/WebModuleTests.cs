@@ -110,6 +110,23 @@ public sealed class WebModuleTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetText_returns_the_elements_text_as_step_data()
+    {
+        var engine = BuildEngine(out _);
+        var completed = await RunSteps(engine,
+            ("Login", "navigate", P(("url", $"{BaseUrl}/login"))),
+            ("Fill u", "fill", P(("selector", "[data-testid=username]"), ("value", "a"))),
+            ("Fill p", "fill", P(("selector", "[data-testid=password]"), ("value", "b"))),
+            ("Submit", "click", P(("selector", "[data-testid=login-submit]"))),
+            ("Read order id", "getText", P(("selector", "[data-testid=order-id]"))));
+
+        var read = completed.Results[4];
+        Assert.Equal(StepStatus.Passed, read.Status);
+        var data = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(read.Data);
+        Assert.Matches("^[0-9a-f]{12}$", Assert.IsType<string>(data["text"]));
+    }
+
+    [Fact]
     public async Task Screenshot_is_stored_with_the_step_result()
     {
         var path = Path.Combine(Path.GetTempPath(), $"webmodule-screenshot-{Guid.NewGuid():N}.png");

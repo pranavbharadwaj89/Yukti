@@ -113,6 +113,15 @@ public sealed class WebModule : IAutomationModule
         },
         new ActionSchema
         {
+            ActionName = "getText",
+            Description = "Reads the trimmed text content of the first element matching a selector and returns it as step data ({text}), so a later step can use it via saveAs.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to read." },
+            }
+        },
+        new ActionSchema
+        {
             ActionName = "assertVisible",
             Description = "Asserts an element matching a selector is displayed. A missing or hidden element both read as not-visible, never an exception.",
             Parameters = new[]
@@ -199,8 +208,16 @@ public sealed class WebModule : IAutomationModule
                             ? StepOutcome.Passed($"Text of {selector} matched.")
                             : StepOutcome.Failed($"Expected {selector} text {(mode == "contains" ? "to contain" : "to equal")} \"{expected}\", got \"{actual}\".");
                     }
+                case "getText":
+                    {
+                        var selector = parameters.GetValueOrDefault("selector") as string
+                            ?? throw new ArgumentException("web.getText requires a 'selector' parameter.");
+                        var text = (await WithSelectorNotFound(selector, () => page.Locator(selector).TextContentAsync(), ct))?.Trim() ?? "";
+                        return StepOutcome.Passed($"Read text of {selector}", new Dictionary<string, object?> { ["text"] = text });
+                    }
                 case "assertVisible":
                     {
+                        ct.ThrowIfCancellationRequested();
                         var selector = parameters.GetValueOrDefault("selector") as string
                             ?? throw new ArgumentException("web.assertVisible requires a 'selector' parameter.");
                         // IsVisibleAsync never waits/throws — a missing element
@@ -252,14 +269,14 @@ public sealed class WebModule : IAutomationModule
     {
         ct.ThrowIfCancellationRequested();
         try { await action(); }
-        catch (Microsoft.Playwright.PlaywrightException) { throw new SelectorNotFoundException(selector); }
+        catch (Microsoft.Playwright.PlaywrightException ex) { throw new SelectorNotFoundException(selector, ex); }
     }
 
     private static async Task<T> WithSelectorNotFound<T>(string selector, Func<Task<T>> action, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         try { return await action(); }
-        catch (Microsoft.Playwright.PlaywrightException) { throw new SelectorNotFoundException(selector); }
+        catch (Microsoft.Playwright.PlaywrightException ex) { throw new SelectorNotFoundException(selector, ex); }
     }
 
     private static float? ToFloat(object? value) => value is null ? null : Convert.ToSingle(value);
