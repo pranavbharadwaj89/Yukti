@@ -237,23 +237,31 @@ T7; old T6 (AI-off CI) → new T2 (promoted earlier, never cut); old T7 (Eval se
 have no old equivalent.
 - [ ] D5-T0 Close Day 4 gaps, if the Day 4 exit check doesn't pass on `main` when this day opens
   ✔ Day 4 exit check passes, or this task stays open and nothing else on Day 5 starts
-- [x] D5-T1 `IAiProvider` abstraction: OpenAI behind the interface (ADR-0003 — not Anthropic, see DISC-7)
-  + `StubAiProvider`; 15s timeout; typed `AiUnavailableException`; key resolved via `ICredentialResolver`
-  (Vault), never config/env directly
-  ✔ `dotnet test --filter "FullyQualifiedName~AiProvider|FullyQualifiedName~StubAiProvider"` → 10/10
-  passing (`OpenAiProviderTests.cs` + `StubAiProviderTests.cs`, both new). New
+- [x] D5-T1 `IAiProvider` abstraction + `StubAiProvider`; 15s timeout; typed `AiUnavailableException`;
+  key resolved via `ICredentialResolver` (Vault), never config/env directly. Real implementation is
+  **Gemini, not OpenAI** — ADR-0003 chose OpenAI same day, then superseded hours later by ADR-0004 once
+  the owner said directly "I don't have OpenAI Key. I have gemini API key." (no OpenAI key ever existed
+  for this project at all; Gemini is already proven working here via `sarvaghna/core/gemini-client.mjs`)
+  ✔ `dotnet test --filter "FullyQualifiedName~AiProvider|FullyQualifiedName~StubAiProvider"` → 18/18
+  passing (`OpenAiProviderTests.cs`, `GeminiProviderTests.cs`, `StubAiProviderTests.cs`). New
   `src/Yukti.Application/Ai/IAiProvider.cs` (interface + `StructuredGenerationRequest`/`ProviderResponse`/
   `AiUnavailableException`) — deliberately separate from the pre-existing `IAiAssistantService`, which
-  keeps serving its own three endpoints unchanged. `OpenAiProvider` (new, `Infrastructure/Ai/`) is a
-  sibling of `OpenAiAssistantService`, not a refactor of it. Key resolved against Vault reference
-  `ai-openai-api-key` (configurable via `Ai:OpenAi:CredentialReference`) — a different secret than
-  `OpenAiAssistantService`'s own `OpenAI:ApiKey` config read; unifying those is explicitly out of scope
-  (see the ADR's Consequences). Reused the existing, previously-unpopulated `OrchestrationTelemetry.
+  keeps serving its own three endpoints unchanged. `GeminiProvider` (`Infrastructure/Ai/`) is the real
+  provider registered in `Program.cs`; `OpenAiProvider` (built first, per ADR-0003) stays in the codebase
+  unused rather than deleted — complete and tested, a one-line DI change back if an OpenAI key ever
+  exists. Key resolved against Vault reference `ai-gemini-api-key` (configurable via
+  `Ai:Gemini:CredentialReference`). Reused the existing, previously-unpopulated `OrchestrationTelemetry.
   AiRequestDuration`/`AiRequestTimeout` meters (declared since FR-OBS-02, zero emitters until now)
   instead of adding a second set — required one new project reference, `Yukti.Infrastructure` →
   `Yukti.Orchestration` (one-way, no cycle). Source-check test proves no file outside
   `Infrastructure/Ai/` and `Program.cs` composition roots mentions OpenAI by name.
-  ✔ `dotnet build -warnaserror` → 0/0 (solution-wide, not just the new tests).
+  Real bug found testing both providers together: `OpenAiProviderTests`' and `GeminiProviderTests`'
+  timeout tests both listen on the same process-wide static `OrchestrationTelemetry.Meter` and assert an
+  exact count — run in parallel (xUnit's default), each saw both tests' increments, reproduced directly
+  (`Assert.Single() Failure: The collection contained 2 matching items`). Fixed with a shared xUnit
+  collection so the two classes never race each other.
+  ✔ `dotnet build -warnaserror` → 0/0 (solution-wide). PR #27, CI green (`ai-off`, `build-and-test`,
+  `api-types-drift`, `frontend`, Sarvaghna inspection — all 5 checks).
 - [x] D5-T2 The AI switch actually switches: `Ai:Enabled=false` ⇒ no `IAiProvider` registered in the
   container at all, zero outbound calls possible; AI endpoints return 503 RFC 7807 naming AI as disabled
   (never a quiet fallback); `ai-off` CI job proves zero outbound HTTP to any provider host; UI hides the
@@ -369,13 +377,16 @@ have no old equivalent.
   one session. Pre-existing for `onreconnected` before D4-T4; D4-T4 added two more of the same shape rather
   than redesigning connection lifecycle management as a side effect of the reconnect-indicator task.
 - [x] DISC-7 AI vendor mismatch (first flagged Day 1, `plan/GAP-MATRIX.md` line 78, "blocks Day 5
-  start") — resolved 2026-10-14. CLAUDE.md §4 and the old Day 5 PLAN.md skeleton named Anthropic; the
-  real code is a working OpenAI-only integration with no abstraction; the new Day 5 spec the owner sent
-  assumed OpenAI without flagging it as a decision at all, treating GAP-MATRIX's explicitly-blocking
-  question as already settled. Asked the owner directly rather than resolve it myself either way: answer
-  was "keep OpenAI, add abstraction." Recorded as `plan/adr/0003-ai-vendor-openai.md`. Follow-up still
-  open, not done as part of this item: CLAUDE.md §4's AI line still says Anthropic and now contradicts
-  the ADR — needs a small doc fix, tracked separately so it isn't silently left wrong.
+  start") — resolved 2026-10-14, twice in one day. CLAUDE.md §4 and the old Day 5 PLAN.md skeleton
+  named Anthropic; the real code is a working OpenAI-only integration with no abstraction; the new Day 5
+  spec the owner sent assumed OpenAI without flagging it as a decision at all, treating GAP-MATRIX's
+  explicitly-blocking question as already settled. Asked the owner directly rather than resolve it
+  myself either way: first answer was "keep OpenAI, add abstraction" (`plan/adr/0003-ai-vendor-openai.md`).
+  That assumed a working OpenAI key existed — it didn't, for anything, ever. The owner then said directly
+  "I don't have OpenAI Key. I have gemini API key." Superseded same day by
+  `plan/adr/0004-ai-vendor-gemini.md`: `GeminiProvider` is the real `IAiProvider`, `OpenAiProvider` stays
+  in the codebase unused rather than discarded. CLAUDE.md/SUTRADHAR.md's AI line fixed both times, not
+  left contradicting either ADR.
 - [x] DISC-8 The new Day 5 spec's preconditions assume a "Day 4 autonomy policy" (Builder → Verifier →
   Reviewer roles, auto-merge conditions, auto-revert on red `main`, an evening digest) is already live,
   citing "SUTRADHAR.md §9." Checked: `SUTRADHAR.md` is byte-identical to `CLAUDE.md`, 121 lines, 8
