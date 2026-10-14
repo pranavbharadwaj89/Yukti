@@ -1,12 +1,34 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { flowsApi, getActionParams, modulesApi, ApiError } from "@/services/api-client";
+import { flowsApi, flowReportsApi, getActionParams, modulesApi, runsApi, ApiError } from "@/services/api-client";
 import { Button, Card, Dialog, Input, Spinner, StatusPill } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/form-controls";
 import { useToastStore } from "@/store/toast-store";
 import { WorkflowCanvas } from "@/features/flow-authoring/workflow-canvas";
 import { ParamFields, buildParamsFromFields, type FieldValue } from "@/features/shared/param-fields";
+
+// D4-T6: real output fields from the flow's last run, e.g. {order: ["id",
+// "status"]} — an opportunistic enhancement over plain saveAs-name
+// suggestions. Flattens one level of nesting past each top-level key;
+// arrays and anything past that depth are offered as the array/object
+// field itself, not guessed into further paths no step may ever produce
+// the same shape twice for.
+function flattenResultFields(data: unknown, prefix = "", depth = 0): string[] {
+  if (depth > 2 || data === null || typeof data !== "object" || Array.isArray(data)) {
+    return prefix ? [prefix] : [];
+  }
+  const paths: string[] = [];
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      paths.push(...flattenResultFields(value, path, depth + 1));
+    } else {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
 
 // FR-FEAT-04 (Workflow Builder): a real React Flow canvas (WorkflowCanvas)
 // visualizes the step sequence and drives "add step" via its trailing "+"
@@ -21,6 +43,23 @@ export function FlowDetailPage() {
 
   const flowQuery = useQuery({ queryKey: ["flows", flowId], queryFn: () => flowsApi.get(flowId) });
   const modulesQuery = useQuery({ queryKey: ["modules"], queryFn: modulesApi.list });
+
+  // D4-T6: earlier steps' saveAs names (what {{vars. can ever legally
+  // reference, matching Flow.Publish's own rule exactly) plus, when a
+  // previous run exists, that run's real field shapes per binding.
+  const reportsQuery = useQuery({
+    queryKey: ["flow-reports", flowId, "runs"],
+    queryFn: () => flowReportsApi.runsByFlow(flowId),
+    enabled: !!flowId,
+  });
+  const latestRunId = [...(reportsQuery.data ?? [])].sort(
+    (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
+  )[0]?.flowRunId;
+  const latestRunQuery = useQuery({
+    queryKey: ["runs", latestRunId, "autocomplete-fields"],
+    queryFn: () => runsApi.get(latestRunId!),
+    enabled: !!latestRunId,
+  });
 
   const [addStepOpen, setAddStepOpen] = useState(false);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -83,6 +122,15 @@ export function FlowDetailPage() {
   if (!flow) return <div className="text-sm text-danger">Flow not found.</div>;
 
   const selectedActionSchema = getActionParams(modulesQuery.data, moduleKind, action);
+  const availableBindings = flow.steps.map((s) => s.saveAs).filter((s): s is string => !!s);
+  const fieldsByBinding: Record<string, string[]> = {};
+  if (latestRunQuery.data) {
+    const stepNameToSaveAs = new Map(flow.steps.filter((s) => s.saveAs).map((s) => [s.name, s.saveAs as string]));
+    for (const result of latestRunQuery.data.results) {
+      const bound = stepNameToSaveAs.get(result.stepName);
+      if (bound && result.data !== undefined) fieldsByBinding[bound] = flattenResultFields(result.data);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -180,7 +228,14 @@ export function FlowDetailPage() {
           />
           <div className="col-span-2">
             {selectedActionSchema && (
-              <ParamFields schema={selectedActionSchema} values={fieldValues} onChange={setFieldValues} />
+              <ParamFields
+                schema={selectedActionSchema}
+                values={fieldValues}
+                onChange={setFieldValues}
+                stepName={stepName || "this step"}
+                availableBindings={availableBindings}
+                fieldsByBinding={fieldsByBinding}
+              />
             )}
           </div>
           <div className="col-span-2 flex justify-end">

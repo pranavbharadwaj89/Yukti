@@ -414,3 +414,42 @@ Exit check:  on track. dotnet build -warnaserror → 0/0. dotnet format --verify
              dotnet test → 131/131 (17 Analyzers + 8 Cli + 8 Infrastructure + 98 Orchestration).
              `yukti run demo/uc1_flow.json --junit out.xml` → exit 0 locally; re-run on main after merge.
 Next:        Day 4 D4-T1 — API testing UI + live runs (P0-6).
+
+## 2026-10-14 09:23 IST — Day 4 (cont.)
+Done:        D4-T6 Variable autocomplete from earlier steps' saveAs. Found in-progress, uncommitted
+             in the working tree at session start (`variable-autocomplete-input.tsx`/`.test.tsx`
+             untracked, `primitives.tsx`/`flow-detail-page.tsx`/`param-fields.tsx` modified) — not
+             done yet: unticked in PLAN.md, GAP-MATRIX still said "Needs build", nothing committed,
+             and the test run that was supposed to prove it hadn't actually executed. Completed it:
+             a real ARIA 1.2 combobox (`VariableAutocompleteInput`) wired into every String param in
+             `ParamFields`, suggesting only earlier steps' `saveAs` names (mirrors `Flow.Publish`'s
+             own `availableBindings` rule), going one level deeper into the last run's real field
+             shapes once one exists, and flagging unresolved references with `Flow.Publish`'s exact
+             wording. Found and fixed a real bug while proving it: `getCandidates` required an exact
+             match on the text before `.`, so suggestions never appeared for a still-partially-typed
+             binding name even though the binding-name dropdown already resolved it uniquely — now
+             resolves via `startsWith` the same way the binding step does.
+Discovered:  1. `npm test -- autocomplete` (vitest's default `forks` pool) cannot start a worker on
+             this machine at all — `[vitest-pool-runner]: Timeout waiting for worker to respond`,
+             reproduced twice, 0 tests ever ran, silently reads as "no tests" rather than a failure.
+             `--pool=threads` runs clean. Environment-specific (Windows), not a project bug, but the
+             task's own `✔` command as written in PLAN.md will hang the same way for anyone else on
+             this machine/profile — worth a `vitest.config.ts` default-pool fix as its own task
+             rather than silently patched here as a side effect of D4-T6.
+             2. `plan/STANDUP.md` had zero entries for D4-T1 through D4-T5 despite all five being
+             ticked `[x]` in PLAN.md with detailed evidence — the required per-session append (§5)
+             was skipped for whatever session(s) did that work. Not re-litigating or backfilling
+             those five from the PLAN.md evidence after the fact (I wasn't there for them and
+             reconstructing a session log after the fact would just be a plausible-sounding guess,
+             not a true record) — flagging the gap here so it isn't silently normalized going
+             forward; every session from here on appends its own entry regardless of how small.
+Scope guards: none
+Exit check:  on track. `npx vitest run --pool=threads` → 235/235 (was 227/227, +8 new). `npm run
+             typecheck` and `npm run lint` clean. `npm run build` succeeds.
+Next:        D4-T7 is not a real task — PLAN.md's Day 4 only defines D4-T1 through D4-T6; "D4-T7"
+             exists only inside DISC-5's prose, which is itself about a Playwright e2e harness that
+             doesn't exist in this repo yet (`playwright.config.ts` present, no `test:e2e` script, no
+             `e2e/` directory) — a real multi-day undertaking (real backend+DB+frontend running
+             together, fixtures, trace/screenshot capture), not something to wave through as already
+             done. Awaiting the owner's actual Day 5 spec content and a decision on D4-T7's scope
+             before proceeding.

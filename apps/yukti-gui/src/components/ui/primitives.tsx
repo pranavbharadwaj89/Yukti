@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   useEffect,
   useRef,
   type ButtonHTMLAttributes,
@@ -29,16 +30,20 @@ export function Button({
   return <button className={`${base} ${variants[variant]} ${className}`} {...props} />;
 }
 
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
+  { className = "", ...props },
+  ref,
+) {
   return (
     <input
+      ref={ref}
       // WCAG 4.1.2/1.3.1: a placeholder is not an accessible name — fall back to it only when no label is wired up.
       aria-label={props["aria-label"] ?? (props.id || props["aria-labelledby"] ? undefined : props.placeholder)}
       className={`w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-dim focus:border-accent ${className}`}
       {...props}
     />
   );
-}
+});
 
 export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
