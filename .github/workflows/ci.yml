@@ -205,6 +205,9 @@ jobs:
     - name: Restore and build backend
       run: dotnet restore && dotnet build --no-restore -c Release
 
+    - name: Install Playwright browsers
+      run: pwsh tests/Yukti.Orchestration.Tests/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+
     - name: Install dotnet-ef
       run: dotnet tool install --global dotnet-ef --version 8.0.11
 
