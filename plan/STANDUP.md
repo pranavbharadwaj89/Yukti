@@ -491,3 +491,28 @@ Exit check:  on track so far. D5-T1 real tests passing (see commit); full-suite 
              -warnaserror`/`dotnet test` re-run before merge, not just the filtered subset.
 Next:        D5-T2 (AI-off switch — never cut) once D5-T1 is merged; D5-T4/T5/T8 stay blocked until
              the owner hands over the actual OpenAI key + week's budget cap (asked, not yet received).
+
+## 2026-10-14 11:40 IST — Day 5 (cont.)
+Done:        D5-T1 merged to `main` — PR #23 (squashed), feature branch deleted. Went through three
+             rounds of this repo's own Sarvaghna commit-hook review before the push was clean, each
+             round catching something real, each fixed before the next push (not argued with or
+             suppressed):
+             1. Undisposed `HttpResponseMessage`; `choices[0]` indexed without checking the array
+             wasn't empty (IndexOutOfRangeException on a content-filter refusal or malformed payload).
+             2. Caller-initiated cancellation (the flow run itself stopping, not our own 15s deadline)
+             was falling into the generic catch and getting wrapped into `AiUnavailableException`
+             instead of propagating as `OperationCanceledException` — a caller couldn't tell "this was
+             cancelled" from "the AI provider is down." Also: the outer `choices` lookup itself
+             (not just `choices[0]`) could throw `KeyNotFoundException` on a payload missing the
+             property entirely.
+             3. The response body read used the caller's raw token instead of `timeoutCts.Token`, so a
+             stalled body stream on an otherwise-successful response wouldn't respect
+             `EffectiveTimeout` at all — only the header round-trip did. Restructured to one try/catch
+             covering the whole exchange under the same deadline. Also hardened `StubAiProvider` to a
+             `ConcurrentDictionary` against a future shared-instance registration.
+             Final push: clean review, no further findings. 11/11 tests passing throughout every round.
+Discovered:  None new — all caught by Sarvaghna's own review, logged above rather than separately.
+Scope guards: none
+Exit check:  on track. D5-T1 fully merged with real tests, not just locally green.
+Next:        D5-T2 — the AI switch actually switches (never cut). Still waiting on the owner's OpenAI
+             key + week's budget cap for D5-T4/T5/T8.
