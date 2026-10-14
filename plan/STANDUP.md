@@ -453,3 +453,41 @@ Next:        D4-T7 is not a real task — PLAN.md's Day 4 only defines D4-T1 thr
              together, fixtures, trace/screenshot capture), not something to wave through as already
              done. Awaiting the owner's actual Day 5 spec content and a decision on D4-T7's scope
              before proceeding.
+
+## 2026-10-14 10:52 IST — Day 5 (open)
+Done:        Received the owner's real Day 5 spec ("Yukti — Day 5 Spec: Sarvagna, the AI Layer").
+             Superseded PLAN.md's old 7-task Day 5 skeleton with its T0-T9 breakdown (old->new mapping
+             recorded inline in PLAN.md, same pattern Day 3 used). Found and resolved two real
+             contradictions before writing any code — both logged as DISC-7/DISC-8:
+             - AI vendor: GAP-MATRIX flagged this Day 1 as "blocks Day 5 start"; CLAUDE.md said
+               Anthropic, the only real code is OpenAI-only, and the new spec silently assumed OpenAI
+               without flagging it as a decision. Asked the owner directly instead of picking either
+               way myself. Answer: keep OpenAI, add the abstraction. Recorded as
+               `plan/adr/0003-ai-vendor-openai.md`; fixed CLAUDE.md/SUTRADHAR.md's §4 line to match
+               (both said Anthropic, now say OpenAI).
+             - "Day 4 autonomy policy" (Builder/Verifier/Reviewer, auto-merge, `SUTRADHAR.md §9`) the
+               spec assumes is live: doesn't exist. SUTRADHAR.md has 8 sections, no §9, nothing about
+               agent roles. Not building a speculative multi-agent framework to satisfy an assumption
+               that was never actually met — proceeding under the model already working this session
+               (build, real tests, commit, push, PR, merge via `gh`, STANDUP every step).
+             D5-T1 done: `IAiProvider` abstraction (`src/Yukti.Application/Ai/IAiProvider.cs`) +
+             `OpenAiProvider` (new, Infrastructure/Ai, key via `ICredentialResolver`/Vault, not
+             config/env) + `StubAiProvider` (Infrastructure.InMemory/Ai). Deliberately a new, separate
+             abstraction from the pre-existing `IAiAssistantService`/`OpenAiAssistantService` — those
+             keep serving their three existing endpoints unchanged, nothing regressed.
+Discovered:  1. (DISC-7, DISC-8 above.)
+             2. My own first cut of D5-T1's "no OpenAI type outside the provider implementation"
+             source-check test was too literal — it flagged my own explanatory doc comments in
+             `IAiProvider.cs` and `OrchestrationTelemetry.cs` for mentioning the vendor by name in
+             prose, not for any actual code coupling. Fixed by rewording those two comments instead of
+             loosening the check — kept it a plain substring ban, consistent with this repo's existing
+             `synthetic`-word-ban test (`ModuleRegistryTests.cs`), not something identifier-aware.
+             3. `OrchestrationTelemetry.AiRequestDuration`/`AiRequestTimeout` already existed,
+             declared since FR-OBS-02 but never emitted by anything (comment said so explicitly) — D5-T1
+             is the first thing to actually populate them, via one new project reference
+             (`Yukti.Infrastructure` -> `Yukti.Orchestration`, one-way, no cycle).
+Scope guards: none
+Exit check:  on track so far. D5-T1 real tests passing (see commit); full-suite `dotnet build
+             -warnaserror`/`dotnet test` re-run before merge, not just the filtered subset.
+Next:        D5-T2 (AI-off switch — never cut) once D5-T1 is merged; D5-T4/T5/T8 stay blocked until
+             the owner hands over the actual OpenAI key + week's budget cap (asked, not yet received).
