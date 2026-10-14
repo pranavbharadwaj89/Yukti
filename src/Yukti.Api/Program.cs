@@ -341,7 +341,24 @@ builder.Services.AddScoped<AssignRoleCommandHandler>();
 builder.Services.AddScoped<UpdateRolePermissionsCommandHandler>();
 
 // ---- AI Planning & Capability Engine (Volume 3) ----
-builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
+// D5-T2: `Ai:Enabled` beats everything else, including a configured key —
+// when false, OpenAiAssistantService/OpenAiProvider are never constructed
+// at all, so no outbound call is possible by construction, not just by
+// convention. Defaults to true (matches this service's behavior before
+// this flag existed: AI worked whenever a key happened to be configured).
+var aiEnabled = builder.Configuration.GetValue("Ai:Enabled", true);
+if (aiEnabled)
+{
+    builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
+    builder.Services.AddSingleton<IAiProvider, OpenAiProvider>();
+}
+else
+{
+    builder.Services.AddSingleton<IAiAssistantService, AiDisabledAssistantService>();
+    // IAiProvider is deliberately NOT registered here at all — the Sarvagna
+    // planning pipeline (D5-T3+) resolving it with AI off should fail DI
+    // resolution outright, not find a disabled stand-in to call.
+}
 
 // ---- OpenAPI / Swagger (FR-API-01) ----
 builder.Services.AddEndpointsApiExplorer();
@@ -413,6 +430,10 @@ app.Use(async (context, next) =>
     catch (DomainException ex)
     {
         await ProblemResults.WriteAsync(context, StatusCodes.Status400BadRequest, "Bad Request", ex.Message, context.RequestAborted);
+    }
+    catch (AiDisabledException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Disabled", ex.Message, context.RequestAborted);
     }
 });
 

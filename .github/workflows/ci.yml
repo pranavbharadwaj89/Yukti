@@ -170,3 +170,136 @@ jobs:
     - name: Show API log on failure
       if: failure()
       run: cat /tmp/yukti-api.log || true
+
+  ai-off:
+    # D5-T2: "AI is optional" (SUTRADHAR §2.4), proven against the real
+    # running API, not assumed from a config value nobody checked. A dummy
+    # key is set deliberately — Ai:Enabled=false must win even when a key
+    # LOOKS configured, not only when one happens to be missing (the exact
+    # gap GAP-MATRIX's P0-8 finding called out: AI was only ever "off" by
+    # omission before this task).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: yukti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Program.cs's rate limiter (IConnectionMultiplexer, FR-SCHED-03/
+      # FR-RT-03) needs a real Redis for ANY rate-limited endpoint to
+      # respond at all, login included — not just AI endpoints. Found via
+      # this job's own first real run: login 500'd with a
+      # RedisConnectionException, not the 503 this job is actually testing
+      # for. Port 6380 matches Program.cs's own default
+      # (ConnectionStrings:Redis ?? "localhost:6380") with no extra config.
+      redis:
+        image: redis:7
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore and build backend
+      run: dotnet restore && dotnet build --no-restore -c Release
+
+    - name: Install Playwright browsers
+      run: pwsh tests/Yukti.Orchestration.Tests/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+
+    - name: Install dotnet-ef
+      run: dotnet tool install --global dotnet-ef --version 8.0.11
+
+    - name: Apply EF migrations to the throwaway database
+      env:
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
+        dotnet ef database update --project src/Yukti.Infrastructure --startup-project src/Yukti.Api --connection "$CONN"
+
+    - name: Run the full non-AI suite with Ai:Enabled=false
+      env:
+        Ai__Enabled: "false"
+        OpenAI__ApiKey: "sk-dummy-key-that-must-never-be-used"
+      run: dotnet test --no-build -c Release --verbosity normal
+
+    - name: Start the API with AI disabled and a (deliberately unusable) key present
+      env:
+        ASPNETCORE_ENVIRONMENT: Production
+        Ai__Enabled: "false"
+        OpenAI__ApiKey: "sk-dummy-key-that-must-never-be-used"
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
+        nohup dotnet src/Yukti.Api/bin/Release/net8.0/Yukti.Api.dll > /tmp/yukti-api-aioff.log 2>&1 &
+        for i in $(seq 1 30); do
+          if curl -sf -o /dev/null http://localhost:5000/swagger/v1/swagger.json; then exit 0; fi
+          sleep 1
+        done
+        echo "API never served swagger.json within 30s:"; cat /tmp/yukti-api-aioff.log; exit 1
+
+    - name: Every AI endpoint returns 503 naming AI as disabled, never a quiet fallback
+      run: |
+        # The AI endpoints require authorization — log in as the seeded
+        # bootstrap admin (Program.cs's own dev-only default) to get a real
+        # token, the same way any other authenticated-endpoint check would.
+        token=$(curl -sf -X POST "http://localhost:5000/api/v1/auth/login" \
+          -H "Content-Type: application/json" \
+          -d '{"email":"admin@yukti.local","password":"ChangeMe123!"}' | jq -r .accessToken)
+        test -n "$token" -a "$token" != "null" || { echo "Could not obtain an access token"; exit 1; }
+
+        # Minimal but complete bodies — each endpoint's request record has
+        # non-nullable required fields; an incomplete body fails model
+        # binding with a 400 before ever reaching IAiAssistantService, which
+        # would make this check pass for the wrong reason.
+        declare -A bodies=(
+          ["ai/assertions/generate"]='{"method":"GET","url":"https://example.com","statusCode":200,"responseBodyJson":null}'
+          ["ai/selectors/heal"]='{"failedSelector":"#gone","targetTag":null,"domSnippet":null,"errorMessage":null,"pageUrl":null}'
+          ["ai/flows/suggest"]='{"naturalLanguageDescription":"check the login works","targetBaseUrl":null,"preferredModules":null}'
+        )
+        for path in "${!bodies[@]}"; do
+          status=$(curl -s -o /tmp/ai-off-body.json -w "%{http_code}" -X POST "http://localhost:5000/api/v1/$path" \
+            -H "Content-Type: application/json" -H "Authorization: Bearer $token" -d "${bodies[$path]}")
+          echo "POST /api/v1/$path -> $status"
+          echo "$status" | grep -qx 503 || { echo "Expected 503, got $status for $path"; cat /tmp/ai-off-body.json; exit 1; }
+          grep -qi "disabled" /tmp/ai-off-body.json || { echo "503 body doesn't name AI as disabled for $path"; cat /tmp/ai-off-body.json; exit 1; }
+        done
+
+    - name: Show API log on failure
+      if: failure()
+      run: cat /tmp/yukti-api-aioff.log || true
