@@ -77,11 +77,30 @@ public sealed class OpenAiProvider : IAiProvider
             },
         });
 
+        // The whole exchange — headers AND body — shares one try/catch and
+        // one deadline (timeoutCts.Token throughout, never the caller's raw
+        // ct): a stalled body stream on an otherwise-successful response
+        // must time out exactly like a stalled connection does, not just
+        // the header round-trip.
         var stopwatch = Stopwatch.StartNew();
-        HttpResponseMessage response;
         try
         {
-            response = await _httpClient.SendAsync(httpRequest, timeoutCts.Token);
+            using var response = await _httpClient.SendAsync(httpRequest, timeoutCts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+                stopwatch.Stop();
+                OrchestrationTelemetry.AiRequestDuration.Record(stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogWarning("OpenAI responded {StatusCode} for capability {Capability}: {Body}",
+                    (int)response.StatusCode, request.Capability, errorBody);
+                throw new AiUnavailableException($"OpenAI responded with {(int)response.StatusCode} {response.StatusCode}.");
+            }
+
+            var body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+            stopwatch.Stop();
+            OrchestrationTelemetry.AiRequestDuration.Record(stopwatch.Elapsed.TotalMilliseconds);
+            return ParseChatCompletion(body, stopwatch.Elapsed);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -99,31 +118,17 @@ public sealed class OpenAiProvider : IAiProvider
             // propagate as OperationCanceledException, never get wrapped into
             // a typed failure the caller would otherwise treat as "the AI
             // provider is unavailable" instead of "this was cancelled."
-            stopwatch.Stop();
             throw;
+        }
+        catch (AiUnavailableException)
+        {
+            throw; // already logged/recorded above — don't let the catch-all below re-wrap it
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             OrchestrationTelemetry.AiRequestDuration.Record(stopwatch.Elapsed.TotalMilliseconds);
             throw new AiUnavailableException("OpenAI request failed.", ex);
-        }
-
-        using (response)
-        {
-            stopwatch.Stop();
-            OrchestrationTelemetry.AiRequestDuration.Record(stopwatch.Elapsed.TotalMilliseconds);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorBody = await response.Content.ReadAsStringAsync(ct);
-                _logger.LogWarning("OpenAI responded {StatusCode} for capability {Capability}: {Body}",
-                    (int)response.StatusCode, request.Capability, errorBody);
-                throw new AiUnavailableException($"OpenAI responded with {(int)response.StatusCode} {response.StatusCode}.");
-            }
-
-            var body = await response.Content.ReadAsStringAsync(ct);
-            return ParseChatCompletion(body, stopwatch.Elapsed);
         }
     }
 

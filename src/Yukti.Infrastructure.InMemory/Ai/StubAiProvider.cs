@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Yukti.Application.Ai;
@@ -14,7 +15,12 @@ namespace Yukti.Infrastructure.InMemory.Ai;
 /// </summary>
 public sealed class StubAiProvider : IAiProvider
 {
-    private readonly Dictionary<string, string> _fixturesByCapability = new();
+    // ConcurrentDictionary, not Dictionary: if this ever ends up registered
+    // as a shared (singleton/DI-scoped) instance rather than one-per-test,
+    // a SetFixture racing a GenerateStructuredAsync read must not corrupt
+    // the dictionary or throw — a flaky test failure here would be a false
+    // positive about the AI capability under test, not about this stub.
+    private readonly ConcurrentDictionary<string, string> _fixturesByCapability = new();
 
     public string Id => "stub";
 
