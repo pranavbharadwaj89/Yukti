@@ -54,8 +54,8 @@ Write `SCOPE GUARD: refused <thing> — reason` in STANDUP.md and move on.
 
 - Backend: .NET 8 / C#, ASP.NET Core, EF Core, PostgreSQL (RLS), Redis, SignalR, Vault — **as already in the repo**
 - Web automation: `Microsoft.Playwright` (.NET)
-- AI: provider-abstracted `IAiProvider` (OpenAI via its HTTP API — ADR-0003, 2026-10-14; this line
-  originally said Anthropic) + a stub provider
+- AI: provider-abstracted `IAiProvider` (Gemini via its HTTP API — ADR-0004, 2026-10-14, supersedes
+  ADR-0003's OpenAI call made earlier the same day; this line originally said Anthropic) + a stub provider
 - Frontend: React + Vite + TypeScript (existing), TanStack Query, generated DTO types from the backend OpenAPI document
 - Quality: xUnit (or the test framework already in the repo), `dotnet format`, Roslyn analyzers with warnings-as-errors, Vitest, ESLint, Testcontainers for integration tests
 - CI: GitHub Actions

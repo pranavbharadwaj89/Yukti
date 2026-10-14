@@ -18,7 +18,18 @@ namespace Yukti.Infrastructure.Tests;
 /// an unhandled exception or a silent empty response), and that the
 /// pre-existing ai.request.* metrics (OrchestrationTelemetry, declared
 /// ahead of any emitter since FR-OBS-02) are now actually populated.
+///
+/// [Collection(AiProviderTelemetryCollection.Name)]: this class and
+/// GeminiProviderTests both attach a MeterListener to the same
+/// process-wide static OrchestrationTelemetry.Meter and assert an exact
+/// measurement count — run in parallel (xUnit's default across classes),
+/// each listener sees both tests' increments. Reproduced for real (not
+/// theorized): "Assert.Single() Failure: The collection contained 2
+/// matching items" when both timeout tests ran together. Same collection
+/// name serializes them relative to each other without slowing down
+/// anything else in the assembly.
 /// </summary>
+[Collection(AiProviderTelemetryCollection.Name)]
 public sealed class OpenAiProviderTests
 {
     private sealed class FakeCredentialResolver : ICredentialResolver
