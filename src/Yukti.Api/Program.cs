@@ -342,15 +342,23 @@ builder.Services.AddScoped<UpdateRolePermissionsCommandHandler>();
 
 // ---- AI Planning & Capability Engine (Volume 3) ----
 // D5-T2: `Ai:Enabled` beats everything else, including a configured key —
-// when false, OpenAiAssistantService/OpenAiProvider are never constructed
+// when false, OpenAiAssistantService/GeminiProvider are never constructed
 // at all, so no outbound call is possible by construction, not just by
 // convention. Defaults to true (matches this service's behavior before
 // this flag existed: AI worked whenever a key happened to be configured).
+//
+// ADR-0004 (2026-10-14, supersedes ADR-0003 same day): IAiProvider's real
+// implementation is GeminiProvider, not OpenAiProvider — the owner has no
+// OpenAI key. OpenAiProvider stays in the codebase (D5-T1, fully tested)
+// for if one ever shows up; switching back is this one line.
+// IAiAssistantService/OpenAiAssistantService (the three pre-existing
+// capability endpoints) are unrelated to this swap and untouched — they
+// already degrade to their own deterministic heuristic without a key.
 var aiEnabled = builder.Configuration.GetValue("Ai:Enabled", true);
 if (aiEnabled)
 {
     builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
-    builder.Services.AddSingleton<IAiProvider, OpenAiProvider>();
+    builder.Services.AddSingleton<IAiProvider, GeminiProvider>();
 }
 else
 {

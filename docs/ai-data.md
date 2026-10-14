@@ -47,8 +47,10 @@ description outright rather than forwarding it.
 
 Zero outbound calls to any AI provider are possible — not "none happen to
 fire," but none are possible, by construction: `OpenAiAssistantService`
-and `OpenAiProvider` (the only two classes in this codebase capable of
-making an outbound AI call) are never constructed at all. Every AI
+and `GeminiProvider` (the real Sarvagna planning-pipeline provider, per
+ADR-0004 — not `OpenAiProvider`, kept in the codebase but currently
+unused for lack of an OpenAI key; the only two classes in this codebase
+capable of making an outbound AI call) are never constructed at all. Every AI
 endpoint returns `503 Service Unavailable` naming AI as disabled for this
 deployment. Proven in CI by the `ai-off` job
 (`.github/workflows/ci.yml`), which boots the real API with AI disabled —
