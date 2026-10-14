@@ -203,8 +203,26 @@ dropping its task ID.
   `aria-describedby`, verified by focusing it and reading the tooltip's accessible text. 0 axe violations.
   A source-check test fails the suite if the old hardcoded identifier or any of its fake module names
   (e.g. "Apache Kafka") ever reappear in the file.
-- [ ] D4-T6 Variable autocomplete from earlier steps' saveAs
-  ✔ `npm test -- autocomplete`
+- [x] D4-T6 Variable autocomplete from earlier steps' saveAs
+  ✔ `npx vitest run variable-autocomplete-input --pool=threads` → 8/8 passing
+  (`variable-autocomplete-input.test.tsx`, new). Real ARIA 1.2 combobox (`role="combobox"`,
+  `aria-expanded`/`aria-controls`/`aria-activedescendant`/`aria-autocomplete`) wired into
+  `ParamFields` for every String param, suggesting only earlier steps' `saveAs` names — mirrors
+  `Flow.Publish`'s own `availableBindings` rule exactly, never a later step's. Once a prior run
+  exists, suggestions go one level deeper into that run's real field shapes per binding (e.g.
+  `vars.order.id`), sourced from `flowReportsApi`/`runsApi`, not invented. Inline validation reuses
+  `Flow.Publish`'s exact `unresolved_variable` wording so a bad reference reads the same in the
+  editor and at publish time. Real bug found and fixed while proving it: `getCandidates` matched the
+  text before `.` as an *exact* key into `fieldsByBinding`, so a still-partially-typed binding name
+  (e.g. `{{vars.ord.` on the way to `order.`) never showed field suggestions, even though the
+  binding-name dropdown already uniquely resolved it to `order` — fixed to resolve the partial
+  against every candidate binding via `startsWith`, same as the binding-name step does. Also found:
+  `npm test -- autocomplete` (vitest's default `forks` pool) cannot start a worker at all on this
+  machine (`[vitest-pool-runner]: Timeout waiting for worker to respond`, reproduced twice, 0 tests
+  ever ran) — environment-specific (Windows + this machine's AV/process-spawn interaction, not a
+  vitest/project bug); `--pool=threads` runs clean. Full suite: 235/235 (was 227/227, +8 new);
+  `npm run typecheck` and `npm run lint` clean (one real `tsc` error fixed along the way — unused
+  `vi` import in the new test); `npm run build` succeeds.
 - **Exit check:** author → publish → run an API flow fully in the browser, no hand-typed JSON.
 
 ## Day 5 — Fri 16 Oct · AI layer — Sutradhar runtime (P0-7, P0-8)

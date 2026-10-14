@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { getActionParams } from "@/services/api-client";
 import { Input, Textarea } from "@/components/ui/primitives";
 import { Checkbox } from "@/components/ui/form-controls";
+import { VariableAutocompleteInput } from "@/features/shared/variable-autocomplete-input";
 
 export type FieldValue = string | boolean;
 
@@ -63,10 +64,20 @@ export function ParamFields({
   schema,
   values,
   onChange,
+  stepName,
+  availableBindings,
+  fieldsByBinding,
 }: {
   schema: ReturnType<typeof getActionParams>;
   values: Record<string, FieldValue>;
   onChange: (values: Record<string, FieldValue>) => void;
+  /** D4-T6: step name used in the unresolved-variable message, and the
+   * earlier steps' saveAs names {{vars. autocompletes from. Omit either to
+   * keep String fields as plain inputs — callers with no "earlier steps"
+   * concept (e.g. the ad-hoc Tests tabs) don't need to pass these. */
+  stepName?: string;
+  availableBindings?: string[];
+  fieldsByBinding?: Record<string, string[]>;
 }) {
   // Pre-fill each parameter's declared default the first time this schema
   // is shown, without clobbering anything the user (or a loaded draft
@@ -116,6 +127,15 @@ export function ParamFields({
                 placeholder={p.type === "Array" ? "[...]" : "{...}"}
                 value={(values[p.name] as string) ?? ""}
                 onChange={(e) => setField(p.name, e.target.value)}
+              />
+            ) : p.type === "String" && availableBindings ? (
+              <VariableAutocompleteInput
+                aria-label={p.name}
+                stepName={stepName ?? ""}
+                availableBindings={availableBindings}
+                fieldsByBinding={fieldsByBinding}
+                value={(values[p.name] as string) ?? ""}
+                onChange={(v) => setField(p.name, v)}
               />
             ) : (
               <Input
