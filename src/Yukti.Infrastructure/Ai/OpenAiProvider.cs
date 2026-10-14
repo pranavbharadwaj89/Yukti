@@ -92,6 +92,16 @@ public sealed class OpenAiProvider : IAiProvider
                 request.Capability, request.EffectiveTimeout.TotalSeconds);
             throw new AiUnavailableException($"OpenAI request timed out after {request.EffectiveTimeout.TotalSeconds:F0}s.");
         }
+        catch (OperationCanceledException)
+        {
+            // The caller's own token, not our timeout — this is cooperative
+            // cancellation (e.g. the flow run itself was cancelled), and must
+            // propagate as OperationCanceledException, never get wrapped into
+            // a typed failure the caller would otherwise treat as "the AI
+            // provider is unavailable" instead of "this was cancelled."
+            stopwatch.Stop();
+            throw;
+        }
         catch (Exception ex)
         {
             stopwatch.Stop();
@@ -127,8 +137,8 @@ public sealed class OpenAiProvider : IAiProvider
     private static ProviderResponse ParseChatCompletion(string body, TimeSpan elapsed)
     {
         using var envelope = JsonDocument.Parse(body);
-        var choices = envelope.RootElement.GetProperty("choices");
-        var content = choices.GetArrayLength() > 0
+        var content = envelope.RootElement.TryGetProperty("choices", out var choices)
+            && choices.GetArrayLength() > 0
             && choices[0].TryGetProperty("message", out var message)
             && message.TryGetProperty("content", out var contentProp)
                 ? contentProp.GetString() ?? ""

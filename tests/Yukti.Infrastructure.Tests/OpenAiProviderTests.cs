@@ -127,6 +127,32 @@ public sealed class OpenAiProviderTests
     }
 
     [Fact]
+    public async Task Cancelling_the_callers_own_token_propagates_OperationCanceledException_not_AiUnavailableException()
+    {
+        // Distinct from the timeout case above: here the CALLER cancelled
+        // (e.g. the flow run itself stopped), not our own 15s deadline. That
+        // must bubble up as cooperative cancellation, never get wrapped into
+        // "the AI provider is unavailable" — a caller handling cancellation
+        // and a caller handling a real AI outage need to tell them apart.
+        var handler = new StubHandler(async (_, ct) =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            return SuccessResponse("unreachable");
+        });
+        var provider = BuildProvider("key", handler, out _);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // HttpClient throws its own TaskCanceledException (a subtype) for
+        // this, not the base type exactly — xUnit's ThrowsAsync<T> requires
+        // an exact type match, so this asserts "is-a" via IsAssignableFrom
+        // instead of asserting the production code throws the base type
+        // literally, which it has no reason to.
+        var ex = await Record.ExceptionAsync(() => provider.GenerateStructuredAsync(Request(), cts.Token));
+        Assert.IsAssignableFrom<OperationCanceledException>(ex);
+    }
+
+    [Fact]
     public async Task A_response_that_is_not_valid_json_returns_null_Parsed_without_throwing()
     {
         var handler = new StubHandler((_, _) => Task.FromResult(SuccessResponse("not json at all")));
