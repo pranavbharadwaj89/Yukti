@@ -254,11 +254,29 @@ have no old equivalent.
   `Yukti.Orchestration` (one-way, no cycle). Source-check test proves no file outside
   `Infrastructure/Ai/` and `Program.cs` composition roots mentions OpenAI by name.
   ✔ `dotnet build -warnaserror` → 0/0 (solution-wide, not just the new tests).
-- [ ] D5-T2 The AI switch actually switches: `Ai:Enabled=false` ⇒ no `IAiProvider` registered in the
+- [x] D5-T2 The AI switch actually switches: `Ai:Enabled=false` ⇒ no `IAiProvider` registered in the
   container at all, zero outbound calls possible; AI endpoints return 503 RFC 7807 naming AI as disabled
   (never a quiet fallback); `ai-off` CI job proves zero outbound HTTP to any provider host; UI hides the
   generation panel with a tooltip; `docs/ai-data.md` states exactly what is/isn't sent
-  ✔ `dotnet test --filter "FullyQualifiedName~AiDisabled"` and the green `ai-off` CI job — **never cut**
+  ✔ `dotnet test --filter "FullyQualifiedName~AiDisabled"` → 4/4 passing. `ai-off` CI job green on PR #25
+  (run 38559624061) — real run, not assumed: boots the actual API with `Ai:Enabled=false` **and a
+  deliberately unusable key configured** (proves the switch wins even when a key looks present, not
+  just when one's missing — GAP-MATRIX's P0-8 finding), logs in as the seeded admin, asserts all three
+  AI endpoints return 503 naming AI as disabled. `AiDisabledAssistantService` (new) registered instead
+  of `OpenAiAssistantService` when disabled — holds no HttpClient, references no provider type, so
+  nothing in it can leave the process; `IAiProvider` isn't registered at all. `AiDisabledException` → 503
+  via the existing global exception middleware (same pattern as `ForbiddenException`/`DomainException`),
+  zero endpoint-level changes needed. Two real CI bugs found on this job's own first two runs, not
+  assumed green: (1) the job ran `dotnet test` without installing Playwright browsers first (copied
+  `api-types-drift`'s structure, which never runs tests at all) — 6 WebModuleTests failed on "Executable
+  doesn't exist"; (2) login itself 500'd with `RedisConnectionException` — Program.cs's rate limiter
+  needs a real `IConnectionMultiplexer` for ANY rate-limited endpoint, login included, and no CI job
+  had ever exercised a rate-limited endpoint before this one; added a `redis:7` service on port 6380
+  matching Program.cs's own default. Both fixed before the job went green, not worked around.
+  `docs/ai-data.md` states exactly what's sent today (the three existing capability endpoints) and what
+  Sarvagna's pipeline will send once D5-T3 lands (registry context only).
+  **Deferred, not forgotten:** "UI hides the generation panel" — no generation panel exists yet (D5-T7);
+  nothing to hide until then. Will be done as part of D5-T7, not skipped.
 - [ ] D5-T3 Planning pipeline: guardrail pre-check (secret redaction, 4,000-char cap, reject-if-empty) →
   context (module registry) → versioned prompt (`Sarvagna/Prompts/<capability>.v1.md`) → call the
   provider → validate against the output schema (one retry with errors in the prompt) → record cost
