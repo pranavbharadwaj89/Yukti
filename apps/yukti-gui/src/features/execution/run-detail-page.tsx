@@ -10,7 +10,7 @@ import { useToastStore } from "@/store/toast-store";
 // trusting-pushes contract lives in useLiveRunProgress, not here.
 export function RunDetailPage() {
   const { runId } = useParams({ strict: false }) as { runId: string };
-  const { run, error } = useLiveRunProgress(runId);
+  const { run, error, connectionState } = useLiveRunProgress(runId);
   const pushToast = useToastStore((s) => s.push);
 
   const cancelMutation = useMutation({
@@ -37,6 +37,20 @@ export function RunDetailPage() {
           <div className="mt-1 font-mono text-xs text-ink-dim">trigger: {run.trigger}</div>
         </div>
         <div className="flex items-center gap-2">
+          {/* D4-T4: connection health, never conflated with the run's own
+              status above — a reconnecting live feed must never read as a
+              failed run. aria-live announces the change without the page
+              needing focus. */}
+          {connectionState === "reconnecting" && (
+            <span role="status" aria-live="polite" className="flex items-center gap-1.5 text-xs font-medium text-warning">
+              <Spinner className="h-3 w-3" /> Reconnecting…
+            </span>
+          )}
+          {connectionState === "polling" && (
+            <span role="status" aria-live="polite" className="text-xs font-medium text-ink-dim">
+              Live updates unavailable — refreshing periodically
+            </span>
+          )}
           <StatusPill status={run.status} />
           {!isTerminal && (
             <Button variant="danger" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>

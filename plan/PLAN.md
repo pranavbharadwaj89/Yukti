@@ -174,8 +174,20 @@ dropping its task ID.
 - [x] D4-T3 API request builder + response viewer (status, timing, JSON tree) — reuse existing components
   ✔ ALREADY DONE (evidence), filter adapted per SUTRADHAR §2.8: `npm test -- api-studio-page` →
   `ApiStudioPage > renders the explorer tree and request designer panes`, passing
-- [ ] D4-T4 Trigger run + live progress via SignalR; refetch run state on reconnect
-  ✔ `npm test -- LiveRun` + backend hub test
+- [x] D4-T4 Trigger run + live progress via SignalR; refetch run state on reconnect
+  ✔ Filter adapted → `hooks/index.test.ts` + `run-detail-page.test.tsx` — 8/8 passing (the owner's spec asked
+  for a full Playwright e2e harness; scoped per owner decision to hook/component-level proof instead, since
+  no `test:e2e` infra exists in this repo yet and that's a separate undertaking — see DISCOVERED).
+  `useLiveRunProgress`'s reconnect-and-catch-up was already real (found live, not assumed: two callers
+  racing `start()`, a CORS-credentials bug) — but it exposed no connection-state signal at all, so the UI
+  had no way to show reconnection was happening, and SignalR's automatic reconnect giving up entirely left
+  the view silently stale forever with no fallback. Added `connectionState`
+  (`connected`/`reconnecting`/`polling`) wired to `onreconnecting`/`onreconnected`/`onclose`, and a REST
+  poll-every-5s fallback when `onclose` fires or the initial `JoinRun` fails outright. `RunDetailPage` shows
+  an amber "Reconnecting…" (never conflated with the run's own status) or "Live updates unavailable —
+  refreshing periodically", both `aria-live`. Proven with a faked `HubConnection` (`vi.useFakeTimers`):
+  reconnecting never shows as failed, reconnected re-syncs via REST, give-up starts polling every 5s,
+  reconnecting-after-give-up stops the old poll interval (no two update paths running at once).
 - [x] D4-T5 Honest marketplace: real registered modules only, install disabled (v0.2 scope), no fake list
   **Superseded by the owner's Day 4 spec** — install/publish backend is explicitly v0.2+; this task is
   "the marketplace never shows fake data", not "install wires a new module into the editor".
@@ -259,3 +271,16 @@ dropping its task ID.
   isn't associated with its `<input>` (no `htmlFor`/`id`, not nested) — fails `getByLabelText`, invisible
   to a screen reader. Pre-existing (moved verbatim out of `module-test-form.tsx` during D4-T2, not
   introduced by it); belongs with the Day 4 WCAG/axe pass, not fixed here to stay in scope.
+- [ ] DISC-5 No Playwright e2e harness exists in this repo (`playwright.config.ts` is present but no
+  `test:e2e` script, no `e2e/` directory). D4-T4 and D4-T6/D4-T7 (UC-1 in the browser) both call for one —
+  it's a real, separate undertaking (real backend+frontend+DB running together, fixtures, trace/screenshot
+  capture), not something to improvise as a side effect of one task. Owner decided D4-T4 proceeds at the
+  hook/component level instead; this item is what still needs building for D4-T6/T7 to be literal, not
+  adapted.
+- [ ] DISC-6 `@microsoft/signalr`'s `HubConnection.onreconnecting`/`onreconnected`/`onclose` have no `off`
+  counterpart at all (confirmed against the installed package's own `.d.ts`) — every mount of
+  `useLiveRunProgress` adds one more handler to the shared connection that's never removed. Each one is
+  individually inert after its own unmount (guarded by its own `cancelled` closure), so this isn't a
+  correctness bug today, but it's a real accumulating leak if a user navigates between run pages often in
+  one session. Pre-existing for `onreconnected` before D4-T4; D4-T4 added two more of the same shape rather
+  than redesigning connection lifecycle management as a side effect of the reconnect-indicator task.
