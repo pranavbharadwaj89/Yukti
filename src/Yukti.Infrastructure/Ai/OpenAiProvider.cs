@@ -99,20 +99,40 @@ public sealed class OpenAiProvider : IAiProvider
             throw new AiUnavailableException("OpenAI request failed.", ex);
         }
 
-        stopwatch.Stop();
-        OrchestrationTelemetry.AiRequestDuration.Record(stopwatch.Elapsed.TotalMilliseconds);
-
-        if (!response.IsSuccessStatusCode)
+        using (response)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogWarning("OpenAI responded {StatusCode} for capability {Capability}: {Body}",
-                (int)response.StatusCode, request.Capability, errorBody);
-            throw new AiUnavailableException($"OpenAI responded with {(int)response.StatusCode} {response.StatusCode}.");
-        }
+            stopwatch.Stop();
+            OrchestrationTelemetry.AiRequestDuration.Record(stopwatch.Elapsed.TotalMilliseconds);
 
-        var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("OpenAI responded {StatusCode} for capability {Capability}: {Body}",
+                    (int)response.StatusCode, request.Capability, errorBody);
+                throw new AiUnavailableException($"OpenAI responded with {(int)response.StatusCode} {response.StatusCode}.");
+            }
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            return ParseChatCompletion(body, stopwatch.Elapsed);
+        }
+    }
+
+    /// <summary>
+    /// Isolated from the HTTP call so the "choices came back empty" case (a
+    /// content filter refusal, or a malformed upstream response) falls
+    /// through to an empty content string instead of an unhandled
+    /// IndexOutOfRangeException — the planning pipeline's own schema
+    /// validation (D5-T3) is what turns "empty" into a proper failure.
+    /// </summary>
+    private static ProviderResponse ParseChatCompletion(string body, TimeSpan elapsed)
+    {
         using var envelope = JsonDocument.Parse(body);
-        var content = envelope.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+        var choices = envelope.RootElement.GetProperty("choices");
+        var content = choices.GetArrayLength() > 0
+            && choices[0].TryGetProperty("message", out var message)
+            && message.TryGetProperty("content", out var contentProp)
+                ? contentProp.GetString() ?? ""
+                : "";
 
         var inputTokens = 0;
         var outputTokens = 0;
@@ -132,6 +152,6 @@ public sealed class OpenAiProvider : IAiProvider
             parsed = null;
         }
 
-        return new ProviderResponse(content, parsed, inputTokens, outputTokens, stopwatch.Elapsed);
+        return new ProviderResponse(content, parsed, inputTokens, outputTokens, elapsed);
     }
 }
