@@ -550,3 +550,34 @@ Next:        D5-T3 — the planning pipeline (guardrail pre-check -> registry co
              -> provider call -> schema validation -> cost record). Still no OpenAI key/budget cap from
              the owner yet, so D5-T4/T5/T8 (the ones that need a live call) stay blocked; D5-T3's own
              skeleton and guardrail logic don't need one and can proceed.
+
+## 2026-10-14 13:41 IST — Day 5 (cont.)
+Done:        Owner said directly: "I don't have OpenAI Key. I have gemini API key." ADR-0003's vendor
+             call (same day, a few hours earlier) assumed a working OpenAI key existed somewhere -
+             checked again just now, it never did, for OpenAiAssistantService or anything else.
+             Found the Gemini integration is already real and working in this exact repo:
+             `sarvaghna/core/gemini-client.mjs`, the Sarvaghna crew's own caller (confirmed its
+             `GEMINI_API_KEY` sits in `sarvaghna/.env.local`, gitignored - checked the var name only,
+             never the value). Superseded ADR-0003 with `plan/adr/0004-ai-vendor-gemini.md`: built
+             `GeminiProvider : IAiProvider` mirroring that script's exact request shape (generateContent
+             REST endpoint, key in the query string, JSON-mode structured output) but through
+             `ICredentialResolver`/Vault instead of a raw env read, and `AiUnavailableException` instead
+             of that script's {ok, reason} style. `OpenAiProvider` stays in the codebase, unused but not
+             deleted - a one-line DI change back if an OpenAI key ever shows up. `Program.cs` now
+             registers `GeminiProvider` as the real provider. CLAUDE.md/SUTRADHAR.md/docs/ai-data.md
+             updated to match (second time today for the AI vendor line - DISC-7 closed, both rounds).
+             Merged: PR #27, all 5 CI checks green.
+Discovered:  Real, reproduced bug while testing both providers side by side: OpenAiProviderTests' and
+             GeminiProviderTests' timeout tests each attach a MeterListener to the same process-wide
+             static OrchestrationTelemetry.Meter and assert an exact measurement count. Run in parallel
+             (xUnit's default across test classes), each listener saw both tests' increments -
+             `Assert.Single() Failure: The collection contained 2 matching items`, reproduced directly,
+             not theorized from reading the code. Fixed with a shared xUnit collection
+             (`AiProviderTelemetryCollection`) so the two classes serialize relative to each other without
+             slowing down anything else in the assembly. Worth remembering for any future test that
+             listens on this same static Meter.
+Scope guards: none
+Exit check:  on track. Real vendor, real key path, real tests - nothing assumed.
+Next:        Still need the actual Gemini key value + the week's spend cap from the owner before
+             D5-T4/T5/T8 (Analyst, Coder, eval harness) can start - asked, not yet received. D5-T3's own
+             skeleton/guardrail work doesn't need the key and can proceed meanwhile.
