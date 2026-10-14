@@ -15,6 +15,14 @@ export function usePermission(): { hasAnyRole: boolean } {
   return { hasAnyRole: !!user };
 }
 
+// D4-T4: what the UI shows for the live connection, distinct from `run`/
+// `error` (the run's own data) — "reconnecting" must never render as if
+// the run itself failed. "polling" is SignalR's automatic reconnect
+// giving up entirely (onclose, not onreconnecting), falling back to REST
+// every 5s rather than leaving the view silently stale forever.
+export type LiveConnectionState = "connected" | "reconnecting" | "polling";
+const POLL_INTERVAL_MS = 5000;
+
 // FR-RT-01/02: joins the run's SignalR group, but the source of truth on
 // mount/reconnect is always the REST catch-up fetch — pushed events only
 // update state *after* that fetch resolves, never assumed to be complete
@@ -23,12 +31,14 @@ export function usePermission(): { hasAnyRole: boolean } {
 export function useLiveRunProgress(runId: string | undefined) {
   const [run, setRun] = useState<FlowRunResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [connectionState, setConnectionState] = useState<LiveConnectionState>("connected");
   const runRef = useRef(run);
   runRef.current = run;
 
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
     const connection = getRunProgressConnection();
 
     const catchUp = async () => {
@@ -40,16 +50,57 @@ export function useLiveRunProgress(runId: string | undefined) {
       }
     };
 
+    // SignalR's automatic reconnect retries a few times, then gives up for
+    // good (onclose) — there's no further event telling us it's back, so
+    // REST polling is the only way left to stay current. Idempotent: a
+    // second onclose (or the initial JoinRun failure below) while already
+    // polling is a no-op, not a second interval.
+    const startPolling = () => {
+      if (pollTimer) return;
+      setConnectionState("polling");
+      pollTimer = setInterval(() => void catchUp(), POLL_INTERVAL_MS);
+    };
+    const stopPolling = () => {
+      if (!pollTimer) return;
+      clearInterval(pollTimer);
+      pollTimer = undefined;
+    };
+
     const onStepCompleted = () => {
       // Server pushes the event; we re-fetch rather than hand-patch
       // client state, so a missed field never silently diverges.
       void catchUp();
     };
     const onRunCompleted = () => void catchUp();
+    // SARVAGHNA caught a real bug in review here: since onreconnecting/
+    // onreconnected/onclose can't be unregistered (DISC-6), a stale handler
+    // firing after this effect's own cleanup ran must do nothing at all —
+    // not just skip the state update (catchUp already does that), but
+    // never call startPolling(), which would spin up a brand-new
+    // setInterval that this already-unmounted closure's own stopPolling()
+    // can never clear again.
+    const onReconnecting = () => {
+      if (!cancelled) setConnectionState("reconnecting");
+    };
+    const onReconnected = () => {
+      if (cancelled) return;
+      stopPolling(); // shouldn't be polling at this point, but never leave two update paths running
+      setConnectionState("connected");
+      void catchUp(); // FR-RT-02: reconnect always re-syncs first
+    };
+    const onClose = () => {
+      if (!cancelled) startPolling();
+    };
 
     connection.on("StepCompleted", onStepCompleted);
     connection.on("FlowRunCompleted", onRunCompleted);
-    connection.onreconnected(() => void catchUp()); // FR-RT-02: reconnect always re-syncs first
+    // SignalR's public API has no off-counterpart for these three — every
+    // mount adds one more handler to the shared connection, each guarded
+    // by its own `cancelled` below so a stale one is inert, not wrong, but
+    // it is a real accumulating leak. See PLAN.md DISCOVERED.
+    connection.onreconnecting(onReconnecting);
+    connection.onreconnected(onReconnected);
+    connection.onclose(onClose);
 
     // Catch-up is unconditional and comes first — a client that saw
     // JoinRun fail should still show the run's current state via REST.
@@ -62,18 +113,21 @@ export function useLiveRunProgress(runId: string | undefined) {
       await ensureRunProgressConnected();
       await connection.invoke("JoinRun", runId);
     })().catch((e) => {
-      // Live updates unavailable; the REST catch-up above still stands.
+      // Live updates unavailable from the start — same fallback as losing
+      // an established connection, not just a console warning nobody sees.
       console.warn("Live run updates unavailable, falling back to REST-only:", e);
+      if (!cancelled) startPolling();
     });
 
     return () => {
       cancelled = true;
+      stopPolling();
       connection.off("StepCompleted", onStepCompleted);
       connection.off("FlowRunCompleted", onRunCompleted);
     };
   }, [runId]);
 
-  return { run, error };
+  return { run, error, connectionState };
 }
 
 // The selected TestEnvironment's Variables, ready to pass straight through
