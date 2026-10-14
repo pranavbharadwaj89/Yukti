@@ -516,3 +516,37 @@ Scope guards: none
 Exit check:  on track. D5-T1 fully merged with real tests, not just locally green.
 Next:        D5-T2 — the AI switch actually switches (never cut). Still waiting on the owner's OpenAI
              key + week's budget cap for D5-T4/T5/T8.
+
+## 2026-10-14 11:55 IST — Day 5 (cont.)
+Done:        D5-T2 merged to `main` — PR #25 (squashed). `Ai:Enabled` (default true) beats a configured
+             key: false means `AiDisabledAssistantService` (new, holds no HttpClient, references no
+             provider type) is registered instead of `OpenAiAssistantService`, and `IAiProvider` isn't
+             registered at all — so zero outbound AI calls are possible by construction, not by
+             convention. `AiDisabledException` -> 503 RFC 7807 via the existing global exception
+             middleware, same pattern as `ForbiddenException`/`DomainException` — all three AI
+             endpoints get this for free. `docs/ai-data.md` written, stating exactly what's sent today
+             and what Sarvagna's pipeline will send later (registry context only).
+             Insisted on the real `ai-off` CI job going green on this PR's own run before merging —
+             not just local tests — per the task's own `✔` command. It took three pushes to get there,
+             and both failures were real, not flaky:
+             1. First run: 6 WebModuleTests failed — the job ran `dotnet test` without installing
+             Playwright browsers first (copied `api-types-drift`'s job structure, which never runs
+             `dotnet test` at all, so it never needed to).
+             2. Second run: the AI-endpoint checks themselves never ran — `/auth/login` 500'd with
+             `RedisConnectionException`. Found the real cause: Program.cs's rate limiter needs a real
+             `IConnectionMultiplexer` for *any* rate-limited endpoint to respond, login included, and
+             no CI job in this repo had ever hit a rate-limited endpoint before this one — `postgres`
+             was the only service container anyone had needed so far. Added a `redis:7` service on
+             port 6380, matching Program.cs's own default. Third run: green, all 5 checks.
+Discovered:  No CI job before this one had ever exercised a rate-limited endpoint (login or otherwise)
+             against the real API — the gap existed before D5-T2, this task just happened to be the
+             first thing to call a rate-limited endpoint from CI and expose it. Worth keeping in mind
+             for D6-T6 (CI gates a PR on a Yukti flow) and D7-T4 (`docker compose up` from clean clone)
+             — either could hit the same missing-Redis issue in a different form if they also assume
+             only Postgres is needed.
+Scope guards: none
+Exit check:  on track. D5-T1 and D5-T2 both merged with real, green CI evidence — not assumed.
+Next:        D5-T3 — the planning pipeline (guardrail pre-check -> registry context -> versioned prompt
+             -> provider call -> schema validation -> cost record). Still no OpenAI key/budget cap from
+             the owner yet, so D5-T4/T5/T8 (the ones that need a live call) stay blocked; D5-T3's own
+             skeleton and guardrail logic don't need one and can proceed.
