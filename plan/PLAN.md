@@ -225,22 +225,70 @@ dropping its task ID.
   `vi` import in the new test); `npm run build` succeeds.
 - **Exit check:** author → publish → run an API flow fully in the browser, no hand-typed JSON.
 
-## Day 5 — Fri 16 Oct · AI layer — Sutradhar runtime (P0-7, P0-8)
-- [ ] D5-T1 `IAiProvider` (Anthropic + Stub), 15s timeout, typed `AiUnavailableException`; API key resolved from Vault
-  ✔ `dotnet test --filter "FullyQualifiedName~AiProvider"`
-- [ ] D5-T2 Planning pipeline: guardrail pre-check (PII redaction, size limit) → context (module registry) → versioned prompt → call → JSON-schema validation → cost record
+## Day 5 — Wed 14 Oct · AI layer — Sarvagna (P0-7, P0-8)
+**Superseded 2026-10-14 by the owner's "Yukti — Day 5 Spec: Sarvagna, the AI Layer" doc** — renumbers
+this day from 7 tasks to a T0–T9 breakdown, splits the old D5-T1's bundled "AI-off" requirement into
+its own gated task (new T2), and adds cost/budget tracking (new T9) the old skeleton never had. Nothing
+below was started under the old numbering, so there's no "ALREADY DONE" to carry forward — this is a
+straight replacement, not a reconciliation. Old → new mapping for traceability: old T1 (`IAiProvider`
+w/ Anthropic) → new T1 (OpenAI, not Anthropic — see DISC-7 and `plan/adr/0003-ai-vendor-openai.md`); old
+T2 (Planning pipeline) → new T3; old T3 (Analyst) → new T4; old T4 (Coder) → new T5; old T5 (UI) → new
+T7; old T6 (AI-off CI) → new T2 (promoted earlier, never cut); old T7 (Eval set) → new T8. New T0, T6, T9
+have no old equivalent.
+- [ ] D5-T0 Close Day 4 gaps, if the Day 4 exit check doesn't pass on `main` when this day opens
+  ✔ Day 4 exit check passes, or this task stays open and nothing else on Day 5 starts
+- [x] D5-T1 `IAiProvider` abstraction: OpenAI behind the interface (ADR-0003 — not Anthropic, see DISC-7)
+  + `StubAiProvider`; 15s timeout; typed `AiUnavailableException`; key resolved via `ICredentialResolver`
+  (Vault), never config/env directly
+  ✔ `dotnet test --filter "FullyQualifiedName~AiProvider|FullyQualifiedName~StubAiProvider"` → 10/10
+  passing (`OpenAiProviderTests.cs` + `StubAiProviderTests.cs`, both new). New
+  `src/Yukti.Application/Ai/IAiProvider.cs` (interface + `StructuredGenerationRequest`/`ProviderResponse`/
+  `AiUnavailableException`) — deliberately separate from the pre-existing `IAiAssistantService`, which
+  keeps serving its own three endpoints unchanged. `OpenAiProvider` (new, `Infrastructure/Ai/`) is a
+  sibling of `OpenAiAssistantService`, not a refactor of it. Key resolved against Vault reference
+  `ai-openai-api-key` (configurable via `Ai:OpenAi:CredentialReference`) — a different secret than
+  `OpenAiAssistantService`'s own `OpenAI:ApiKey` config read; unifying those is explicitly out of scope
+  (see the ADR's Consequences). Reused the existing, previously-unpopulated `OrchestrationTelemetry.
+  AiRequestDuration`/`AiRequestTimeout` meters (declared since FR-OBS-02, zero emitters until now)
+  instead of adding a second set — required one new project reference, `Yukti.Infrastructure` →
+  `Yukti.Orchestration` (one-way, no cycle). Source-check test proves no file outside
+  `Infrastructure/Ai/` and `Program.cs` composition roots mentions OpenAI by name.
+  ✔ `dotnet build -warnaserror` → 0/0 (solution-wide, not just the new tests).
+- [ ] D5-T2 The AI switch actually switches: `Ai:Enabled=false` ⇒ no `IAiProvider` registered in the
+  container at all, zero outbound calls possible; AI endpoints return 503 RFC 7807 naming AI as disabled
+  (never a quiet fallback); `ai-off` CI job proves zero outbound HTTP to any provider host; UI hides the
+  generation panel with a tooltip; `docs/ai-data.md` states exactly what is/isn't sent
+  ✔ `dotnet test --filter "FullyQualifiedName~AiDisabled"` and the green `ai-off` CI job — **never cut**
+- [ ] D5-T3 Planning pipeline: guardrail pre-check (secret redaction, 4,000-char cap, reject-if-empty) →
+  context (module registry) → versioned prompt (`Sarvagna/Prompts/<capability>.v1.md`) → call the
+  provider → validate against the output schema (one retry with errors in the prompt) → record cost
   ✔ `dotnet test --filter "FullyQualifiedName~Planning"`
-- [ ] D5-T3 Analyst prompt v1 → ParsedIntent (with ambiguities → clarifying question)
-  ✔ `dotnet test --filter "FullyQualifiedName~Analyst"`
-- [ ] D5-T4 Coder prompt v1 → Draft Flow with registered actions only, one retry with error feedback; `POST /api/v1/flows/generate`
+- [ ] D5-T4 Analyst: English + registered modules → `ParsedIntent` (candidate modules, assertions,
+  ambiguities); out-of-scope and two-module-ambiguous cases both produce a named ambiguity, never a guess
+  ✔ `dotnet test --filter "FullyQualifiedName~Analyst"` (stub provider + recorded fixtures)
+- [ ] D5-T5 Coder: `ParsedIntent` → Draft `Flow`, validated by **Day 2's publish validator** (not a
+  second copy); one retry with validation errors in the prompt, then typed `AiGenerationFailedException`;
+  always `Status = Draft`; multi-step `saveAs`/`{{vars…}}` chaining is the hardest, most-weighted criterion
   ✔ `dotnet test --filter "FullyQualifiedName~Coder"`
-- [ ] D5-T5 UI generation panel, AI-assisted badge + confidence, clarifying-question flow
-  ✔ `npm test -- AiGenerationPanel`
-- [ ] D5-T6 AI-off CI job: AI disabled, no outbound LLM call, all non-AI tests green
-  ✔ CI job `ai-off` green
-- [ ] D5-T7 Eval set: 10 prompts + scorer
-  ✔ ≥ 8/10 structurally valid drafts
-- **Exit check:** English → Draft → edit → publish → run; AI-off green.
+- [ ] D5-T6 Honest confidence and attribution: confidence is a defined, documented formula or `null`,
+  never a literal; every AI step carries `AiAttribution`; AI-off/template path carries no `AiAttribution`
+  and a `source: "template"` marker instead
+  ✔ `dotnet test --filter "FullyQualifiedName~Confidence|FullyQualifiedName~Attribution"` — **never cut**
+- [ ] D5-T7 Generation UI: text area + examples, "Suggest a flow" → Draft in the normal editor, never
+  auto-published; AI-assisted badge w/ confidence or "confidence unavailable"; clarifying question renders
+  as buttons; plain-English errors, never a stack trace or silent template; 0 serious/critical axe issues
+  ✔ `npm test -- AiGenerationPanel` and `npm run test:e2e -- ai-generation`
+- [ ] D5-T8 Evaluation harness: 10 prompts (`evals/flow_generation/`) scored on structural validity,
+  module correctness, assertion presence, correct refusal (prompts 9–10); results written per
+  prompt-version + timestamp; **gate: ≥ 8/10 structural validity**, up to 3 prompt versions, then escalate
+  ✔ `dotnet run --project src/Yukti.Cli -- eval flow-generation` → 8/10 or better — **never cut**
+- [ ] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
+  provider, model, tokens, cost, prompt version, tenant); configured monthly cap, 80% warns, 100% returns
+  503 "AI budget reached" while the rest of Yukti keeps working; `GET /api/v1/ai/usage` (admin role)
+  ✔ `dotnet test --filter "FullyQualifiedName~AiCost|FullyQualifiedName~Budget"`
+- **Exit check:** `dotnet build -warnaserror && dotnet test`; `Ai:Enabled=false` → `ai-off` CI green, 0
+  outbound calls; eval harness ≥ 8/10; `npm run test:e2e -- ai-generation` (English → draft → publish →
+  run); `grep -r "confidence.*=.*0\." src/` → no literal matches.
 
 ## Day 6 — Sat 17 Oct · Verify the enterprise features + hardening
 - [ ] D6-T1 RLS proof: tenant A cannot read/write tenant B flows, runs, results (API and direct DB with tenant session)
@@ -302,3 +350,22 @@ dropping its task ID.
   correctness bug today, but it's a real accumulating leak if a user navigates between run pages often in
   one session. Pre-existing for `onreconnected` before D4-T4; D4-T4 added two more of the same shape rather
   than redesigning connection lifecycle management as a side effect of the reconnect-indicator task.
+- [x] DISC-7 AI vendor mismatch (first flagged Day 1, `plan/GAP-MATRIX.md` line 78, "blocks Day 5
+  start") — resolved 2026-10-14. CLAUDE.md §4 and the old Day 5 PLAN.md skeleton named Anthropic; the
+  real code is a working OpenAI-only integration with no abstraction; the new Day 5 spec the owner sent
+  assumed OpenAI without flagging it as a decision at all, treating GAP-MATRIX's explicitly-blocking
+  question as already settled. Asked the owner directly rather than resolve it myself either way: answer
+  was "keep OpenAI, add abstraction." Recorded as `plan/adr/0003-ai-vendor-openai.md`. Follow-up still
+  open, not done as part of this item: CLAUDE.md §4's AI line still says Anthropic and now contradicts
+  the ADR — needs a small doc fix, tracked separately so it isn't silently left wrong.
+- [x] DISC-8 The new Day 5 spec's preconditions assume a "Day 4 autonomy policy" (Builder → Verifier →
+  Reviewer roles, auto-merge conditions, auto-revert on red `main`, an evening digest) is already live,
+  citing "SUTRADHAR.md §9." Checked: `SUTRADHAR.md` is byte-identical to `CLAUDE.md`, 121 lines, 8
+  sections — no §9, no autonomy framework, nothing about agent roles exists anywhere in this repo. That
+  infrastructure was never built; Day 4's actual tasks (PLAN.md) never included building it either. Not
+  treating this as a blocker and not building a speculative multi-agent auto-merge framework from scratch
+  to satisfy a precondition that was never actually met. Proceeding under the model already established
+  this session instead: build → real tests → commit → push → PR → merge (via `gh`, now authenticated),
+  every step logged to STANDUP — which already satisfies the actual goal ("owner actions needed during
+  the day: 0") without inventing the extra fiction. If the owner wants the literal Builder/Verifier/
+  Reviewer machinery built, that's new, scoped work of its own, not an assumption to silently go along with.

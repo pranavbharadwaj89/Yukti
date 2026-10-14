@@ -29,6 +29,11 @@
   <ItemGroup>
     <ProjectReference Include="..\Yukti.Domain\Yukti.Domain.csproj" />
     <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />
+    <!-- D5-T1: OpenAiProvider reports through OrchestrationTelemetry's existing
+         ai.request.duration/ai.request.timeout meters (FR-OBS-02) instead of a
+         second, parallel set — Orchestration has no reference back to
+         Infrastructure, so this is a one-way addition, not a cycle. -->
+    <ProjectReference Include="..\Yukti.Orchestration\Yukti.Orchestration.csproj" />
   </ItemGroup>
 
 </Project>

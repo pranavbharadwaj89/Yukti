@@ -14,10 +14,11 @@ namespace Yukti.Orchestration;
 /// (System.Diagnostics.DiagnosticSource's Activity/Meter types are
 /// part of the BCL; a listener is what turns them into real traces/metrics).
 ///
-/// ai.request.duration / ai.request.timeout are declared here to satisfy
-/// FR-OBS-02's named-metric inventory, but stay at zero until an AI module
-/// (FR-PLUGIN's Ai ModuleKind) actually exists — there is no AI module
-/// implementation in this codebase yet to emit them under real load.
+/// ai.request.duration / ai.request.timeout were declared here ahead of any
+/// emitter to satisfy FR-OBS-02's named-metric inventory. As of D5-T1 they're
+/// populated for real by Sarvagna's AI-provider abstraction
+/// (<c>Yukti.Infrastructure.Ai</c>) — not an FR-PLUGIN Ai ModuleKind, which
+/// still doesn't exist, but the same two named metrics.
 /// </summary>
 public static class OrchestrationTelemetry
 {
