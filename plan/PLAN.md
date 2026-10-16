@@ -285,10 +285,34 @@ have no old equivalent.
   Sarvagna's pipeline will send once D5-T3 lands (registry context only).
   **Deferred, not forgotten:** "UI hides the generation panel" — no generation panel exists yet (D5-T7);
   nothing to hide until then. Will be done as part of D5-T7, not skipped.
-- [ ] D5-T3 Planning pipeline: guardrail pre-check (secret redaction, 4,000-char cap, reject-if-empty) →
+- [x] D5-T3 Planning pipeline: guardrail pre-check (secret redaction, 4,000-char cap, reject-if-empty) →
   context (module registry) → versioned prompt (`Sarvagna/Prompts/<capability>.v1.md`) → call the
   provider → validate against the output schema (one retry with errors in the prompt) → record cost
-  ✔ `dotnet test --filter "FullyQualifiedName~Planning"`
+  ✔ `dotnet test --filter "FullyQualifiedName~Planning|FullyQualifiedName~AiGuardrail|FullyQualifiedName~AiCapabilityOptions|FullyQualifiedName~FilePromptLoader"`
+  → 30/30 passing. `AiPlanningEngine` (guardrail → render prompt → call provider → validate →
+  configurable retry with capped error feedback → cost record per attempt → return),
+  `AiGuardrailPreCheck`, `FilePromptLoader`, `LoggingAiCostRecorder` (D5-T9 stand-in), new
+  `IAiCapabilityOptionsProvider`/`ConfigurationAiCapabilityOptionsProvider`.
+  **Closed against `plan/specs/SARVAGHNA-TOKEN-ECONOMY.md` §R1–R5 in this same PR, not left as a
+  separate follow-up:** (1) R1 — the guardrail now *rejects* (never truncates) a description over
+  4,000 chars or one that's nothing but a redacted secret, and the engine rejects an empty/
+  whitespace `PromptContext` ("no modules registered") before the provider is ever called — all
+  three write zero cost records, proven directly. (2) R3 — the validation-retry ceiling is
+  `Ai:MaxValidationRetries` (config, default 1), not a hardcoded loop bound; the retry prompt's
+  error list is capped at 20 entries / 2,000 characters so a pathological validator can't blow up
+  the next attempt's own size. (3) R4 — `MaxInputChars`/`MaxOutputTokens`/`Temperature` are
+  per-capability config (`Ai:Capabilities:<name>`, defaults for Analyst/Coder seeded in
+  `appsettings.json` straight from the spec's own table) via `IAiCapabilityOptionsProvider`; an
+  assembled prompt (template + context + description) over the capability's `MaxInputChars` fails
+  fast, never truncates; a source-check test (mirroring D5-T1's own OpenAI-name-ban pattern) proves
+  no `.cs` file outside `AiCapabilityOptions.cs` assigns a `MaxOutputTokens` literal. (4) R5 — cost
+  recording moved from one row per `PlanAsync` call to one row per provider *attempt*
+  (`AiCostRecordData.Attempt`/`Succeeded`), so a run that retries once now writes 2 rows, not 1 —
+  proven with exact token-count assertions against the stub provider's deterministic counts.
+  R2 (assembly) and the full R7 reflection-based live-call guard are deliberately not built yet —
+  real Analyst/Coder fixtures don't exist until D5-T4/T5, so there's nothing concrete to assert
+  against; tracked as part of those tasks' own token rules (spec's own task table), not silently
+  dropped here.
 - [ ] D5-T4 Analyst: English + registered modules → `ParsedIntent` (candidate modules, assertions,
   ambiguities); out-of-scope and two-module-ambiguous cases both produce a named ambiguity, never a guess
   ✔ `dotnet test --filter "FullyQualifiedName~Analyst"` (stub provider + recorded fixtures)
@@ -398,3 +422,12 @@ have no old equivalent.
   every step logged to STANDUP — which already satisfies the actual goal ("owner actions needed during
   the day: 0") without inventing the extra fiction. If the owner wants the literal Builder/Verifier/
   Reviewer machinery built, that's new, scoped work of its own, not an assumption to silently go along with.
+- [ ] DISC-TOKEN-1 Sarvaghna CI token economy: skip AI on docs/plan-only diffs and on push-to-main,
+  skip idle digests, trim diff context, cap output, reuse review per head SHA, log usageMetadata
+  to sarvaghna/ledger/. ✔ `npm test --prefix sarvaghna` (new `test` script using built-in `node --test`,
+  no new npm package) + a docs-only test PR shows "AI review skipped" and 0 Gemini calls in the ledger.
+  **Approved by the owner, 2026-10-16 — not started yet.** Per the spec's own §Timeline & order,
+  Part B comes after D5-T7/D5-T8 (the .NET AI layer finishes first, in order B2→B1→B7→B3→B4→B6→
+  B5→B8→B9, cheapest wins first); picking it up sooner than that is a scheduling call, not a
+  blocker, since this is Node CI tooling (`sarvaghna/sarvaghna.mjs`, `sarvaghna.yml`, the daily
+  digest), independent of the .NET Sarvagna AI layer (D5-T3 onward).

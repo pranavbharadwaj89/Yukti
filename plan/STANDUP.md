@@ -581,3 +581,61 @@ Exit check:  on track. Real vendor, real key path, real tests - nothing assumed.
 Next:        Still need the actual Gemini key value + the week's spend cap from the owner before
              D5-T4/T5/T8 (Analyst, Coder, eval harness) can start - asked, not yet received. D5-T3's own
              skeleton/guardrail work doesn't need the key and can proceed meanwhile.
+
+## 2026-10-16 ~12:30 IST — Day 5 (cont.)
+Done:        Owner handed down `plan/specs/SARVAGHNA-TOKEN-ECONOMY.md` — a cross-cutting constraint
+             on every remaining Day 5 task (token accounting, zero-cost guardrails, bounded spend
+             per call), not a new day. Saved to `plan/specs/`. Per its own instructions: closed
+             D5-T3 first, checking the in-progress (uncommitted at session start) planning pipeline
+             against §R1-R5 and fixing every real gap in the same pass rather than deferring:
+             - §R1: `AiGuardrailPreCheck` now *rejects* (never truncates) a description over 4,000
+               chars, and rejects outright when a description is nothing but a redacted secret
+               (previously: silently truncated / let a secret-only string through). The engine now
+               also rejects an empty/whitespace `PromptContext` ("no modules registered") before
+               ever calling the provider — all guardrail rejects write zero cost records, proven.
+             - §R3: the validation-retry ceiling moved from a hardcoded 2-attempt structure to
+               `Ai:MaxValidationRetries` (config, default 1); the retry prompt's error list is
+               capped at 20 entries and 2,000 characters so a pathological validator can't blow up
+               the next attempt's own size.
+             - §R4: new `IAiCapabilityOptionsProvider`/`ConfigurationAiCapabilityOptionsProvider`
+               reads per-capability `MaxInputChars`/`MaxOutputTokens`/`Temperature` from
+               `Ai:Capabilities:<name>` config; Analyst (6000/1024/0) and Coder (12000/2048/0)
+               defaults seeded in `appsettings.json` straight from the spec's table. An assembled
+               prompt (template + context + description) over the cap now fails fast instead of
+               the old flat 4,000-char truncate. `AiPlanningRequest.MaxTokens`'s own literal
+               default (2000) was removed — the engine sources it from capability options instead.
+               A source-check test (same pattern as D5-T1's OpenAI-name ban) proves no `.cs` file
+               outside `AiCapabilityOptions.cs` assigns a `MaxOutputTokens` literal.
+             - §R5: cost recording changed from one row per `PlanAsync` call to one row per
+               provider *attempt* — a run that retries once now writes 2 `AiCostRecordData` rows
+               (`Attempt`, `Succeeded`), not 1, each with its own exact token count. Proven directly
+               against the stub provider's deterministic counts, not estimated.
+             Avoided adding a NuGet package for config binding (`Microsoft.Extensions.Configuration.
+             Binder` isn't referenced anywhere in `Yukti.Infrastructure`) — per CLAUDE.md §4 and the
+             spec's own instruction #6, that needs an ADR + owner approval, not a one-off import for
+             three `GetValue<T>` calls; read config with plain indexers + manual `TryParse`, the
+             same style `GeminiProvider`/`FilePromptLoader` already use.
+             Deliberately NOT built yet, logged rather than silently skipped: R2's Analyst/Coder
+             prompt-assembly tests (no real fixtures exist until D5-T4/T5) and R7's full
+             reflection-based "no live call in any test" guard (nothing to guard yet with zero real
+             capabilities wired up) — both tracked against D5-T4 onward per the spec's own per-task
+             table, not dropped.
+             Added `DISC-TOKEN-1` (Phase B, the Node CI agent token economy) to PLAN.md
+             `## DISCOVERED`, unchecked — **not started, needs owner approval** per the spec's own
+             §Phase B / Q1 gate. Recorded the one baseline metric measurable without a live call
+             (0 live Gemini calls in `dotnet test`, confirmed) into `plan/AI-BUDGET.md`; the
+             Sarvaghna-CI-ledger-dependent rows are marked "not measured" rather than invented,
+             since `sarvaghna/ledger/` doesn't exist until DISC-TOKEN-1 is approved and built.
+Discovered:  None new beyond what's logged above (the config-binder-package avoidance and the
+             R2/R7 scoping decisions).
+Scope guards: Part B (Node CI agent token economy) not started — owner approval pending (DISC-TOKEN-1).
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. `dotnet test` → 183/184 (was ~162/163
+             before today's new AI tests; the 1 failure is the pre-existing Docker/Testcontainers
+             gap on this machine, unrelated to AI, confirmed by checking `docker info` directly).
+             `dotnet format --verify-no-changes` → clean. D5-T3's own filter
+             (`~Planning|~AiGuardrail|~AiCapabilityOptions|~FilePromptLoader`) → 30/30 passing.
+Next:        Push `feature/D5-T3-planning-pipeline`, open the PR, then D5-T4 (Analyst) — applying
+             §R2 (Analyst-specific minimal context) and §R4 as part of that task's own definition of
+             done, per the spec's token-rules table. Asking the owner now about DISC-TOKEN-1
+             (Phase B approval) and Q4 (confirm Gemini per-1M-token pricing from the billing
+             console, blocking D5-T9's cost accuracy) before going further than D5-T4/T5/T6.
