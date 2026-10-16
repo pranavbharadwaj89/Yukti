@@ -359,6 +359,16 @@ if (aiEnabled)
 {
     builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
     builder.Services.AddSingleton<IAiProvider, GeminiProvider>();
+    // D5-T3: the Sarvagna planning pipeline — Analyst/Coder (D5-T4/T5) call
+    // through IAiPlanningEngine, never IAiProvider directly. Same "off
+    // means not registered at all" rule as IAiProvider itself.
+    builder.Services.AddSingleton<IPromptLoader, FilePromptLoader>();
+    builder.Services.AddSingleton<IAiCostRecorder, LoggingAiCostRecorder>();
+    // Token-economy spec §R4: per-capability MaxInputChars/MaxOutputTokens/Temperature and the
+    // pipeline-wide validation-retry ceiling (§R3) both come from config (Ai:Capabilities:<name>,
+    // Ai:MaxValidationRetries), never a literal in the engine.
+    builder.Services.AddSingleton<IAiCapabilityOptionsProvider, ConfigurationAiCapabilityOptionsProvider>();
+    builder.Services.AddSingleton<IAiPlanningEngine, AiPlanningEngine>();
 }
 else
 {

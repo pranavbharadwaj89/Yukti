@@ -31,3 +31,25 @@ repo — it goes through Vault (`ai-gemini-api-key` reference,
 the value directly from `sarvaghna/.env.local` (already present on this
 machine, gitignored) when a live call is actually needed, and writes it
 into a local Vault dev server — the owner does not need to paste it again.
+
+## Baseline (`plan/specs/SARVAGHNA-TOKEN-ECONOMY.md` §Baseline, recorded 2026-10-16)
+
+Measured before changing any prompt or limit, per the spec's own instruction. Where a number needs
+a live call or data that doesn't exist yet, it's marked as such rather than invented.
+
+| Metric | Measured value | How |
+|---|---|---|
+| Live calls in `dotnet test` (R7) | **0** | Ran the full suite (`dotnet test`, 183/184 passing — the
+  1 failure is an unrelated pre-existing Testcontainers/Docker environment gap on this machine, not
+  AI — Docker isn't running here) with the real `GeminiProvider` never resolved by any test; every
+  AI test uses `StubAiProvider` or a hand-rolled in-test fake provider. No outbound call to any
+  Gemini host occurred. |
+| Tokens per PR inspection (Sarvaghna CI agent) | not measured — needs `sarvaghna/ledger/`, which
+  doesn't exist yet (Part B, DISC-TOKEN-1, not started — pending owner approval) | — |
+| AI calls per merged PR (PR + push) | not measured — same reason (no ledger yet) | — |
+| Digest tokens on a no-change day | not measured — same reason (no ledger yet) | — |
+| Prompt chars per Analyst/Coder fixture | not applicable yet — Analyst/Coder (D5-T4/T5) don't exist;
+  this gets measured as part of each task's own R2/R4 tests | — |
+
+Re-measure the Sarvaghna CI rows once DISC-TOKEN-1/B7 (the ledger) exists — there is currently no
+historical data to average, not a zero.
