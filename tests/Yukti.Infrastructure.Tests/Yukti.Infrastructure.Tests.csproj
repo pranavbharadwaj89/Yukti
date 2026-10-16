@@ -18,6 +18,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Yukti.Infrastructure\Yukti.Infrastructure.csproj" />
+    <!-- D5-T4: StubAiProvider — "the only IAiProvider tests are allowed to call" (D5-T1) — lives
+         in Yukti.Infrastructure.InMemory, a sibling of Yukti.Infrastructure that this project
+         didn't previously need. -->
+    <ProjectReference Include="..\..\src\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj" />
   </ItemGroup>
 
   <!-- Reads the same ConnectionStrings:Yukti user-secret Yukti.Api uses,

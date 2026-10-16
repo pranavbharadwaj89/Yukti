@@ -24,10 +24,17 @@ public sealed class StubAiProvider : IAiProvider
 
     public string Id => "stub";
 
+    /// <summary>The most recent request this stub received — lets a capability's own tests
+    /// (Analyst, Coder) assert on exactly what prompt/context was actually sent, e.g. the
+    /// token-economy spec's §R2 "no ParamSpec fields reached the prompt" checks.</summary>
+    public StructuredGenerationRequest? LastRequest { get; private set; }
+
     public void SetFixture(string capability, string rawJson) => _fixturesByCapability[capability] = rawJson;
 
     public Task<ProviderResponse> GenerateStructuredAsync(StructuredGenerationRequest request, CancellationToken ct)
     {
+        LastRequest = request;
+
         if (!_fixturesByCapability.TryGetValue(request.Capability, out var raw))
         {
             throw new AiUnavailableException(

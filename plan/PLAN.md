@@ -313,9 +313,34 @@ have no old equivalent.
   real Analyst/Coder fixtures don't exist until D5-T4/T5, so there's nothing concrete to assert
   against; tracked as part of those tasks' own token rules (spec's own task table), not silently
   dropped here.
-- [ ] D5-T4 Analyst: English + registered modules → `ParsedIntent` (candidate modules, assertions,
+- [x] D5-T4 Analyst: English + registered modules → `ParsedIntent` (candidate modules, assertions,
   ambiguities); out-of-scope and two-module-ambiguous cases both produce a named ambiguity, never a guess
-  ✔ `dotnet test --filter "FullyQualifiedName~Analyst"` (stub provider + recorded fixtures)
+  ✔ `dotnet test --filter "FullyQualifiedName~Analyst"` → 8/8 passing, stub provider + recorded
+  fixtures (`AnalystTests.cs`, new). `ParsedIntent`/`IAnalyst` (Application — deliberately free of
+  the Orchestration-layer `IModuleRegistry` dependency the concrete implementation needs, to avoid
+  a circular project reference: `Yukti.Orchestration` already references `Yukti.Application`);
+  `Analyst` (Infrastructure — builds the minimal registry context, calls `IAiPlanningEngine` for
+  capability `"analyst"`, validates the model's JSON against the real registry). A multi-module
+  request (e.g. web + api) returns both candidates with no ambiguity — multiple genuine candidates
+  is the normal case, not itself an ambiguity. Out-of-scope and two-module-ambiguous requests both
+  return empty `candidateModuleKinds` with a named `ambiguities` entry. The validator enforces two
+  things structurally (never left to the prompt alone): a `candidateModuleKinds` entry naming a
+  module that isn't actually registered fails validation (feeds the engine's own retry, D5-T3);
+  and `candidateModuleKinds`/`ambiguities` can never both be empty — Analyst must commit to a
+  module or name why it can't, never return nothing.
+  **Token-economy spec §R2/§R4 applied as part of this task's own definition of done, not
+  bolted on after:** the registry context sent to the provider is kind + action name + one-line
+  description only — a dedicated test proves it contains no `ParamSpec` fields (`required`,
+  `defaultValue`, `parameters`, or a param-level description) even when the real module schema
+  has them; it's minified JSON with a stable key order (same input → byte-identical output across
+  calls, proven); and a dedicated test asserts the assembled prompt for a realistic fixture stays
+  within Analyst's configured `MaxInputChars` (6000, from `appsettings.json`'s §R4 defaults).
+  New `Sarvagna/Prompts/analyst.v1.md` (repo root, per the spec's own path convention), copied to
+  the API's output directory via a new `Content` item in `Yukti.Api.csproj` so
+  `FilePromptLoader`'s default base path actually finds it at runtime — this wiring didn't exist
+  before today since D5-T3 only ever exercised prompt loading against a fixture-loader double.
+  `StubAiProvider` gained `LastRequest` (additive, doesn't touch its 4 existing passing tests) so
+  a capability's own tests can assert on exactly what was sent, not just that *something* was.
 - [ ] D5-T5 Coder: `ParsedIntent` → Draft `Flow`, validated by **Day 2's publish validator** (not a
   second copy); one retry with validation errors in the prompt, then typed `AiGenerationFailedException`;
   always `Status = Draft`; multi-step `saveAs`/`{{vars…}}` chaining is the hardest, most-weighted criterion

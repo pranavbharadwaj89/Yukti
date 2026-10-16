@@ -639,3 +639,46 @@ Next:        Push `feature/D5-T3-planning-pipeline`, open the PR, then D5-T4 (An
              done, per the spec's token-rules table. Asking the owner now about DISC-TOKEN-1
              (Phase B approval) and Q4 (confirm Gemini per-1M-token pricing from the billing
              console, blocking D5-T9's cost accuracy) before going further than D5-T4/T5/T6.
+
+## 2026-10-16 ~13:15 IST — Day 5 (cont.)
+Done:        D5-T3 PR opened (#30), plus a same-PR follow-up fixing a Sarvaghna review finding
+             (secret-detection regexes had no match timeout — ReDoS hardening, not a blocker but
+             cheap and real). Owner answered both outstanding questions: DISC-TOKEN-1 (Phase B)
+             **approved** — recorded in PLAN.md, scheduled after D5-T7/T8 per the spec's own
+             §Timeline rather than jumped ahead of the AI-layer work; Gemini pricing (Q4) deferred
+             to right before D5-T9, which is the first task that actually needs it.
+             D5-T4 (Analyst) done on a stacked branch (`feature/D5-T4-analyst`, based on
+             `feature/D5-T3-planning-pipeline` since D5-T3 isn't merged yet). `ParsedIntent`/
+             `IAnalyst` in Application; `Analyst` in Infrastructure (needs `IModuleRegistry`,
+             which only Infrastructure can see without creating a circular project reference —
+             `Yukti.Orchestration` already depends on `Yukti.Application`). Applied §R2/§R4 as
+             part of D5-T4 itself, not deferred: the registry context sent to the provider is kind
+             + action name + one-line description only, proven to exclude every `ParamSpec` field
+             even against a fixture module that has them; minified JSON with a stable key order
+             (byte-identical across repeat calls, proven); assembled-prompt-size-within-cap proven
+             against Analyst's configured `MaxInputChars` (6000, seeded in `appsettings.json`
+             during D5-T3). Added the real `Sarvagna/Prompts/analyst.v1.md` and wired it to
+             actually deploy (`Content` item in `Yukti.Api.csproj` copying the repo-root
+             `Sarvagna/Prompts` folder to the API's output directory) — D5-T3 never needed this
+             since its own tests only ever used a fixture `IPromptLoader` double.
+Discovered:  1. `Yukti.Infrastructure.Tests` had no project reference to
+             `Yukti.Infrastructure.InMemory` at all (where `StubAiProvider` lives) — added it;
+             additive, not a layering change (Infrastructure.InMemory is a sibling implementation
+             project, same category as the Infrastructure→Orchestration reference D5-T1 added).
+             2. `StubAiProvider` had no way to inspect what was actually sent to it — every prior
+             AI test either didn't need to (D5-T1/T2 test the provider contract itself) or used a
+             hand-rolled fake with its own `Requests` list (D5-T3's `AiPlanningEngineTests`). Added
+             `LastRequest` (additive, all 4 existing `StubAiProviderTests` still pass unchanged) so
+             Analyst's (and later Coder's) own §R2 prompt-shape tests have something real to assert
+             against instead of trusting the implementation by inspection alone.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. D5-T4 filter → 8/8. Full suite →
+             191/192 (was 183/184 before D5-T3's regex-timeout follow-up and D5-T4's 8 new tests;
+             the 1 failure is the same pre-existing Docker/Testcontainers gap on this machine,
+             confirmed earlier via `docker info`, unrelated to AI work).
+             `dotnet format --verify-no-changes` → clean.
+Next:        Push `feature/D5-T4-analyst`, open its PR (based on `feature/D5-T3-planning-pipeline`,
+             stacked since D5-T3 hasn't merged), then D5-T5 (Coder) — applying §R2 (Coder gets full
+             `ActionSchema` for only the candidate modules, not the whole registry) and §R3 (the
+             shared retry-cap machinery D5-T3 already built) as part of that task's own definition
+             of done.
