@@ -39,6 +39,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- D5-T3/T4: "Prompts live in Sarvagna/Prompts/<capability>.v1.md" (plan/PLAN.md) — a
+         repo-root folder, not something baked into this project. FilePromptLoader's default base
+         path resolves relative to the running app's own output directory, so the real files need
+         to travel there too; this is the one place that happens. -->
+    <Content Include="..\..\Sarvagna\Prompts\**\*.md" LinkBase="Sarvagna\Prompts" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Yukti.Domain\Yukti.Domain.csproj" />
     <ProjectReference Include="..\Yukti.Contracts\Yukti.Contracts.csproj" />
     <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />

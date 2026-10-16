@@ -369,6 +369,8 @@ if (aiEnabled)
     // Ai:MaxValidationRetries), never a literal in the engine.
     builder.Services.AddSingleton<IAiCapabilityOptionsProvider, ConfigurationAiCapabilityOptionsProvider>();
     builder.Services.AddSingleton<IAiPlanningEngine, AiPlanningEngine>();
+    // D5-T4: the first capability built on the planning pipeline above.
+    builder.Services.AddSingleton<IAnalyst, Analyst>();
 }
 else
 {
