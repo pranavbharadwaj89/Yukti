@@ -36,7 +36,7 @@ public sealed class Analyst : IAnalyst
 
         var result = await _engine.PlanAsync(
             new AiPlanningRequest<ParsedIntent>(Capability, PromptVersion, description, context,
-                node => Validate(node, registeredKinds)),
+                (node, _) => Task.FromResult(Validate(node, registeredKinds))),
             ct);
 
         return result.Output;
@@ -69,9 +69,9 @@ public sealed class Analyst : IAnalyst
             return AiValidationOutcome<ParsedIntent>.Invalid(["Response was not valid JSON."]);
         }
 
-        var candidateKinds = ReadStringArray(node, "candidateModuleKinds");
-        var assertions = ReadStringArray(node, "assertions");
-        var ambiguities = ReadStringArray(node, "ambiguities");
+        var candidateKinds = JsonNodeHelpers.ReadStringArray(node, "candidateModuleKinds");
+        var assertions = JsonNodeHelpers.ReadStringArray(node, "assertions");
+        var ambiguities = JsonNodeHelpers.ReadStringArray(node, "ambiguities");
 
         if (candidateKinds is null || assertions is null || ambiguities is null)
         {
@@ -97,24 +97,5 @@ public sealed class Analyst : IAnalyst
         return errors.Count > 0
             ? AiValidationOutcome<ParsedIntent>.Invalid(errors)
             : AiValidationOutcome<ParsedIntent>.Valid(new ParsedIntent(candidateKinds, assertions, ambiguities));
-    }
-
-    private static List<string>? ReadStringArray(JsonNode node, string property)
-    {
-        if (node[property] is not JsonArray array)
-        {
-            return null;
-        }
-
-        var result = new List<string>();
-        foreach (var item in array)
-        {
-            if (item is not JsonValue value || !value.TryGetValue(out string? s) || s is null)
-            {
-                return null;
-            }
-            result.Add(s);
-        }
-        return result;
     }
 }

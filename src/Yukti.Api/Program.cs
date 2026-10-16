@@ -371,6 +371,10 @@ if (aiEnabled)
     builder.Services.AddSingleton<IAiPlanningEngine, AiPlanningEngine>();
     // D5-T4: the first capability built on the planning pipeline above.
     builder.Services.AddSingleton<IAnalyst, Analyst>();
+    // D5-T5: Coder depends on IModuleActionResolver (EfModuleActionResolver, Scoped) to run Day
+    // 2's own publish validator — Scoped here too, not Singleton like Analyst, so DI doesn't try
+    // to inject a scoped service into a singleton.
+    builder.Services.AddScoped<ICoder, Coder>();
 }
 else
 {
