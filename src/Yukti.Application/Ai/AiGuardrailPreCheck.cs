@@ -18,13 +18,20 @@ public static class AiGuardrailPreCheck
     // Deliberately simple, pattern-based heuristics — this is a guardrail,
     // not a secret-scanning product. Catches the obvious cases named in
     // the spec ("keys, bearer tokens, anything that looks like a
-    // password") without pretending to be exhaustive.
+    // password") without pretending to be exhaustive. An explicit match
+    // timeout bounds every pattern against catastrophic backtracking on
+    // attacker-controlled input (Sarvaghna review, this PR) — none of
+    // these patterns are nested/ambiguous enough to realistically hit it,
+    // but a guardrail that can itself be hung by the input it's guarding
+    // against defeats the point.
+    private static readonly TimeSpan MatchTimeout = TimeSpan.FromMilliseconds(250);
+
     private static readonly (string Name, Regex Pattern)[] SecretPatterns =
     [
-        ("sk-prefixed secret key", new Regex(@"sk-[A-Za-z0-9]{20,}", RegexOptions.Compiled)),
-        ("Google API key", new Regex(@"AIza[A-Za-z0-9_\-]{35}", RegexOptions.Compiled)),
-        ("Bearer token", new Regex(@"Bearer\s+[A-Za-z0-9._\-]{10,}", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
-        ("password assignment", new Regex(@"password\s*[:=]\s*\S+", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("sk-prefixed secret key", new Regex(@"sk-[A-Za-z0-9]{20,}", RegexOptions.Compiled, MatchTimeout)),
+        ("Google API key", new Regex(@"AIza[A-Za-z0-9_\-]{35}", RegexOptions.Compiled, MatchTimeout)),
+        ("Bearer token", new Regex(@"Bearer\s+[A-Za-z0-9._\-]{10,}", RegexOptions.Compiled | RegexOptions.IgnoreCase, MatchTimeout)),
+        ("password assignment", new Regex(@"password\s*[:=]\s*\S+", RegexOptions.Compiled | RegexOptions.IgnoreCase, MatchTimeout)),
     ];
 
     /// <summary>
