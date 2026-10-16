@@ -426,7 +426,8 @@ have no old equivalent.
   skip idle digests, trim diff context, cap output, reuse review per head SHA, log usageMetadata
   to sarvaghna/ledger/. ✔ `npm test --prefix sarvaghna` (new `test` script using built-in `node --test`,
   no new npm package) + a docs-only test PR shows "AI review skipped" and 0 Gemini calls in the ledger.
-  **Not started — needs owner approval before any Phase B work begins**, per
-  `plan/specs/SARVAGHNA-TOKEN-ECONOMY.md` §Phase B / Q1. This is Node CI tooling
-  (`sarvaghna/sarvaghna.mjs`, `sarvaghna.yml`, the daily digest), not the .NET Sarvagna AI layer
-  (D5-T3 onward) — approving or declining it doesn't block D5-T4 and onward.
+  **Approved by the owner, 2026-10-16 — not started yet.** Per the spec's own §Timeline & order,
+  Part B comes after D5-T7/D5-T8 (the .NET AI layer finishes first, in order B2→B1→B7→B3→B4→B6→
+  B5→B8→B9, cheapest wins first); picking it up sooner than that is a scheduling call, not a
+  blocker, since this is Node CI tooling (`sarvaghna/sarvaghna.mjs`, `sarvaghna.yml`, the daily
+  digest), independent of the .NET Sarvagna AI layer (D5-T3 onward).
