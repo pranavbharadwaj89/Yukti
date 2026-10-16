@@ -341,10 +341,37 @@ have no old equivalent.
   before today since D5-T3 only ever exercised prompt loading against a fixture-loader double.
   `StubAiProvider` gained `LastRequest` (additive, doesn't touch its 4 existing passing tests) so
   a capability's own tests can assert on exactly what was sent, not just that *something* was.
-- [ ] D5-T5 Coder: `ParsedIntent` → Draft `Flow`, validated by **Day 2's publish validator** (not a
+- [x] D5-T5 Coder: `ParsedIntent` → Draft `Flow`, validated by **Day 2's publish validator** (not a
   second copy); one retry with validation errors in the prompt, then typed `AiGenerationFailedException`;
   always `Status = Draft`; multi-step `saveAs`/`{{vars…}}` chaining is the hardest, most-weighted criterion
-  ✔ `dotnet test --filter "FullyQualifiedName~Coder"`
+  ✔ `dotnet test --filter "FullyQualifiedName~Coder"` → 8/8 passing (`CoderTests.cs`, new).
+  `ICoder`/`Coder` mirror Analyst's split (port in Application, free of the Orchestration-layer
+  `IModuleRegistry` dependency; implementation in Infrastructure, which needs both that and
+  `IModuleActionResolver`). Validation runs the real `Flow.Publish` (D2-T5) against a throwaway
+  Flow instance — since `Publish` mutates `Status` to `Published` on success, the Flow actually
+  returned to the caller is built fresh from the same parsed steps and never has `Publish` called
+  on it, so "always Draft" is structural, not a flag remembered after the fact. Proven directly:
+  a forward reference to a not-yet-produced `saveAs` binding fails with the exact
+  `unresolved_variable` error `Flow.Publish` itself raises; a missing required param fails with
+  its own `missing_required_param` error; a step naming a module outside `ParsedIntent`'s
+  candidate set is rejected before `Flow.Publish` is even called (extra discipline beyond what
+  Publish alone would catch, since Publish only cares whether the action resolves, not whether
+  Coder overstepped the modules Analyst actually named). A dedicated chaining test proves a
+  `saveAs`-then-`{{vars.x.y}}` reference across two steps resolves correctly end-to-end.
+  **Real, Application-layer contract gap found and fixed, not routed around:** `AiPlanningRequest.Validate`
+  was synchronous (fine for Analyst's pure JSON-shape check) but Coder's validator must call the
+  real, async `Flow.Publish` — widened `Validate` to
+  `Func<JsonNode?, CancellationToken, Task<AiValidationOutcome<TOutput>>>` end-to-end (engine,
+  Analyst, every D5-T3 test) rather than block with `.GetAwaiter().GetResult()`, per CLAUDE.md §7's
+  explicit "async all the way" rule. Extracted `Analyst`'s private `ReadStringArray` into a shared
+  `JsonNodeHelpers` (also used by Coder's own params-to-`IReadOnlyDictionary` conversion) instead
+  of duplicating it.
+  **Token-economy spec §R2/§R4 applied as part of this task's own definition of done:** the
+  context sent to the provider is the full `ActionSchema` (every `ParamSpec`) but strictly scoped
+  to `ParsedIntent.CandidateModuleKinds` — a dedicated test registers a third module in the
+  registry that is *not* a candidate and proves it never appears in the prompt at all, unlike
+  Analyst's stripped-down (no-`ParamSpec`) context for the *whole* registry. A dedicated test
+  proves the assembled prompt stays within Coder's configured `MaxInputChars` (12000).
 - [ ] D5-T6 Honest confidence and attribution: confidence is a defined, documented formula or `null`,
   never a literal; every AI step carries `AiAttribution`; AI-off/template path carries no `AiAttribution`
   and a `source: "template"` marker instead
