@@ -1,3 +1,4 @@
+using Yukti.Domain.Execution;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
 
@@ -24,6 +25,16 @@ public sealed class FlowStep : Entity<FlowStepId>
     public string? WhenCondition { get; private set; }
     public int Order { get; private set; }
 
+    /// <summary>
+    /// D5-T6 (CLAUDE.md principle 3): null for every manually/CLI-authored step — the ordinary
+    /// case, and the only case until Sarvagna's planning pipeline (D5-T3/T5) existed. Non-null
+    /// only for a step the Coder capability actually generated, carrying the real capability,
+    /// model, prompt version, and a confidence computed from the planning engine's own retry
+    /// outcome (<see cref="Yukti.Application.Ai.AiConfidence"/>) — never a literal, never asked
+    /// of the model.
+    /// </summary>
+    public AiAttribution? AiAttribution { get; private set; }
+
     // "parameters" renamed to "params" so EF Core's constructor binding
     // (parameter-name-to-property-name, case-insensitive) can materialize
     // this entity from its mapped Params column — Flow.AddStep calls this
@@ -36,7 +47,8 @@ public sealed class FlowStep : Entity<FlowStepId>
         IReadOnlyDictionary<string, object?> @params,
         int order,
         string? saveAs = null,
-        string? whenCondition = null) : base(id)
+        string? whenCondition = null,
+        AiAttribution? aiAttribution = null) : base(id)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("FlowStep name cannot be empty.");
@@ -50,6 +62,7 @@ public sealed class FlowStep : Entity<FlowStepId>
         Order = order;
         SaveAs = saveAs;
         WhenCondition = whenCondition;
+        AiAttribution = aiAttribution;
     }
 
     /// <summary>

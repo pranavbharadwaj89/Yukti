@@ -158,6 +158,69 @@ public sealed class CoderTests
         Assert.Equal(2, flow.Steps.Count);
         Assert.Equal(ModuleKind.Custom("web"), flow.Steps[0].Module);
         Assert.Equal(ModuleKind.Custom("api"), flow.Steps[1].Module);
+
+        // D5-T6: every generated step carries real AiAttribution — capability, model, prompt
+        // version, and a formula-based confidence (never a literal).
+        foreach (var step in flow.Steps)
+        {
+            Assert.NotNull(step.AiAttribution);
+            Assert.Equal(Coder.Capability, step.AiAttribution!.Capability);
+            Assert.Equal("stub", step.AiAttribution.ModelIdentifier);
+            Assert.Equal(Coder.PromptVersion, step.AiAttribution.PromptVersion);
+            Assert.Equal(AiConfidence.FullConfidence, step.AiAttribution.Confidence);
+        }
+    }
+
+    [Fact]
+    public async Task A_manually_authored_step_carries_no_AiAttribution_the_AI_off_default()
+    {
+        // D5-T6: the other half of the contract — a step nobody ran through Coder (the ordinary
+        // case, and the only case when AI is disabled, D5-T2) must carry no AiAttribution at all.
+        // Flow.AddStep's new parameter is additive and optional precisely so every pre-existing
+        // manual/CLI call site (FlowLoader, Program.cs's step-add endpoint) is unaffected.
+        var flow = Flow.CreateDraft("Manual flow", description: null, TestTenant, TestUser);
+        flow.AddStep("Login", ModuleKind.Custom("web"), "navigate", new Dictionary<string, object?> { ["url"] = "https://x" });
+
+        Assert.Null(flow.Steps[0].AiAttribution);
+    }
+
+    [Fact]
+    public async Task A_success_after_one_retry_attaches_lower_confidence_attribution()
+    {
+        // Proves confidence genuinely flows end-to-end from the engine's own retry outcome into
+        // the attribution actually attached to the returned Flow's steps — not just that the
+        // formula is correct in isolation (AiConfidenceTests already proves that).
+        var registry = new ModuleRegistry();
+        registry.Register(new FakeWebModule());
+        registry.Register(new FakeApiModule());
+        var resolver = new FakeModuleActionResolver()
+            .Register(FakeWebModule.Kind, new ActionSchema { ActionName = "navigate", Parameters = new[] { new ParamSpec { Name = "url", Type = ParamType.String, Required = true } } });
+
+        var badJson = """{"name":"Bad","declaredVariables":[],"steps":[{"name":"s","module":"web","action":"navigate","params":{},"saveAs":null,"when":null}]}""";
+        var goodJson = """{"name":"Good","declaredVariables":[],"steps":[{"name":"s","module":"web","action":"navigate","params":{"url":"https://x"},"saveAs":null,"when":null}]}""";
+        var provider = new SequencedProvider(badJson, goodJson);
+
+        var engine = new AiPlanningEngine(provider, new FixedPromptLoader("Coder instructions.\n{{CONTEXT}}"),
+            new NoOpCostRecorder(), new FixedCapabilityOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
+        var coder = new Coder(engine, registry, resolver);
+
+        var flow = await coder.GenerateAsync(new ParsedIntent(["web"], [], []), TestTenant, TestUser, CancellationToken.None);
+
+        Assert.Equal(AiConfidence.FromAttempt(2), flow.Steps[0].AiAttribution!.Confidence);
+        Assert.True(flow.Steps[0].AiAttribution!.Confidence < AiConfidence.FullConfidence);
+    }
+
+    private sealed class SequencedProvider : IAiProvider
+    {
+        private readonly Queue<string> _responses;
+        public string Id => "seq-stub";
+        public SequencedProvider(params string[] responses) => _responses = new Queue<string>(responses);
+
+        public Task<ProviderResponse> GenerateStructuredAsync(StructuredGenerationRequest request, CancellationToken ct)
+        {
+            var raw = _responses.Dequeue();
+            return Task.FromResult(new ProviderResponse(raw, System.Text.Json.Nodes.JsonNode.Parse(raw), 10, 10, TimeSpan.FromMilliseconds(5)));
+        }
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Yukti.Application.Ai;
+using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
@@ -10,16 +11,23 @@ using Yukti.Orchestration;
 namespace Yukti.Infrastructure.Ai;
 
 /// <summary>
-/// D5-T5: the concrete <see cref="ICoder"/> — <see cref="ParsedIntent"/> → a Draft <see
+/// D5-T5/D5-T6: the concrete <see cref="ICoder"/> — <see cref="ParsedIntent"/> → a Draft <see
 /// cref="Flow"/>. Builds the token-economy spec's §R2 context (full <see cref="ActionSchema"/>,
 /// but only for the candidate modules <see cref="ParsedIntent.CandidateModuleKinds"/> names, never
 /// the whole registry — the difference from Analyst's own, deliberately thinner context), calls
 /// <see cref="IAiPlanningEngine"/> for capability <c>"coder"</c>, and validates the model's JSON by
 /// actually running <see cref="Flow.Publish"/> — Day 2's own validator, reused verbatim, never a
-/// second copy of its rules. Because <see cref="Flow.Publish"/> mutates a Flow's
-/// <see cref="FlowStatus"/> to <see cref="FlowStatus.Published"/> on success, validation runs
-/// against a throwaway instance; the Flow actually returned to the caller is built fresh and never
-/// published, so "always Status = Draft" is structural, not a flag this class remembers to set.
+/// second copy of its rules.
+///
+/// The engine's <c>TOutput</c> here is <see cref="ParsedFlowSpec"/>, not <see cref="Flow"/>
+/// directly — deliberately, for two reasons: (1) <see cref="Flow.Publish"/> mutates a Flow's
+/// <see cref="FlowStatus"/> to <see cref="FlowStatus.Published"/> on success, so validation runs
+/// against a throwaway instance rather than the one eventually handed back; (2) the real
+/// <see cref="AiAttribution"/> (D5-T6) — confidence included — is only known once the engine
+/// finishes (it depends on which attempt succeeded), which is *after* validation already ran. So
+/// the Flow actually returned to the caller is built fresh, once, from the parsed spec plus the
+/// engine's own result, with attribution attached to every step; it never has <c>Publish</c>
+/// called on it, so "always Status = Draft" is structural, not a flag this class remembers to set.
 /// </summary>
 public sealed class Coder : ICoder
 {
@@ -43,11 +51,23 @@ public sealed class Coder : ICoder
         var description = BuildDescription(intent);
 
         var result = await _engine.PlanAsync(
-            new AiPlanningRequest<Flow>(Capability, PromptVersion, description, context,
+            new AiPlanningRequest<ParsedFlowSpec>(Capability, PromptVersion, description, context,
                 (node, innerCt) => ValidateAsync(node, intent, tenantId, createdBy, innerCt)),
             ct);
 
-        return result.Output;
+        // D5-T6: confidence (and the capability/model/prompt version alongside it) is only known
+        // now — the engine computed it from which attempt actually succeeded. Every generated
+        // step gets the same attribution; a manually/CLI-authored flow never calls this at all,
+        // so its steps carry no AiAttribution, by construction, not by a flag anyone clears.
+        var attribution = new AiAttribution
+        {
+            Capability = Capability,
+            Confidence = result.Confidence,
+            ModelIdentifier = result.Provider,
+            PromptVersion = result.PromptVersion,
+        };
+
+        return BuildFlow(result.Output, tenantId, createdBy, attribution);
     }
 
     /// <summary>
@@ -98,23 +118,23 @@ public sealed class Coder : ICoder
         return JsonSerializer.Serialize(summary);
     }
 
-    private async Task<AiValidationOutcome<Flow>> ValidateAsync(
+    private async Task<AiValidationOutcome<ParsedFlowSpec>> ValidateAsync(
         JsonNode? node, ParsedIntent intent, TenantId tenantId, UserId createdBy, CancellationToken ct)
     {
         if (node is null)
         {
-            return AiValidationOutcome<Flow>.Invalid(["Response was not valid JSON."]);
+            return AiValidationOutcome<ParsedFlowSpec>.Invalid(["Response was not valid JSON."]);
         }
 
         var name = node["name"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(name))
         {
-            return AiValidationOutcome<Flow>.Invalid(["Response must have a non-empty \"name\" string."]);
+            return AiValidationOutcome<ParsedFlowSpec>.Invalid(["Response must have a non-empty \"name\" string."]);
         }
 
         if (node["steps"] is not JsonArray stepsNode || stepsNode.Count == 0)
         {
-            return AiValidationOutcome<Flow>.Invalid(["Response must have a non-empty \"steps\" array."]);
+            return AiValidationOutcome<ParsedFlowSpec>.Invalid(["Response must have a non-empty \"steps\" array."]);
         }
 
         var candidateSet = new HashSet<string>(intent.CandidateModuleKinds, StringComparer.Ordinal);
@@ -123,7 +143,7 @@ public sealed class Coder : ICoder
         {
             if (stepNode is null)
             {
-                return AiValidationOutcome<Flow>.Invalid(["Each entry in \"steps\" must be a JSON object."]);
+                return AiValidationOutcome<ParsedFlowSpec>.Invalid(["Each entry in \"steps\" must be a JSON object."]);
             }
 
             var stepName = stepNode["name"]?.GetValue<string>();
@@ -131,12 +151,12 @@ public sealed class Coder : ICoder
             var action = stepNode["action"]?.GetValue<string>();
             if (string.IsNullOrWhiteSpace(stepName) || string.IsNullOrWhiteSpace(module) || string.IsNullOrWhiteSpace(action))
             {
-                return AiValidationOutcome<Flow>.Invalid(["Each step must have non-empty \"name\", \"module\", and \"action\" fields."]);
+                return AiValidationOutcome<ParsedFlowSpec>.Invalid(["Each step must have non-empty \"name\", \"module\", and \"action\" fields."]);
             }
 
             if (!candidateSet.Contains(module))
             {
-                return AiValidationOutcome<Flow>.Invalid(
+                return AiValidationOutcome<ParsedFlowSpec>.Invalid(
                     [$"Step '{stepName}' uses module '{module}', which is not one of the candidate modules ({string.Join(", ", intent.CandidateModuleKinds)})."]);
             }
 
@@ -149,41 +169,44 @@ public sealed class Coder : ICoder
         }
 
         var declaredVars = JsonNodeHelpers.ReadStringArray(node, "declaredVariables") ?? [];
+        var spec = new ParsedFlowSpec(name, declaredVars, parsedSteps);
 
         try
         {
-            // Day 2's own publish validator, reused verbatim — run against a throwaway instance
-            // since Publish mutates Status on success (see this class's own doc comment).
-            var validationFlow = BuildFlow(name, declaredVars, parsedSteps, tenantId, createdBy);
+            // Day 2's own publish validator, reused verbatim — run against a throwaway instance,
+            // never attributed, since it's discarded regardless of outcome (see this class's own
+            // doc comment on why TOutput is ParsedFlowSpec, not Flow).
+            var validationFlow = BuildFlow(spec, tenantId, createdBy, aiAttribution: null);
             var publishResult = await validationFlow.Publish(_resolver, ct);
             if (!publishResult.Succeeded)
             {
-                return AiValidationOutcome<Flow>.Invalid(
+                return AiValidationOutcome<ParsedFlowSpec>.Invalid(
                     publishResult.Errors.Select(e => $"{e.Field} [{e.Code}]: {e.Message}").ToList());
             }
         }
         catch (DomainException ex)
         {
-            return AiValidationOutcome<Flow>.Invalid([ex.Message]);
+            return AiValidationOutcome<ParsedFlowSpec>.Invalid([ex.Message]);
         }
 
-        var resultFlow = BuildFlow(name, declaredVars, parsedSteps, tenantId, createdBy);
-        return AiValidationOutcome<Flow>.Valid(resultFlow);
+        return AiValidationOutcome<ParsedFlowSpec>.Valid(spec);
     }
 
-    private static Flow BuildFlow(string name, List<string> declaredVars, List<ParsedStep> steps, TenantId tenantId, UserId createdBy)
+    private static Flow BuildFlow(ParsedFlowSpec spec, TenantId tenantId, UserId createdBy, AiAttribution? aiAttribution)
     {
-        var flow = Flow.CreateDraft(name, description: null, tenantId, createdBy);
-        foreach (var v in declaredVars)
+        var flow = Flow.CreateDraft(spec.Name, description: null, tenantId, createdBy);
+        foreach (var v in spec.DeclaredVariables)
         {
             flow.DeclareVariable(v);
         }
-        foreach (var s in steps)
+        foreach (var s in spec.Steps)
         {
-            flow.AddStep(s.Name, ModuleKind.Custom(s.Module), s.Action, s.Params, s.SaveAs, s.When);
+            flow.AddStep(s.Name, ModuleKind.Custom(s.Module), s.Action, s.Params, s.SaveAs, s.When, aiAttribution);
         }
         return flow;
     }
 
     private sealed record ParsedStep(string Name, string Module, string Action, IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When);
+
+    private sealed record ParsedFlowSpec(string Name, List<string> DeclaredVariables, List<ParsedStep> Steps);
 }

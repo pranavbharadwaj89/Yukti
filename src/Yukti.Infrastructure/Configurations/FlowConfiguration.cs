@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
@@ -63,6 +65,16 @@ public sealed class FlowConfiguration : IEntityTypeConfiguration<Flow>
                 .HasColumnName("params")
                 .HasColumnType("jsonb")
                 .Metadata.SetValueComparer(JsonValueConverters.DictionaryComparer);
+
+            // D5-T6: same "one nullable jsonb column, not a child table" shape
+            // FlowRunConfiguration.cs already uses for StepResult.AiAttribution — null for every
+            // manually/CLI-authored step, present only for one the Coder capability generated.
+            steps.Property(s => s.AiAttribution)
+                .HasConversion(
+                    attr => attr == null ? null : JsonSerializer.Serialize(attr, (JsonSerializerOptions?)null),
+                    json => json == null ? null : JsonSerializer.Deserialize<AiAttribution>(json, (JsonSerializerOptions?)null))
+                .HasColumnName("ai_attribution")
+                .HasColumnType("jsonb");
 
             // Step order is part of the Flow's consistency boundary
             // (FlowStep.cs's own doc comment) — enforced here as a unique

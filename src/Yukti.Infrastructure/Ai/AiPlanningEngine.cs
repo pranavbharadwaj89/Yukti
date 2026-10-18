@@ -97,7 +97,8 @@ public sealed class AiPlanningEngine : IAiPlanningEngine
             {
                 return new AiPlanningResult<TOutput>(
                     outcome.Output!, request.Capability, request.PromptVersion, _provider.Id,
-                    response.InputTokens, response.OutputTokens, response.Latency, guardrailChecks, UsedRetry: attempt > 1);
+                    response.InputTokens, response.OutputTokens, response.Latency, guardrailChecks,
+                    UsedRetry: attempt > 1, Attempt: attempt, Confidence: AiConfidence.FromAttempt(attempt));
             }
 
             lastErrors = outcome.Errors;

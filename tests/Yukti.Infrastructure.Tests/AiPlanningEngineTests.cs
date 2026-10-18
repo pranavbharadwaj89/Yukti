@@ -100,6 +100,11 @@ public sealed class AiPlanningEngineTests
         Assert.Equal("seq-stub", result.Provider);
         Assert.Single(provider.Requests);
 
+        // D5-T6: Attempt/Confidence are computed by the engine itself from the same loop —
+        // a first-try success is attempt 1 at AiConfidence.FullConfidence, never a literal.
+        Assert.Equal(1, result.Attempt);
+        Assert.Equal(AiConfidence.FullConfidence, result.Confidence);
+
         // §R5: exact token-count accounting — the stub's deterministic counts flow straight
         // through to the one cost record this happy path produces.
         Assert.Single(costs.Records);
@@ -165,6 +170,12 @@ public sealed class AiPlanningEngineTests
         Assert.True(result.UsedRetry);
         Assert.Equal(2, provider.Requests.Count);
         Assert.Contains("value must not be 'bad'", provider.Requests[1].SystemPrompt);
+
+        // D5-T6: a success on attempt 2 costs real confidence — proven against the exact
+        // documented formula, not just "lower than attempt 1".
+        Assert.Equal(2, result.Attempt);
+        Assert.Equal(AiConfidence.FromAttempt(2), result.Confidence);
+        Assert.True(result.Confidence < AiConfidence.FullConfidence);
 
         // §R5: a run with one retry writes 2 rows, attempt 1 (failed) and attempt 2 (succeeded)
         // — never one combined row.

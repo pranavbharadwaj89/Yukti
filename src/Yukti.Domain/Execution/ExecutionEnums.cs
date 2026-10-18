@@ -20,10 +20,17 @@ public enum RunTrigger { Api, Scheduled, Webhook }
 /// </summary>
 public sealed record AiAttribution
 {
-    public required string Capability { get; init; } // "selector-heal" | "flow-generation" | "log-triage"
+    public required string Capability { get; init; } // "selector-heal" | "flow-generation" | "log-triage" | "analyst" | "coder"
     public required double Confidence { get; init; }
     public string? OriginalValue { get; init; }
     public string? SuggestedValue { get; init; }
     public bool WasAccepted { get; init; }
     public required string ModelIdentifier { get; init; }
+
+    // D5-T6: CLAUDE.md principle 3 names this as one of the four required fields
+    // ("capability, confidence, model, prompt version") — missing until now because nothing in
+    // this codebase had ever actually constructed an AiAttribution (confirmed: no `new
+    // AiAttribution` anywhere before D5-T6), so the gap went unnoticed until Sarvagna's planning
+    // pipeline (D5-T3) became the first real producer.
+    public required string PromptVersion { get; init; }
 }
