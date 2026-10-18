@@ -8,7 +8,9 @@ import { flowsApi } from "@/services/api-client";
 import type { FlowSummary } from "@/services/types";
 
 vi.mock("@/services/api-client", () => ({
-  flowsApi: { list: vi.fn(), create: vi.fn() },
+  flowsApi: { list: vi.fn(), create: vi.fn(), generate: vi.fn() },
+  // D5-T7: FlowsPage now hosts the AI generation panel, which asks for AI status on mount.
+  aiApi: { status: vi.fn().mockResolvedValue({ enabled: true }) },
   ApiError: class ApiError extends Error {},
 }));
 

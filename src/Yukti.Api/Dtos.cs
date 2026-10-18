@@ -12,6 +12,18 @@ namespace Yukti.Api;
 
 public sealed record CreateFlowRequest(string Name, string? Description, Guid? ProjectId = null);
 
+/// <summary>D5-T7: plain-English description of the test to generate.</summary>
+public sealed record GenerateFlowRequest(string Description);
+
+/// <summary>
+/// D5-T7: <paramref name="Status"/> is <c>"generated"</c> (a Draft flow was saved — redirect to
+/// <paramref name="FlowId"/>) or <c>"ambiguous"</c> (nothing was created; <paramref
+/// name="Ambiguities"/> are Analyst's own reasons, for the UI's clarifying-question state).
+/// <paramref name="Confidence"/> is the D5-T6 formula's value, never a literal.
+/// </summary>
+public sealed record GenerateFlowResponse(
+    string Status, Guid? FlowId, string? Capability, double? Confidence, string? ModelIdentifier, IReadOnlyList<string> Ambiguities);
+
 public sealed record AddStepRequest(
     string Name, string Module, string Action,
     Dictionary<string, object?> Params, string? SaveAs, string? When);
@@ -20,12 +32,21 @@ public sealed record TriggerRunRequest(Dictionary<string, object?>? VariableOver
 
 public sealed record FlowStepResponse(
     Guid Id, string Name, string Module, string Action,
-    IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When, int Order)
+    IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When, int Order,
+    AiAttributionResponse? AiAttribution)
 {
     public static FlowStepResponse From(FlowStep step) => new(
         step.Id.Value, step.Name, step.Module.Value, step.Action,
-        step.Params, step.SaveAs, step.WhenCondition, step.Order);
+        step.Params, step.SaveAs, step.WhenCondition, step.Order,
+        step.AiAttribution is { } a ? new AiAttributionResponse(a.Capability, a.Confidence, a.ModelIdentifier, a.PromptVersion) : null);
 }
+
+/// <summary>D5-T6/T7: null on every manually-authored step; present only on a Coder-generated one.</summary>
+public sealed record AiAttributionResponse(string Capability, double Confidence, string ModelIdentifier, string PromptVersion);
+
+/// <summary>D5-T7 (closing D5-T2's deferred "UI hides the generation panel"): lets the UI know up
+/// front, rather than discovering AI is off only by submitting and getting a 503.</summary>
+public sealed record AiStatusResponse(bool Enabled);
 
 public sealed record FlowResponse(
     Guid Id, Guid FamilyId, int Version, string Name, string? Description,

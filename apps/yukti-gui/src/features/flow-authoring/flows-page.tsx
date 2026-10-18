@@ -7,6 +7,7 @@ import { Button, Dialog, Input, StatusPill } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useToastStore } from "@/store/toast-store";
 import { useProjectStore } from "@/store/project-store";
+import { AiGenerationPanel } from "@/features/ai-generation/ai-generation-panel";
 
 // FR-FEAT-02 (Project Explorer) is [NEW-DOMAIN], blocked on Q-01 — this is
 // a flat flow list instead, the closest available today. Rendered through
@@ -60,6 +61,8 @@ export function FlowsPage() {
         <h1 className="text-h1 text-ink">Flows</h1>
         <Button onClick={() => setCreateOpen(true)}>New flow</Button>
       </div>
+
+      <AiGenerationPanel />
 
       <DataTable
         columns={columns}

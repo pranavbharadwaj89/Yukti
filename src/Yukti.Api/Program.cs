@@ -32,6 +32,7 @@ using Yukti.Domain.Scheduling;
 using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure;
 using Yukti.Infrastructure.InMemory;
+using Yukti.Infrastructure.InMemory.Ai;
 using Yukti.Infrastructure.InMemory.Modules;
 using Yukti.Infrastructure.ReadModels;
 using Yukti.Orchestration;
@@ -358,7 +359,30 @@ var aiEnabled = builder.Configuration.GetValue("Ai:Enabled", true);
 if (aiEnabled)
 {
     builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
-    builder.Services.AddSingleton<IAiProvider, GeminiProvider>();
+    // ADR-0005: `Ai:Provider=fixture` swaps in the existing StubAiProvider, loaded with one canned
+    // response per capability from `Ai:FixtureDirectory/<capability>.json` — for the e2e suite,
+    // where the test and the API are separate processes and no live AI call is allowed (§R7).
+    // Unset (every real deployment) stays Gemini. Still inside the Ai:Enabled check, so D5-T2's
+    // switch keeps winning.
+    if (string.Equals(builder.Configuration["Ai:Provider"], "fixture", StringComparison.OrdinalIgnoreCase))
+    {
+        var fixtureDirectory = builder.Configuration["Ai:FixtureDirectory"]
+            ?? throw new InvalidOperationException("Ai:Provider=fixture requires Ai:FixtureDirectory.");
+        builder.Services.AddSingleton<IAiProvider>(sp =>
+        {
+            var stub = new StubAiProvider();
+            foreach (var file in Directory.GetFiles(fixtureDirectory, "*.json"))
+                stub.SetFixture(Path.GetFileNameWithoutExtension(file), File.ReadAllText(file));
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger("Yukti.Api.Ai").LogWarning(
+                "AI provider is the FIXTURE provider (canned responses from {FixtureDirectory}) — test use only, never production",
+                fixtureDirectory);
+            return stub;
+        });
+    }
+    else
+    {
+        builder.Services.AddSingleton<IAiProvider, GeminiProvider>();
+    }
     // D5-T3: the Sarvagna planning pipeline — Analyst/Coder (D5-T4/T5) call
     // through IAiPlanningEngine, never IAiProvider directly. Same "off
     // means not registered at all" rule as IAiProvider itself.
@@ -375,6 +399,9 @@ if (aiEnabled)
     // 2's own publish validator — Scoped here too, not Singleton like Analyst, so DI doesn't try
     // to inject a scoped service into a singleton.
     builder.Services.AddScoped<ICoder, Coder>();
+    // D5-T7: chains Analyst -> Coder -> persisted Draft. Only registered when AI is on, like
+    // everything it depends on; the endpoint below turns its absence into a plain 503.
+    builder.Services.AddScoped<GenerateFlowCommandHandler>();
 }
 else
 {
@@ -458,6 +485,23 @@ app.Use(async (context, next) =>
     catch (AiDisabledException ex)
     {
         await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Disabled", ex.Message, context.RequestAborted);
+    }
+    // D5-T7: "plain-English errors, never a stack trace" — every Sarvagna failure mode already
+    // carries a human-readable message (D5-T3's guardrail, D5-T5's validation errors, D5-T1's
+    // provider failures); these map them to RFC 7807 instead of letting them surface as a 500.
+    catch (AiGuardrailRejectedException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status400BadRequest, "Request Not Sent To AI", ex.Message, context.RequestAborted);
+    }
+    catch (AiGenerationFailedException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status502BadGateway, "AI Could Not Produce A Valid Flow",
+            "The AI couldn't produce a flow that passes validation, even after a retry. Try rephrasing your description. " +
+            "Details: " + string.Join("; ", ex.ValidationErrors), context.RequestAborted);
+    }
+    catch (AiUnavailableException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Unavailable", ex.Message, context.RequestAborted);
     }
 });
 
@@ -704,6 +748,25 @@ flows.MapPost("/", async (CreateFlowRequest req, ClaimsPrincipal principal, Crea
         req.Name, req.Description, principal.GetTenantId(), principal.GetUserId(),
         req.ProjectId is { } pid ? new ProjectId(pid) : null), ct);
     return Results.Created($"{apiV1}/flows/{flowId.Value}", new { flowId = flowId.Value });
+});
+
+// D5-T7: English -> Analyst -> Coder -> a persisted Draft (never published). A separate route
+// from the pre-existing `/ai/flows/suggest`, which is the legacy IAiAssistantService (direct
+// OpenAI, literal confidences, returns a DTO, persists nothing) and stays untouched — this is the
+// Sarvagna pipeline (D5-T3..T6). Resolved optionally: with AI off the handler isn't registered at
+// all (D5-T2), and that must read as a plain 503 "AI disabled", not a 500 DI failure.
+flows.MapPost("/generate", async (GenerateFlowRequest req, ClaimsPrincipal principal, IServiceProvider services, CancellationToken ct) =>
+{
+    var handler = services.GetService<GenerateFlowCommandHandler>() ?? throw new AiDisabledException();
+    var result = await handler.Handle(new GenerateFlowCommand(req.Description, principal.GetTenantId(), principal.GetUserId()), ct);
+    return result switch
+    {
+        GenerateFlowResult.Generated g => Results.Ok(new GenerateFlowResponse(
+            "generated", g.FlowId.Value, g.Capability, g.Confidence, g.ModelIdentifier, Array.Empty<string>())),
+        GenerateFlowResult.Ambiguous a => Results.Ok(new GenerateFlowResponse(
+            "ambiguous", null, null, null, null, a.Ambiguities)),
+        _ => throw new InvalidOperationException("Unknown GenerateFlowResult."),
+    };
 });
 
 // FR-CQRS-01: reads the same flows table any write above just landed in —
@@ -1213,6 +1276,10 @@ app.MapPost($"{apiV1}/ai/selectors/heal", async (HealSelectorRequest req, IAiAss
 
 app.MapPost($"{apiV1}/ai/flows/suggest", async (SuggestFlowRequest req, IAiAssistantService ai, CancellationToken ct) =>
     Results.Ok(await ai.SuggestFlowAsync(req, ct)))
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+
+// D5-T7: reports the same `Ai:Enabled` switch D5-T2 reads at startup — never calls a provider.
+app.MapGet($"{apiV1}/ai/status", () => Results.Ok(new AiStatusResponse(aiEnabled)))
 .RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
 
 app.MapGet("/", () => Results.Ok(new { service = "Yukti.Api", status = "running" }));
