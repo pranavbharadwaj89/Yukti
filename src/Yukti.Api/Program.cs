@@ -1254,6 +1254,10 @@ app.MapPost($"{apiV1}/ai/flows/suggest", async (SuggestFlowRequest req, IAiAssis
     Results.Ok(await ai.SuggestFlowAsync(req, ct)))
 .RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
 
+// D5-T7: reports the same `Ai:Enabled` switch D5-T2 reads at startup — never calls a provider.
+app.MapGet($"{apiV1}/ai/status", () => Results.Ok(new AiStatusResponse(aiEnabled)))
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+
 app.MapGet("/", () => Results.Ok(new { service = "Yukti.Api", status = "running" }));
 
 app.Run();

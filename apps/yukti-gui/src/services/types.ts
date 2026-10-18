@@ -66,6 +66,16 @@ export interface FlowStepResponse {
   params: Record<string, unknown>;
   saveAs?: string | null;
   when?: string | null;
+  /** D5-T6/T7: null on every manually-authored step; present only on an AI-generated one. */
+  aiAttribution?: AiAttribution | null;
+}
+
+export interface AiAttribution {
+  capability: string;
+  /** D5-T6's formula value; null is rendered as "confidence unavailable", never as a guess. */
+  confidence: number | null;
+  modelIdentifier: string;
+  promptVersion: string;
 }
 
 export interface FlowResponse {
@@ -82,6 +92,29 @@ export interface FlowPublishResponse {
   succeeded: boolean;
   errors: string[];
 }
+
+/**
+ * D5-T7: mirrors Yukti.Api's GenerateFlowResponse. "generated" means a Draft flow was saved
+ * (redirect to flowId); "ambiguous" means nothing was created and `ambiguities` holds the
+ * Analyst's own reasons. `confidence` is the D5-T6 formula's value — never a literal.
+ */
+export type GenerateFlowResponse =
+  | {
+      status: "generated";
+      flowId: string;
+      capability: string;
+      confidence: number | null;
+      modelIdentifier: string;
+      ambiguities: string[];
+    }
+  | {
+      status: "ambiguous";
+      flowId: null;
+      capability: null;
+      confidence: null;
+      modelIdentifier: null;
+      ambiguities: string[];
+    };
 
 export interface RetryAttemptResponse {
   id: string;

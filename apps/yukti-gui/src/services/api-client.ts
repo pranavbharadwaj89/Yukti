@@ -6,6 +6,7 @@ import type {
   FlowResponse,
   FlowRunResponse,
   FlowSummary,
+  GenerateFlowResponse,
   ModuleResponse,
   ProblemDetails,
   AuditEntryResponse,
@@ -159,6 +160,12 @@ export const flowsApi = {
   addStep: (flowId: string, step: Req<"AddStepRequest"> & { name: string; module: string; action: string }) =>
     request<void>(`/api/v1/flows/${flowId}/steps`, { method: "POST", body: step }),
   publish: (flowId: string) => request<FlowPublishResponse>(`/api/v1/flows/${flowId}/publish`, { method: "POST" }),
+  // D5-T7: the Sarvagna pipeline (Analyst -> Coder), never the legacy /ai/flows/suggest.
+  generate: (description: string) =>
+    request<GenerateFlowResponse>("/api/v1/flows/generate", {
+      method: "POST",
+      body: { description } satisfies Req<"GenerateFlowRequest">,
+    }),
   triggerRun: (flowId: string, variableOverrides?: Record<string, unknown>, idempotencyKey?: string) =>
     request<FlowRunResponse>(`/api/v1/flows/${flowId}/runs`, {
       method: "POST",
@@ -170,6 +177,12 @@ export const flowsApi = {
 export const runsApi = {
   get: (runId: string) => request<FlowRunResponse>(`/api/v1/runs/${runId}`),
   cancel: (runId: string) => request<void>(`/api/v1/runs/${runId}/cancel`, { method: "POST" }),
+};
+
+// D5-T7: up-front AI on/off signal (D5-T2's switch), so the generation panel can be hidden with
+// an explanation instead of being discovered broken on submit.
+export const aiApi = {
+  status: () => request<{ enabled: boolean }>("/api/v1/ai/status"),
 };
 
 export const modulesApi = {
