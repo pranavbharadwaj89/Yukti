@@ -42,7 +42,7 @@ test('English → AI Draft → publish → run passes, end to end', async ({ pag
   expect(await seriousAxeViolations(page, 'section[aria-label="Suggest a flow with AI"]')).toEqual([]);
 
   await panel.getByLabel(/describe a test/i).fill('Check the Yukti API is up and reports its own service name');
-  await panel.getByRole('button', { name: 'Suggest a flow' }).click();
+  await panel.getByRole('button', { name: 'Suggest a flow', exact: true }).click();
 
   // Lands on the generated Draft in the normal editor — never auto-published.
   await expect(page).toHaveURL(/\/flows\/[0-9a-f-]{36}$/);
@@ -52,10 +52,12 @@ test('English → AI Draft → publish → run passes, end to end', async ({ pag
   await expect(page.getByText('Steps (2)')).toBeVisible();
 
   // The human disposes: publishing is an explicit, separate action.
-  await page.getByRole('button', { name: 'Publish' }).click();
+  // exact: role names match substrings by default, and the success toast's own accessible name
+  // ("…review every step before publishing.") would otherwise also match "Publish".
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Run' }).click();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page).toHaveURL(/\/runs\/[0-9a-f-]{36}$/);
   // Two real HTTP steps against the API itself, the second built from the first's saveAs output.
   await expect(page.getByText('Passed', { exact: true }).first()).toBeVisible();
