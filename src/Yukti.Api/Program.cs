@@ -375,6 +375,9 @@ if (aiEnabled)
     // 2's own publish validator — Scoped here too, not Singleton like Analyst, so DI doesn't try
     // to inject a scoped service into a singleton.
     builder.Services.AddScoped<ICoder, Coder>();
+    // D5-T7: chains Analyst -> Coder -> persisted Draft. Only registered when AI is on, like
+    // everything it depends on; the endpoint below turns its absence into a plain 503.
+    builder.Services.AddScoped<GenerateFlowCommandHandler>();
 }
 else
 {
@@ -458,6 +461,23 @@ app.Use(async (context, next) =>
     catch (AiDisabledException ex)
     {
         await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Disabled", ex.Message, context.RequestAborted);
+    }
+    // D5-T7: "plain-English errors, never a stack trace" — every Sarvagna failure mode already
+    // carries a human-readable message (D5-T3's guardrail, D5-T5's validation errors, D5-T1's
+    // provider failures); these map them to RFC 7807 instead of letting them surface as a 500.
+    catch (AiGuardrailRejectedException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status400BadRequest, "Request Not Sent To AI", ex.Message, context.RequestAborted);
+    }
+    catch (AiGenerationFailedException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status502BadGateway, "AI Could Not Produce A Valid Flow",
+            "The AI couldn't produce a flow that passes validation, even after a retry. Try rephrasing your description. " +
+            "Details: " + string.Join("; ", ex.ValidationErrors), context.RequestAborted);
+    }
+    catch (AiUnavailableException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Unavailable", ex.Message, context.RequestAborted);
     }
 });
 
@@ -704,6 +724,25 @@ flows.MapPost("/", async (CreateFlowRequest req, ClaimsPrincipal principal, Crea
         req.Name, req.Description, principal.GetTenantId(), principal.GetUserId(),
         req.ProjectId is { } pid ? new ProjectId(pid) : null), ct);
     return Results.Created($"{apiV1}/flows/{flowId.Value}", new { flowId = flowId.Value });
+});
+
+// D5-T7: English -> Analyst -> Coder -> a persisted Draft (never published). A separate route
+// from the pre-existing `/ai/flows/suggest`, which is the legacy IAiAssistantService (direct
+// OpenAI, literal confidences, returns a DTO, persists nothing) and stays untouched — this is the
+// Sarvagna pipeline (D5-T3..T6). Resolved optionally: with AI off the handler isn't registered at
+// all (D5-T2), and that must read as a plain 503 "AI disabled", not a 500 DI failure.
+flows.MapPost("/generate", async (GenerateFlowRequest req, ClaimsPrincipal principal, IServiceProvider services, CancellationToken ct) =>
+{
+    var handler = services.GetService<GenerateFlowCommandHandler>() ?? throw new AiDisabledException();
+    var result = await handler.Handle(new GenerateFlowCommand(req.Description, principal.GetTenantId(), principal.GetUserId()), ct);
+    return result switch
+    {
+        GenerateFlowResult.Generated g => Results.Ok(new GenerateFlowResponse(
+            "generated", g.FlowId.Value, g.Capability, g.Confidence, g.ModelIdentifier, Array.Empty<string>())),
+        GenerateFlowResult.Ambiguous a => Results.Ok(new GenerateFlowResponse(
+            "ambiguous", null, null, null, null, a.Ambiguities)),
+        _ => throw new InvalidOperationException("Unknown GenerateFlowResult."),
+    };
 });
 
 // FR-CQRS-01: reads the same flows table any write above just landed in —

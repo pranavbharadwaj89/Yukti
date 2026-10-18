@@ -291,6 +291,9 @@ jobs:
           ["ai/assertions/generate"]='{"method":"GET","url":"https://example.com","statusCode":200,"responseBodyJson":null}'
           ["ai/selectors/heal"]='{"failedSelector":"#gone","targetTag":null,"domSnippet":null,"errorMessage":null,"pageUrl":null}'
           ["ai/flows/suggest"]='{"naturalLanguageDescription":"check the login works","targetBaseUrl":null,"preferredModules":null}'
+          # D5-T7: the Sarvagna generation endpoint — its handler isn't even registered with AI
+          # off, so this proves that absence reads as a plain 503, never a 500 DI failure.
+          ["flows/generate"]='{"description":"check the login works"}'
         )
         for path in "${!bodies[@]}"; do
           status=$(curl -s -o /tmp/ai-off-body.json -w "%{http_code}" -X POST "http://localhost:5000/api/v1/$path" \

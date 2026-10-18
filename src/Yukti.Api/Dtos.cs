@@ -12,6 +12,18 @@ namespace Yukti.Api;
 
 public sealed record CreateFlowRequest(string Name, string? Description, Guid? ProjectId = null);
 
+/// <summary>D5-T7: plain-English description of the test to generate.</summary>
+public sealed record GenerateFlowRequest(string Description);
+
+/// <summary>
+/// D5-T7: <paramref name="Status"/> is <c>"generated"</c> (a Draft flow was saved — redirect to
+/// <paramref name="FlowId"/>) or <c>"ambiguous"</c> (nothing was created; <paramref
+/// name="Ambiguities"/> are Analyst's own reasons, for the UI's clarifying-question state).
+/// <paramref name="Confidence"/> is the D5-T6 formula's value, never a literal.
+/// </summary>
+public sealed record GenerateFlowResponse(
+    string Status, Guid? FlowId, string? Capability, double? Confidence, string? ModelIdentifier, IReadOnlyList<string> Ambiguities);
+
 public sealed record AddStepRequest(
     string Name, string Module, string Action,
     Dictionary<string, object?> Params, string? SaveAs, string? When);
