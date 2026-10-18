@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
 import path from "node:path";
-import { defineConfig } from "vite";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -19,5 +19,8 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/test-setup.ts",
+    // ADR-0005: e2e/ holds Playwright specs (`npm run test:e2e`), which need the real running
+    // stack — never Vitest unit tests. Excluded, not include-narrowed, so eslint-rules/ tests run.
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });

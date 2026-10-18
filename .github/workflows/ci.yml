@@ -306,3 +306,122 @@ jobs:
     - name: Show API log on failure
       if: failure()
       run: cat /tmp/yukti-api-aioff.log || true
+
+  e2e:
+    # D5-T7 / ADR-0005: the real browser against the real stack — Vite + the real API + a real
+    # Postgres/Redis + the real flow engine. The only canned piece is the AI's answer
+    # (Ai:Provider=fixture, apps/yukti-gui/e2e/fixtures/ai/*.json): zero live AI calls (§R7).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: yukti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Same reason as the ai-off job: the rate limiter needs a real Redis for login to answer.
+      redis:
+        image: redis:7
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Build the API
+      run: dotnet build src/Yukti.Api -c Release
+
+    - name: Install dotnet-ef
+      run: dotnet tool install --global dotnet-ef --version 8.0.11
+
+    # Connection string assembled from parts, same convention as the ai-off job — this is a
+    # throwaway service-container database, but the pieces keep a full credential-bearing
+    # connection string literal out of the repo (Sarvaghna's secret rule, rightly, flags one).
+    - name: Apply EF migrations to the throwaway database
+      env:
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
+        dotnet ef database update --project src/Yukti.Infrastructure --startup-project src/Yukti.Api --connection "$CONN"
+
+    - name: Start the API with the fixture AI provider
+      env:
+        ASPNETCORE_ENVIRONMENT: Production
+        Ai__Enabled: "true"
+        Ai__Provider: fixture
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
+        export Ai__FixtureDirectory="$GITHUB_WORKSPACE/apps/yukti-gui/e2e/fixtures/ai"
+        nohup dotnet src/Yukti.Api/bin/Release/net8.0/Yukti.Api.dll > /tmp/yukti-api-e2e.log 2>&1 &
+        for i in $(seq 1 30); do
+          if curl -sf -o /dev/null http://localhost:5000/swagger/v1/swagger.json; then exit 0; fi
+          sleep 1
+        done
+        echo "API never served swagger.json within 30s:"; cat /tmp/yukti-api-e2e.log; exit 1
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+        cache: 'npm'
+        cache-dependency-path: apps/yukti-gui/package-lock.json
+
+    - name: Install frontend dependencies and Playwright's Chromium
+      working-directory: apps/yukti-gui
+      run: |
+        npm ci
+        npx playwright install --with-deps chromium
+
+    - name: Run the e2e suite
+      working-directory: apps/yukti-gui
+      run: npm run test:e2e
+
+    - name: Upload Playwright report and traces on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-e2e
+        path: |
+          apps/yukti-gui/playwright-report
+          apps/yukti-gui/test-results
+        retention-days: 7
+
+    - name: Show API log on failure
+      if: failure()
+      run: cat /tmp/yukti-api-e2e.log || true

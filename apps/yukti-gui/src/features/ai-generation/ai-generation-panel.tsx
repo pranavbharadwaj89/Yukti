@@ -29,17 +29,19 @@ const EXAMPLES = [
 export function AiGenerationPanel() {
   const statusQuery = useQuery({ queryKey: ["ai-status"], queryFn: aiApi.status });
 
-  if (statusQuery.data?.enabled === false) {
-    return (
-      <Card className="p-4">
-        <p className="text-sm text-ink-dim" role="note" title="An administrator has turned AI off (Ai:Enabled=false).">
-          AI flow suggestions are turned off for this deployment. You can still create flows by hand with “New flow”.
-        </p>
-      </Card>
-    );
-  }
-
-  return <GenerationForm />;
+  return (
+    <section aria-label="Suggest a flow with AI">
+      {statusQuery.data?.enabled === false ? (
+        <Card className="p-4">
+          <p className="text-sm text-ink-dim" role="note" title="An administrator has turned AI off (Ai:Enabled=false).">
+            AI flow suggestions are turned off for this deployment. You can still create flows by hand with “New flow”.
+          </p>
+        </Card>
+      ) : (
+        <GenerationForm />
+      )}
+    </section>
+  );
 }
 
 function GenerationForm() {

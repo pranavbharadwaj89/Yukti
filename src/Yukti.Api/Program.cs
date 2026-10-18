@@ -32,6 +32,7 @@ using Yukti.Domain.Scheduling;
 using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure;
 using Yukti.Infrastructure.InMemory;
+using Yukti.Infrastructure.InMemory.Ai;
 using Yukti.Infrastructure.InMemory.Modules;
 using Yukti.Infrastructure.ReadModels;
 using Yukti.Orchestration;
@@ -358,7 +359,30 @@ var aiEnabled = builder.Configuration.GetValue("Ai:Enabled", true);
 if (aiEnabled)
 {
     builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
-    builder.Services.AddSingleton<IAiProvider, GeminiProvider>();
+    // ADR-0005: `Ai:Provider=fixture` swaps in the existing StubAiProvider, loaded with one canned
+    // response per capability from `Ai:FixtureDirectory/<capability>.json` — for the e2e suite,
+    // where the test and the API are separate processes and no live AI call is allowed (§R7).
+    // Unset (every real deployment) stays Gemini. Still inside the Ai:Enabled check, so D5-T2's
+    // switch keeps winning.
+    if (string.Equals(builder.Configuration["Ai:Provider"], "fixture", StringComparison.OrdinalIgnoreCase))
+    {
+        var fixtureDirectory = builder.Configuration["Ai:FixtureDirectory"]
+            ?? throw new InvalidOperationException("Ai:Provider=fixture requires Ai:FixtureDirectory.");
+        builder.Services.AddSingleton<IAiProvider>(sp =>
+        {
+            var stub = new StubAiProvider();
+            foreach (var file in Directory.GetFiles(fixtureDirectory, "*.json"))
+                stub.SetFixture(Path.GetFileNameWithoutExtension(file), File.ReadAllText(file));
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger("Yukti.Api.Ai").LogWarning(
+                "AI provider is the FIXTURE provider (canned responses from {FixtureDirectory}) — test use only, never production",
+                fixtureDirectory);
+            return stub;
+        });
+    }
+    else
+    {
+        builder.Services.AddSingleton<IAiProvider, GeminiProvider>();
+    }
     // D5-T3: the Sarvagna planning pipeline — Analyst/Coder (D5-T4/T5) call
     // through IAiPlanningEngine, never IAiProvider directly. Same "off
     // means not registered at all" rule as IAiProvider itself.
