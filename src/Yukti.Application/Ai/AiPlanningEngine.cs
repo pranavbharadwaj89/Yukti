@@ -58,6 +58,12 @@ public sealed record AiValidationOutcome<TOutput>(bool IsValid, TOutput? Output,
     public static AiValidationOutcome<TOutput> Invalid(IReadOnlyList<string> errors) => new(false, default, errors);
 }
 
+/// <summary>
+/// <see cref="Attempt"/>/<see cref="Confidence"/> (D5-T6) are computed by the engine itself, once,
+/// from the same loop that already knows which attempt succeeded — so every capability gets a
+/// consistent, formula-based confidence (<see cref="AiConfidence.FromAttempt"/>) for free, never a
+/// per-capability literal.
+/// </summary>
 public sealed record AiPlanningResult<TOutput>(
     TOutput Output,
     string Capability,
@@ -67,7 +73,9 @@ public sealed record AiPlanningResult<TOutput>(
     int OutputTokens,
     TimeSpan Latency,
     IReadOnlyList<string> GuardrailChecks,
-    bool UsedRetry);
+    bool UsedRetry,
+    int Attempt,
+    double Confidence);
 
 /// <summary>
 /// Raised when the provider returned something, twice, and neither attempt

@@ -753,3 +753,52 @@ Next:        Push `feature/D5-T5-coder`, open its PR against `main`, then D5-T6 
              only, never asked of the model; every AI step carries `AiAttribution`; the template/
              AI-off path carries a `source: "template"` marker instead. Applies §R8 (computing
              confidence makes 0 provider calls) as part of its own definition of done.
+
+## 2026-10-18 ~09:40 IST — Day 5 (cont.)
+Done:        D5-T6 (honest confidence and attribution — never cut) done, on
+             `feature/D5-T6-confidence-attribution` branched from `main` after confirming D5-T3/
+             T4/T5 all merged (owner merged PR #33 directly; re-verified via `git log` and a fresh
+             `dotnet build`/`dotnet test` run before starting — 199/200, same pre-existing Docker
+             gap). New `AiConfidence.FromAttempt(int)`: `FullConfidence - (attempt-1) *
+             RetryPenaltyPerAttempt`, clamped to `[MinConfidence, FullConfidence]` — a documented
+             formula, never a literal, never asked of the model (§R8). The engine computes
+             `Attempt`/`Confidence` once and exposes both on `AiPlanningResult`, so every
+             capability gets the same formula for free rather than each one reimplementing it.
+             Real pre-existing gap found and fixed: the scaffolded `AiAttribution` record (Volume
+             1 Part II §11.5) was missing `PromptVersion` — one of CLAUDE.md principle 3's own
+             four required fields — unnoticed until now because nothing had ever actually
+             constructed one (confirmed: zero `new AiAttribution` anywhere in the codebase before
+             today). Added `AiAttribution?` to `FlowStep`/`Flow.AddStep` (new, optional, trailing
+             parameter — every existing manual/CLI call site unaffected) so Coder-generated steps
+             can carry it, mapped as one nullable `jsonb` column (same shape `StepResult.
+             AiAttribution` already uses) via a new migration. `Coder`'s own `TOutput` changed
+             from `Flow` to an internal `ParsedFlowSpec`, since confidence is only known *after*
+             the engine finishes — after validation already ran — so the final Flow is built once,
+             fresh, with attribution attached per step, never retrofitted onto the (discarded)
+             validation-only instance.
+Discovered:  1. This machine's `dotnet-ef` tool targets net8.0 but only the net10 runtime is
+             installed (`dotnet ef migrations add` failed with "You must install or update .NET");
+             worked around with `DOTNET_ROLL_FORWARD=LatestMajor dotnet ef migrations add ...` —
+             same underlying SDK/runtime mismatch D3 already hit for a different reason (CLI
+             apphost resolution), not a new environment problem. No real DB connection was needed
+             for migration generation itself (only `database update` would need one).
+             2. D5-T6's own `source: "template"` marker was **not built** — logged as DISC-9
+             rather than invented. No feature anywhere in this codebase (Sarvagna's new pipeline
+             or the pre-existing `IAiAssistantService`) currently produces a non-AI "template"
+             flow; when AI is off, `ICoder`/`IAnalyst` simply aren't registered (D5-T2), so nothing
+             in Sarvagna can emit anything while AI is disabled. A `source` field with no producer
+             and no consumer (no API/UI surface exists yet — that's D5-T7) would be exactly the
+             speculative, unused surface this week's own discipline has avoided everywhere else.
+             The proven half of the contract — `AiAttribution` is simply absent on every non-AI
+             step — is covered by a dedicated test.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` -> 0/0. D5-T6 filter -> 15/15. Full suite ->
+             206/207 (the 1 failure is the same pre-existing Docker/Testcontainers gap on this
+             machine, confirmed again via `docker info`, unrelated to AI work). `dotnet format
+             --verify-no-changes` -> clean.
+Next:        Push `feature/D5-T6-confidence-attribution`, open its PR against `main`, then D5-T7
+             — the Generation UI (text area + examples, "Suggest a flow" -> Draft in the normal
+             editor, AI-assisted badge, clarifying-question buttons, 0 serious/critical axe
+             issues). This is the first frontend task since D4 and the first real consumer of
+             Analyst/Coder/AiAttribution end-to-end — also where DISC-9's "source: template"
+             question should get revisited, not before.

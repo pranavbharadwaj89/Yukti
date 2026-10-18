@@ -626,6 +626,10 @@ namespace Yukti.Infrastructure.Migrations
                                 .IsRequired()
                                 .HasColumnType("text");
 
+                            b1.Property<string>("AiAttribution")
+                                .HasColumnType("jsonb")
+                                .HasColumnName("ai_attribution");
+
                             b1.Property<Guid>("FlowId")
                                 .HasColumnType("uuid");
 

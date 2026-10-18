@@ -372,10 +372,49 @@ have no old equivalent.
   registry that is *not* a candidate and proves it never appears in the prompt at all, unlike
   Analyst's stripped-down (no-`ParamSpec`) context for the *whole* registry. A dedicated test
   proves the assembled prompt stays within Coder's configured `MaxInputChars` (12000).
-- [ ] D5-T6 Honest confidence and attribution: confidence is a defined, documented formula or `null`,
+- [x] D5-T6 Honest confidence and attribution: confidence is a defined, documented formula or `null`,
   never a literal; every AI step carries `AiAttribution`; AI-off/template path carries no `AiAttribution`
   and a `source: "template"` marker instead
-  ✔ `dotnet test --filter "FullyQualifiedName~Confidence|FullyQualifiedName~Attribution"` — **never cut**
+  ✔ `dotnet test --filter "FullyQualifiedName~Confidence|FullyQualifiedName~Attribution"` → 15/15
+  passing (`AiConfidenceTests.cs` + attribution tests in `CoderTests.cs`/`AiPlanningEngineTests.cs`,
+  all new). New `AiConfidence.FromAttempt(int)` (Application) — a documented, deterministic formula
+  (`FullConfidence - (attempt-1) * RetryPenaltyPerAttempt`, clamped to `[MinConfidence,
+  FullConfidence]`), never a literal, never asked of the model (§R8). `AiPlanningEngine` computes
+  `Attempt`/`Confidence` once, centrally, and exposes both on `AiPlanningResult<TOutput>` — every
+  capability gets the same formula for free. **Real pre-existing gap found and fixed:** the
+  `AiAttribution` record (this repo's fixed-vocabulary type, Volume 1 Part II §11.5) already
+  existed but was missing `PromptVersion` — one of CLAUDE.md principle 3's own four required
+  fields ("capability, confidence, model, prompt version") — a gap that went unnoticed because
+  nothing in the codebase had ever actually constructed an `AiAttribution` before today (confirmed
+  by grep: zero `new AiAttribution` call sites anywhere). Added `PromptVersion` to it; no migration
+  needed since it's one `jsonb` column on `StepResult` already (shape-free), not a typed column,
+  and no row has ever held a non-null value.
+  Added `AiAttribution?` to `FlowStep`/`Flow.AddStep` (new, optional, trailing parameter —
+  every existing manual/CLI call site unaffected) so a Coder-generated step can carry it; mapped
+  as the identical one-nullable-`jsonb`-column pattern via a new migration
+  (`20261018144330_AddFlowStepAiAttribution`, `flow_steps.ai_attribution`) — generated with
+  `DOTNET_ROLL_FORWARD=LatestMajor dotnet ef migrations add ...` since this machine's `dotnet-ef`
+  tool targets net8.0 and only the net10 runtime is installed (the same pre-existing SDK/runtime
+  mismatch D3 already worked around for the CLI's own apphost resolution — not a new issue).
+  `Coder`'s `TOutput` changed from `Flow` to an internal `ParsedFlowSpec`: confidence is only known
+  *after* the engine finishes (it depends on which attempt succeeded), which is after validation
+  already ran, so the Flow actually returned is built fresh, once, from the parsed spec plus the
+  engine's own result — attribution is attached to every step at that point, never retrofitted
+  onto an already-built Flow. Proven end-to-end (not just that the formula is correct in
+  isolation): a dedicated test forces a real retry through the engine and checks the *returned
+  Flow's own steps* carry the lower, attempt-2 confidence — and a manually-authored step (plain
+  `Flow.AddStep`, no Coder involved) carries `AiAttribution == null`, the ordinary/AI-off case.
+  **Honestly not built, flagged rather than invented:** the `source: "template"` marker. No feature
+  in this codebase — Sarvagna's new pipeline or the pre-existing `IAiAssistantService`/
+  `OpenAiAssistantService` — currently produces a "template" (non-AI, non-manual) flow at all: when
+  AI is disabled, `ICoder`/`IAnalyst` simply aren't registered (D5-T2), so nothing in Sarvagna's own
+  pipeline can emit a flow of any kind, templated or otherwise, while AI is off. The *other* half
+  of this requirement (AI-off carries no `AiAttribution`) is already proven — absence, not a
+  marker. Inventing a `source` field today with no real producer or consumer (no API/UI surface
+  exists yet to show it — that's D5-T7, not yet built) would be exactly the kind of speculative,
+  unused surface CLAUDE.md and this week's own token-economy spec explicitly warn against. Logged
+  as a DISCOVERED item below for D5-T7 (or whenever a real template-authoring path is built) to
+  pick up, not silently dropped.
 - [ ] D5-T7 Generation UI: text area + examples, "Suggest a flow" → Draft in the normal editor, never
   auto-published; AI-assisted badge w/ confidence or "confidence unavailable"; clarifying question renders
   as buttons; plain-English errors, never a stack trace or silent template; 0 serious/critical axe issues
@@ -483,3 +522,12 @@ have no old equivalent.
   B5→B8→B9, cheapest wins first); picking it up sooner than that is a scheduling call, not a
   blocker, since this is Node CI tooling (`sarvaghna/sarvaghna.mjs`, `sarvaghna.yml`, the daily
   digest), independent of the .NET Sarvagna AI layer (D5-T3 onward).
+- [ ] DISC-9 D5-T6's `source: "template"` marker was not built. No feature anywhere in this
+  codebase — Sarvagna's new pipeline or the pre-existing `IAiAssistantService` — currently
+  produces a non-AI "template" flow; when AI is disabled, `ICoder`/`IAnalyst` aren't registered at
+  all (D5-T2), so Sarvagna's pipeline can't emit anything, templated or otherwise, while AI is
+  off. Building a `source` field with no producer and no consumer (no API/UI surface exists yet —
+  that's D5-T7) would be speculative, unused surface. Revisit when D5-T7 (or a real "start from a
+  template" feature) actually needs to represent that case; until then, the proven half of the
+  contract is enough — `AiAttribution` is simply absent (`null`) on every non-AI step, verified by
+  `CoderTests.A_manually_authored_step_carries_no_AiAttribution_the_AI_off_default`.
