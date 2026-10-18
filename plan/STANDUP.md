@@ -802,3 +802,54 @@ Next:        Push `feature/D5-T6-confidence-attribution`, open its PR against `m
              issues). This is the first frontend task since D4 and the first real consumer of
              Analyst/Coder/AiAttribution end-to-end — also where DISC-9's "source: template"
              question should get revisited, not before.
+
+## 2026-10-18 ~21:30 IST — Day 5 (cont.)
+Done:        D5-T6 merged (PR #34, all 6 checks green — `api-types-drift` was the first real
+             proof the new `flow_steps.ai_attribution` migration applies to a live Postgres).
+             D5-T7 done on `feature/D5-T7-generation-ui`, PR #35, all 6 CI checks green.
+             Owner asked whether to repeat D4-T4's component-level scoping or build the real e2e
+             harness — chose the real harness (ADR-0005). Three slices:
+             - Backend: `POST /api/v1/flows/generate` + `GenerateFlowCommandHandler` (FlowCreate
+               first; Analyst; ambiguity returns Analyst's own reasons without calling Coder; else a
+               persisted Draft). Separate route from the legacy `/ai/flows/suggest`, untouched. With
+               AI off the handler isn't registered and the endpoint answers a plain 503 — now in the
+               `ai-off` job's list. Guardrail/generation/provider failures → plain-English RFC 7807
+               (400/502/503) in the global middleware. `GET /ai/status` closes D5-T2's deferral.
+             - Frontend: `AiGenerationPanel` (Flows page) + `AiAssistedBadge` (flow-level notice and
+               step detail). §R11: disabled in flight, empty/>4000 never sent, same text within 60s
+               reopens the same Draft.
+             - E2E: `@playwright/test` 1.63.0, `npm run test:e2e`, `e2e/ai-generation.spec.ts`, new
+               `e2e` CI job (Postgres + Redis services, migrate, real API with
+               `Ai:Provider=fixture`, Vite, Chromium). No retries. In-browser axe on the panel.
+             ✔ in CI (run 39142598360): `2 passed (7.6s)` — English → Draft → AI-assisted 90% →
+             Publish → Run → Passed, and the client-side guardrails. Frontend 247/247, backend
+             212/213 (the 1 is the Docker-only Testcontainers gap), format/lint/typecheck/build clean.
+Discovered:  1. Analyst's real prompt (instructions + real registry) is 3,759 chars before the user
+             types, so the R4 default cap of 6,000 rejected any description over ~2,240 chars while
+             R1 and the UI promise 4,000. Asked the owner (spec Q3 names them): Analyst cap → 8,500.
+             `RealRegistryPromptBudgetTests` now checks both capabilities' real prompts, real
+             modules and real `appsettings.json` caps, so the next prompt or module that grows past
+             its cap fails a unit test, not production.
+             2. My own first cut of R11's 60s reuse kept its memory in a component ref — but success
+             navigates away and unmounts the panel, so it could never fire. Caught by writing the
+             test that goes there and back; moved to the Query cache.
+             3. First real e2e run: everything up to Publish passed against the real stack, then a
+             strict-mode locator failure — `name: 'Publish'` also matched the toast "…before
+             publishing." My spec's bug, fixed with exact matches; green on the re-run.
+             4. Sarvaghna blocked one commit for a literal `Password=` connection string in the new CI
+             job (throwaway service DB, but the rule is right) — rebuilt from parts like `ai-off`.
+             5. The generated `schema.ts` had to be hand-edited (no local Postgres to boot the API
+             and regenerate); `api-types-drift` passing confirms it matches openapi-typescript's
+             output exactly.
+             6. DISC-10: the Day 5 exit check `grep -r "confidence.*=.*0\." src/` has 6 matches, all
+             in the legacy `OpenAiAssistantService` selector-heal heuristic — none in Sarvagna.
+             Needs an owner call. 7. DISC-11: 14 pre-existing `npm audit` findings, several
+             critical, none from Playwright. 8. DISC-12: `audit-page` test flaked once under
+             full-suite load, 3/3 in isolation.
+Scope guards: none
+Exit check:  at risk — D5-T7 is green, but the Day 5 exit check still needs D5-T8 (eval harness
+             ≥ 8/10, the first real Gemini spend) and D5-T9 (cost records + budget guard), and its
+             literal-confidence grep fails on the legacy service (DISC-10) until the owner decides.
+Next:        Merge PR #35 (owner). Then D5-T9 *before* D5-T8 — the token-economy spec's own
+             timeline: the budget guard (R6) must exist before the eval harness spends real money.
+             D5-T9 needs Q4 answered first (Gemini price per 1M tokens for `Ai:Pricing`).

@@ -415,10 +415,36 @@ have no old equivalent.
   unused surface CLAUDE.md and this week's own token-economy spec explicitly warn against. Logged
   as a DISCOVERED item below for D5-T7 (or whenever a real template-authoring path is built) to
   pick up, not silently dropped.
-- [ ] D5-T7 Generation UI: text area + examples, "Suggest a flow" → Draft in the normal editor, never
+- [x] D5-T7 Generation UI: text area + examples, "Suggest a flow" → Draft in the normal editor, never
   auto-published; AI-assisted badge w/ confidence or "confidence unavailable"; clarifying question renders
   as buttons; plain-English errors, never a stack trace or silent template; 0 serious/critical axe issues
   ✔ `npm test -- AiGenerationPanel` and `npm run test:e2e -- ai-generation`
+  → component filter adapted to this repo's kebab-case file naming (D4-T2 precedent):
+  `npx vitest run ai-generation-panel` → 12/12; full frontend suite 247/247. **E2E for real, not
+  adapted** (owner chose to build the harness rather than repeat D4-T4's component-level scoping):
+  `npm run test:e2e` in the new `e2e` CI job → 2/2 passing on PR #35 (run 39142598360) — English →
+  real API → Analyst → Coder → persisted Draft → AI-assisted badge (90%) → Publish → Run → Passed,
+  through a real browser, real Postgres/Redis and the real flow engine; plus "empty/over-4000 never
+  reaches the API". In-browser axe on the panel (contrast included, unlike jsdom): 0
+  serious/critical. Zero live AI calls — `Ai:Provider=fixture` (ADR-0005).
+  Built: `POST /api/v1/flows/generate` + `GenerateFlowCommandHandler` (the Analyst→Coder
+  orchestration nothing had called before; `FlowCreate` permission first; ambiguity short-circuits
+  before Coder); a separate route from the legacy `/ai/flows/suggest`, which stays untouched;
+  plain-English RFC 7807 mapping for guardrail/generation/provider failures; `GET /ai/status`
+  (closes D5-T2's deferred "UI hides the generation panel"); `aiAttribution` on `FlowStepResponse`;
+  `AiGenerationPanel` + `AiAssistedBadge`. §R11 applied: disabled in flight (double-click = 1
+  request), empty/>4000 blocked client-side, identical text within 60s reopens the same Draft.
+  Real bugs found while proving it, not after: (1) the 60s reuse memory first lived in a component
+  ref, but success navigates away and unmounts the panel — dead code in real use; moved to the
+  Query cache and tested across a real navigate-away-and-back. (2) Analyst's real prompt with the
+  real registry is 3,759 chars before the user types, so the 6,000 cap rejected any description
+  over ~2,240 chars while the guardrail/UI promised 4,000 — Analyst cap → 8,500 (owner decision,
+  spec Q3), now guarded by `RealRegistryPromptBudgetTests`. (3) The first CI e2e run failed on my
+  own locator (`name: 'Publish'` also matched the toast "…before publishing."), fixed with exact
+  matches. `E2eFixtureContractTests` keeps the e2e AI fixtures valid against the real modules.
+  Clarifying-question buttons: Analyst returns free-text reasons, not structured options, so each
+  reason is a button that appends "(Re: …)" to the description for the user to answer — no new
+  backend contract invented to fake structured choices.
 - [ ] D5-T8 Evaluation harness: 10 prompts (`evals/flow_generation/`) scored on structural validity,
   module correctness, assertion presence, correct refusal (prompts 9–10); results written per
   prompt-version + timestamp; **gate: ≥ 8/10 structural validity**, up to 3 prompt versions, then escalate
@@ -478,12 +504,17 @@ have no old equivalent.
   isn't associated with its `<input>` (no `htmlFor`/`id`, not nested) — fails `getByLabelText`, invisible
   to a screen reader. Pre-existing (moved verbatim out of `module-test-form.tsx` during D4-T2, not
   introduced by it); belongs with the Day 4 WCAG/axe pass, not fixed here to stay in scope.
-- [ ] DISC-5 No Playwright e2e harness exists in this repo (`playwright.config.ts` is present but no
+- [x] DISC-5 No Playwright e2e harness exists in this repo (`playwright.config.ts` is present but no
   `test:e2e` script, no `e2e/` directory). D4-T4 and D4-T6/D4-T7 (UC-1 in the browser) both call for one —
   it's a real, separate undertaking (real backend+frontend+DB running together, fixtures, trace/screenshot
   capture), not something to improvise as a side effect of one task. Owner decided D4-T4 proceeds at the
   hook/component level instead; this item is what still needs building for D4-T6/T7 to be literal, not
   adapted.
+  **Closed 2026-10-18 by D5-T7 (ADR-0005):** `@playwright/test` 1.63.0 (the config imported it but it
+  was never installed), `npm run test:e2e`, `e2e/`, and an `e2e` CI job running the real stack. Only
+  runnable where Postgres/Redis are available (CI today — this machine has no Docker). D4-T4's
+  live-run reconnect is still proven only at the component level; an e2e spec for it can now be
+  added on this harness, but wasn't part of D5-T7.
 - [ ] DISC-6 `@microsoft/signalr`'s `HubConnection.onreconnecting`/`onreconnected`/`onclose` have no `off`
   counterpart at all (confirmed against the installed package's own `.d.ts`) — every mount of
   `useLiveRunProgress` adds one more handler to the shared connection that's never removed. Each one is
@@ -531,3 +562,20 @@ have no old equivalent.
   template" feature) actually needs to represent that case; until then, the proven half of the
   contract is enough — `AiAttribution` is simply absent (`null`) on every non-AI step, verified by
   `CoderTests.A_manually_authored_step_carries_no_AiAttribution_the_AI_off_default`.
+  **Revisited in D5-T7, still no producer:** with AI off the UI now shows "AI flow suggestions are
+  turned off" instead of the form (via `GET /ai/status`) — there is still no template flow to mark.
+  Stays open only until a real "start from a template" feature exists.
+- [ ] DISC-10 Day 5 exit check `grep -r "confidence.*=.*0\." src/` → expects no matches, has **6**, all
+  in the legacy `OpenAiAssistantService.HealSelectorAsync` deterministic heuristic (0.5/0.98/0.92/0.88/
+  0.82/0.80). None in Sarvagna (D5-T3..T7). That service has been deliberately left untouched all week
+  (D5-T1/T2 STANDUP). Fixing it is either (a) replacing those literals with a documented formula or
+  `null`, or (b) retiring the legacy `/ai/selectors/heal` path — an owner decision, not a silent edit.
+  **Blocks the Day 5 exit check as written.**
+- [ ] DISC-11 `npm audit` in `apps/yukti-gui`: 14 vulnerable packages, several critical
+  (`eslint-plugin-boundaries`/`@boundaries/elements`, `handlebars`, `seroval`), high (`braces`,
+  `micromatch`, `nanoid`, `undici`, …). Pre-existing — none from D5-T7's `@playwright/test`. Fixing
+  means dependency upgrades, which need an ADR + owner approval (CLAUDE.md §4).
+- [ ] DISC-12 `audit-page.test.tsx > renders every audit entry from the list endpoint` failed once in a
+  full-suite Vitest run (2026-10-18), then passed 3/3 in isolation and on a full re-run. Pre-existing,
+  untouched by D5-T7 — likely a `findBy` timeout under full-suite load. Flaky, not fixed; logged so it
+  isn't mistaken for a regression next time it fires.
