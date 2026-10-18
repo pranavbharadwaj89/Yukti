@@ -72,6 +72,12 @@ public sealed class AiPlanningEngineTests
     private static AiValidationOutcome<TestOutput> AlwaysValid(JsonNode? node) =>
         AiValidationOutcome<TestOutput>.Valid(new TestOutput(node!["value"]!.GetValue<string>()));
 
+    /// <summary>Adapts a pure, synchronous validator to <see cref="AiPlanningRequest{T}"/>'s async
+    /// <c>Validate</c> shape — the engine's contract went async for Coder's real need (calling
+    /// <c>Flow.Publish</c>), but most of this test file's validators are deliberately pure.</summary>
+    private static Func<JsonNode?, CancellationToken, Task<AiValidationOutcome<T>>> Sync<T>(Func<JsonNode?, AiValidationOutcome<T>> validate) =>
+        (node, _) => Task.FromResult(validate(node));
+
     private static AiPlanningEngine BuildEngine(
         IAiProvider provider, IPromptLoader promptLoader, IAiCostRecorder costs,
         IAiCapabilityOptionsProvider? capabilityOptions = null) =>
@@ -85,7 +91,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
 
         var result = await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "registry subset here", AlwaysValid),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "registry subset here", Sync(AlwaysValid)),
             CancellationToken.None);
 
         Assert.Equal("ok", result.Output.Value);
@@ -110,7 +116,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("System text.\n{{CONTEXT}}\nMore text."), new RecordingCostRecorder());
 
         await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "the user's own description", "REGISTRY-SUBSET-XYZ", AlwaysValid),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "the user's own description", "REGISTRY-SUBSET-XYZ", Sync(AlwaysValid)),
             CancellationToken.None);
 
         var sent = provider.Requests[0];
@@ -128,7 +134,7 @@ public sealed class AiPlanningEngineTests
             new FixedCapabilityOptions(options));
 
         await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", AlwaysValid),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(AlwaysValid)),
             CancellationToken.None);
 
         Assert.Equal(777, provider.Requests[0].MaxTokens);
@@ -152,7 +158,7 @@ public sealed class AiPlanningEngineTests
         }
 
         var result = await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", ValidateOnceThenSucceed),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(ValidateOnceThenSucceed)),
             CancellationToken.None);
 
         Assert.Equal("good", result.Output.Value);
@@ -184,7 +190,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
 
         var ex = await Assert.ThrowsAsync<AiGenerationFailedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", AlwaysInvalid),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(AlwaysInvalid)),
             CancellationToken.None));
 
         Assert.Equal(2, provider.Requests.Count);
@@ -208,7 +214,7 @@ public sealed class AiPlanningEngineTests
             new FixedCapabilityOptions(maxValidationRetries: 2));
 
         await Assert.ThrowsAsync<AiGenerationFailedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", AlwaysInvalid),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(AlwaysInvalid)),
             CancellationToken.None));
 
         Assert.Equal(3, provider.Requests.Count);
@@ -232,7 +238,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), new RecordingCostRecorder());
 
         await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", FailOnceWithManyErrors),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(FailOnceWithManyErrors)),
             CancellationToken.None);
 
         var retryPrompt = provider.Requests[1].SystemPrompt;
@@ -255,7 +261,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), new RecordingCostRecorder());
 
         await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", FailOnceWithHugeErrors),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(FailOnceWithHugeErrors)),
             CancellationToken.None);
 
         var retryPrompt = provider.Requests[1].SystemPrompt;
@@ -275,7 +281,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
 
         await Assert.ThrowsAsync<AiGuardrailRejectedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "", "ctx", AlwaysValid),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "", "ctx", Sync(AlwaysValid)),
             CancellationToken.None));
 
         Assert.Empty(provider.Requests);
@@ -293,7 +299,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
 
         var ex = await Assert.ThrowsAsync<AiGuardrailRejectedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "   ", AlwaysValid),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "   ", Sync(AlwaysValid)),
             CancellationToken.None));
 
         Assert.Contains("no modules are registered", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -315,7 +321,7 @@ public sealed class AiPlanningEngineTests
 
         var hugeContext = new string('x', 500);
         var ex = await Assert.ThrowsAsync<AiGuardrailRejectedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", hugeContext, AlwaysValid),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", hugeContext, Sync(AlwaysValid)),
             CancellationToken.None));
 
         Assert.Contains("50", ex.Message);
@@ -330,7 +336,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FilePromptLoaderThatAlwaysMisses(), new RecordingCostRecorder());
 
         await Assert.ThrowsAsync<PromptNotFoundException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("ghost-capability", "v1", "do the thing", "ctx", AlwaysValid),
+            new AiPlanningRequest<TestOutput>("ghost-capability", "v1", "do the thing", "ctx", Sync(AlwaysValid)),
             CancellationToken.None));
 
         Assert.Empty(provider.Requests);

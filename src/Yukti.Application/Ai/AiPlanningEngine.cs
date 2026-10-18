@@ -30,11 +30,16 @@ public interface IAiPlanningEngine
 /// deliberately not a generic JSON-Schema check (no such library is in this
 /// solution, and D5-T5's own spec is explicit: Coder's output goes through
 /// "Day 2's publish validator, not a second copy," which is exactly this
-/// delegate, not a schema file). Returns the typed output plus the error
-/// list the one-retry prompt gets built from when it's non-empty.
-/// </summary>
-/// <summary>
-/// <see cref="MaxTokens"/> deliberately has no default here — the output-token ceiling comes
+/// delegate, not a schema file). Async (not just a <c>Func&lt;JsonNode?,
+/// AiValidationOutcome&lt;TOutput&gt;&gt;</c>) because Coder's own validator
+/// calls the real, async <c>Flow.Publish</c> — D5-T3 itself never needed
+/// this (Analyst's validator is pure JSON-shape checking), but widening it
+/// here is the honest fix per CLAUDE.md §7 ("async all the way... no
+/// <c>.Result</c>/<c>.Wait()</c>"), not a second, blocking copy. Returns the
+/// typed output plus the error list the retry prompt gets built from when
+/// it's non-empty.
+///
+/// <see cref="MaxTokens"/> has no default here deliberately — the output-token ceiling comes
 /// from <see cref="IAiCapabilityOptionsProvider"/> (token-economy spec §R4: configuration, never
 /// a literal spread through callers), so <see cref="AiPlanningEngine"/> sources it per
 /// <see cref="Capability"/> rather than accepting whatever a caller happens to pass.
@@ -44,7 +49,7 @@ public sealed record AiPlanningRequest<TOutput>(
     string PromptVersion,
     string Description,
     string PromptContext,
-    Func<JsonNode?, AiValidationOutcome<TOutput>> Validate,
+    Func<JsonNode?, CancellationToken, Task<AiValidationOutcome<TOutput>>> Validate,
     TimeSpan Timeout = default);
 
 public sealed record AiValidationOutcome<TOutput>(bool IsValid, TOutput? Output, IReadOnlyList<string> Errors)

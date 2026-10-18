@@ -86,7 +86,7 @@ public sealed class AiPlanningEngine : IAiPlanningEngine
             var response = await _provider.GenerateStructuredAsync(
                 new StructuredGenerationRequest(request.Capability, currentPrompt, description, JsonSchema: "", options.MaxOutputTokens, request.Timeout),
                 ct);
-            var outcome = request.Validate(response.Parsed);
+            var outcome = await request.Validate(response.Parsed, ct);
 
             await _costRecorder.RecordAsync(
                 new AiCostRecordData(request.Capability, _provider.Id, request.PromptVersion, attempt, outcome.IsValid,
