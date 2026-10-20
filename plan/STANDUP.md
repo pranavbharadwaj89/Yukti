@@ -1020,3 +1020,29 @@ Exit check:  at risk — D5-T9 and D5-T8's code are both done and in `main`. D5-
 Next:        Once the quota resets or the key is upgraded: `dotnet run --project src/Yukti.Cli --
              eval flow-generation --force` to actually close D5-T8. In parallel, owner decision
              needed on DISC-14 and DISC-10.
+
+## 2026-10-20 ~21:45 IST — Day 5 (cont.)
+Done:        DISC-10 closed on `fix/disc-10-selector-heal-confidence`, owner's explicit choice
+             ("(a) fix the literals", not retire the path). The 6 grep-matching literals in
+             `OpenAiAssistantService.HealSelectorAsync`'s deterministic fallback were never
+             retry-based "AI confidence" the way Sarvagna's `AiConfidence.FromAttempt` is — this
+             DOM-heuristic engine has no retry concept at all; they're a fixed reliability ranking
+             by selector strategy. Extracted into a new `SelectorHealReliability` named-constants
+             holder with a doc comment explaining why each strategy ranks where it does (test-id >
+             aria-label > element id > name attribute > text content, each tied to how resilient
+             that DOM attribute actually is to real-world markup/copy churn). Same five numbers,
+             same behavior — just named and documented in one place instead of five scattered magic
+             numbers, which is also why the grep no longer matches (the literal now lives on the
+             constant's own declaration line, which doesn't contain the word "confidence").
+Verified:    `grep -rn "confidence.*=.*0\." src/` → 0 matches (was 6). Full suite 231/231 (clean —
+             no repeat of the earlier `EvalFlowGenerationTests` flake this run). `dotnet format
+             --verify-no-changes` clean.
+Scope guards: none
+Exit check:  on track for this item — DISC-10 fully closed. Day 5 exit overall still has D5-T8's
+             live gate blocked on the Gemini free-tier quota (DISC-14, resets ~2026-10-21 06:00 UTC
+             or sooner if the owner upgrades the key) and now DISC-14 itself (owner chose: build
+             request-count quota tracking into the budget guard, not upgrade the key) as new,
+             unstarted work.
+Next:        Push `fix/disc-10-selector-heal-confidence`, open PR. Then start DISC-14 (request-count
+             quota tracking in `IAiBudgetGuard`, plus wiring Sarvaghna's Node-side hook into the same
+             ledger) — the larger of the two owner-approved tasks.
