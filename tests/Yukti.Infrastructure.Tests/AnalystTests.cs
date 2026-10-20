@@ -3,6 +3,7 @@ using Xunit;
 using Yukti.Application.Ai;
 using Yukti.Contracts;
 using Yukti.Domain.ModulePlugin;
+using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure.Ai;
 using Yukti.Orchestration;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
@@ -79,7 +80,8 @@ public sealed class AnalystTests
         var registry = BuildRegistry();
         var promptLoader = new FixedPromptLoader("Analyst instructions.\n{{CONTEXT}}");
         var engine = new AiPlanningEngine(provider, promptLoader, new NoOpCostRecorder(),
-            capabilityOptions ?? new FixedCapabilityOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
+            capabilityOptions ?? new FixedCapabilityOptions(), new AlwaysAllowedBudgetGuard(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
         var analyst = new Analyst(engine, registry);
         return (analyst, provider, registry);
     }
@@ -96,6 +98,12 @@ public sealed class AnalystTests
         public Task RecordAsync(AiCostRecordData record, CancellationToken ct) => Task.CompletedTask;
     }
 
+    private sealed class AlwaysAllowedBudgetGuard : IAiBudgetGuard
+    {
+        public Task<AiBudgetCheck> CheckAsync(TenantId tenantId, string provider, int estimatedInputTokens, int maxOutputTokens, CancellationToken ct) =>
+            Task.FromResult(new AiBudgetCheck(Allowed: true, NearCap: false, SpentUsd: 0m, ProjectedUsd: 0m, CapUsd: 1000m));
+    }
+
     private sealed class FixedCapabilityOptions : IAiCapabilityOptionsProvider
     {
         public AiCapabilityOptions GetFor(string capability) => AiCapabilityOptions.Default;
@@ -110,7 +118,7 @@ public sealed class AnalystTests
             {"candidateModuleKinds":["web","api"],"assertions":["the orders API returns status confirmed"],"ambiguities":[]}
             """);
 
-        var intent = await analyst.AnalyzeAsync("log in on the web, then check the orders API", CancellationToken.None);
+        var intent = await analyst.AnalyzeAsync("log in on the web, then check the orders API", TenantId.New(), CancellationToken.None);
 
         Assert.Equal(new[] { "web", "api" }, intent.CandidateModuleKinds);
         Assert.Single(intent.Assertions);
@@ -125,7 +133,7 @@ public sealed class AnalystTests
             {"candidateModuleKinds":[],"assertions":[],"ambiguities":["No registered module can send SMS messages."]}
             """);
 
-        var intent = await analyst.AnalyzeAsync("send an SMS to the on-call engineer", CancellationToken.None);
+        var intent = await analyst.AnalyzeAsync("send an SMS to the on-call engineer", TenantId.New(), CancellationToken.None);
 
         Assert.Empty(intent.CandidateModuleKinds);
         Assert.Single(intent.Ambiguities);
@@ -139,7 +147,7 @@ public sealed class AnalystTests
             {"candidateModuleKinds":[],"assertions":[],"ambiguities":["Could mean checking via the api module or the web module - unclear which."]}
             """);
 
-        var intent = await analyst.AnalyzeAsync("check that it worked", CancellationToken.None);
+        var intent = await analyst.AnalyzeAsync("check that it worked", TenantId.New(), CancellationToken.None);
 
         Assert.Empty(intent.CandidateModuleKinds);
         Assert.Single(intent.Ambiguities);
@@ -158,7 +166,7 @@ public sealed class AnalystTests
             """);
 
         var ex = await Assert.ThrowsAsync<AiGenerationFailedException>(
-            () => analyst.AnalyzeAsync("text someone", CancellationToken.None));
+            () => analyst.AnalyzeAsync("text someone", TenantId.New(), CancellationToken.None));
 
         Assert.Contains(ex.ValidationErrors, e => e.Contains("sms"));
     }
@@ -170,7 +178,7 @@ public sealed class AnalystTests
         provider.SetFixture(Analyst.Capability, """{"candidateModuleKinds":[],"assertions":[],"ambiguities":[]}""");
 
         var ex = await Assert.ThrowsAsync<AiGenerationFailedException>(
-            () => analyst.AnalyzeAsync("do something", CancellationToken.None));
+            () => analyst.AnalyzeAsync("do something", TenantId.New(), CancellationToken.None));
 
         Assert.Contains(ex.ValidationErrors, e => e.Contains("never guess", StringComparison.OrdinalIgnoreCase));
     }
@@ -183,7 +191,7 @@ public sealed class AnalystTests
         var (analyst, provider, _) = BuildAnalyst();
         provider.SetFixture(Analyst.Capability, """{"candidateModuleKinds":["web"],"assertions":[],"ambiguities":[]}""");
 
-        await analyst.AnalyzeAsync("navigate somewhere", CancellationToken.None);
+        await analyst.AnalyzeAsync("navigate somewhere", TenantId.New(), CancellationToken.None);
 
         var sentPrompt = provider.LastRequest!.SystemPrompt;
         Assert.Contains("\"kind\":\"web\"", sentPrompt);
@@ -200,9 +208,9 @@ public sealed class AnalystTests
         var (analyst, provider, _) = BuildAnalyst();
         provider.SetFixture(Analyst.Capability, """{"candidateModuleKinds":["web"],"assertions":[],"ambiguities":[]}""");
 
-        await analyst.AnalyzeAsync("first call", CancellationToken.None);
+        await analyst.AnalyzeAsync("first call", TenantId.New(), CancellationToken.None);
         var first = provider.LastRequest!.SystemPrompt;
-        await analyst.AnalyzeAsync("second call", CancellationToken.None);
+        await analyst.AnalyzeAsync("second call", TenantId.New(), CancellationToken.None);
         var second = provider.LastRequest!.SystemPrompt;
 
         Assert.Equal(first, second);
@@ -218,7 +226,7 @@ public sealed class AnalystTests
         var (analyst, provider, _) = BuildAnalyst(new ConstantCapabilityOptions(analystCap));
         provider.SetFixture(Analyst.Capability, """{"candidateModuleKinds":["web"],"assertions":[],"ambiguities":[]}""");
 
-        await analyst.AnalyzeAsync("a perfectly ordinary request", CancellationToken.None);
+        await analyst.AnalyzeAsync("a perfectly ordinary request", TenantId.New(), CancellationToken.None);
 
         var sentPrompt = provider.LastRequest!.SystemPrompt;
         Assert.True(sentPrompt.Length <= analystCap.MaxInputChars,

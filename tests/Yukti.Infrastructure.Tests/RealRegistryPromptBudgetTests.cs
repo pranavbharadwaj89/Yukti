@@ -23,6 +23,12 @@ public sealed class RealRegistryPromptBudgetTests
         public Task RecordAsync(AiCostRecordData record, CancellationToken ct) => Task.CompletedTask;
     }
 
+    private sealed class AlwaysAllowedBudgetGuard : IAiBudgetGuard
+    {
+        public Task<AiBudgetCheck> CheckAsync(Domain.SharedKernel.TenantId tenantId, string provider, int estimatedInputTokens, int maxOutputTokens, CancellationToken ct) =>
+            Task.FromResult(new AiBudgetCheck(Allowed: true, NearCap: false, SpentUsd: 0m, ProjectedUsd: 0m, CapUsd: 1000m));
+    }
+
     private static string RepoRoot()
     {
         var dir = AppContext.BaseDirectory;
@@ -51,7 +57,7 @@ public sealed class RealRegistryPromptBudgetTests
         var caps = new ConfigurationAiCapabilityOptionsProvider(config);
         var provider = new StubAiProvider();
         var engine = new AiPlanningEngine(provider, new FilePromptLoader(config), new NoOpCostRecorder(), caps,
-            NullLogger<AiPlanningEngine>.Instance);
+            new AlwaysAllowedBudgetGuard(), NullLogger<AiPlanningEngine>.Instance);
         return (engine, provider, caps);
     }
 
@@ -62,7 +68,7 @@ public sealed class RealRegistryPromptBudgetTests
         provider.SetFixture(Analyst.Capability, """{"candidateModuleKinds":["api"],"assertions":[],"ambiguities":[]}""");
         var description = new string('a', AiGuardrailPreCheck.MaxDescriptionLength);
 
-        await new Analyst(engine, RealRegistry()).AnalyzeAsync(description, CancellationToken.None);
+        await new Analyst(engine, RealRegistry()).AnalyzeAsync(description, Domain.SharedKernel.TenantId.New(), CancellationToken.None);
 
         var cap = caps.GetFor(Analyst.Capability).MaxInputChars;
         var assembled = provider.LastRequest!.SystemPrompt.Length + provider.LastRequest.UserContent.Length;

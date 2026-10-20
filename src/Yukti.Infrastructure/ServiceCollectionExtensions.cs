@@ -41,6 +41,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuditSummaryQuery, EfAuditSummaryQuery>();
         services.AddScoped<IFlowReportSummaryQuery, EfFlowReportSummaryQuery>();
         services.AddScoped<ITenantSessionInitializer, EfTenantSessionInitializer>();
+        // D5-T9: ai_cost_records — registered here regardless of Ai:Enabled, since the write/read
+        // side is just persistence; Program.cs's own Ai:Enabled check decides whether anything
+        // ever calls into the AI pipeline that would produce a record at all.
+        services.AddScoped<Application.Abstractions.IAiCostRepository, EfAiCostRepository>();
+        services.AddScoped<Application.Ai.IAiUsageQuery, EfAiUsageQuery>();
 
         return services;
     }

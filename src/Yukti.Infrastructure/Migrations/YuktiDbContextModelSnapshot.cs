@@ -22,6 +22,54 @@ namespace Yukti.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Yukti.Domain.Ai.AiCostRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("BudgetRefused")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Capability")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("CostUsd")
+                        .HasColumnType("numeric(12,6)");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PromptVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OccurredAt");
+
+                    b.ToTable("ai_cost_records", (string)null);
+                });
+
             modelBuilder.Entity("Yukti.Domain.ApiTesting.ApiCollection", b =>
                 {
                     b.Property<Guid>("Id")

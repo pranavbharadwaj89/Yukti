@@ -51,7 +51,7 @@ public sealed class Coder : ICoder
         var description = BuildDescription(intent);
 
         var result = await _engine.PlanAsync(
-            new AiPlanningRequest<ParsedFlowSpec>(Capability, PromptVersion, description, context,
+            new AiPlanningRequest<ParsedFlowSpec>(Capability, PromptVersion, description, context, tenantId,
                 (node, innerCt) => ValidateAsync(node, intent, tenantId, createdBy, innerCt)),
             ct);
 

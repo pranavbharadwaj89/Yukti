@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Yukti.Domain.Ai;
 using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Auditing;
 using Yukti.Domain.Execution;
@@ -74,6 +75,7 @@ public sealed class YuktiDbContext : DbContext
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+    public DbSet<AiCostRecord> AiCostRecords => Set<AiCostRecord>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<FlowReportReadModel> FlowReports => Set<FlowReportReadModel>();
     public DbSet<TrendAggregateReadModel> TrendAggregates => Set<TrendAggregateReadModel>();
@@ -90,6 +92,7 @@ public sealed class YuktiDbContext : DbContext
         modelBuilder.ApplyConfiguration(new TriggerConfiguration());
         modelBuilder.ApplyConfiguration(new FlowRunConfiguration());
         modelBuilder.ApplyConfiguration(new AuditEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new AiCostRecordConfiguration());
 
         // FR-API-02's dedup table — not a domain aggregate, configured
         // inline rather than via its own IEntityTypeConfiguration file.

@@ -449,10 +449,34 @@ have no old equivalent.
   module correctness, assertion presence, correct refusal (prompts 9–10); results written per
   prompt-version + timestamp; **gate: ≥ 8/10 structural validity**, up to 3 prompt versions, then escalate
   ✔ `dotnet run --project src/Yukti.Cli -- eval flow-generation` → 8/10 or better — **never cut**
-- [ ] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
+- [x] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
   provider, model, tokens, cost, prompt version, tenant); configured monthly cap, 80% warns, 100% returns
   503 "AI budget reached" while the rest of Yukti keeps working; `GET /api/v1/ai/usage` (admin role)
   ✔ `dotnet test --filter "FullyQualifiedName~AiCost|FullyQualifiedName~Budget"`
+  **Closed 2026-10-20** on `feature/D5-T9-cost-budget-guard`: resumed from a prior session's
+  stashed WIP (TenantId threading through Analyst/Coder/AiPlanningEngine, the domain
+  `AiCostRecord`, `IAiBudgetGuard`/`AiBudgetGuard` composing `IAiUsageQuery` + `IAiPricingProvider`
+  + `IAiBudgetOptionsProvider` into one port, DI wiring, the `/ai/usage` endpoint, and the 503 "AI
+  Budget Reached" exception mapping were already built and wired); finished by (1) fixing 8 test
+  files' call sites for the new `TenantId` parameter and the `IAiBudgetGuard` constructor
+  dependency, (2) generating and applying migration `20261020125127_AddAiCostRecords`, (3) writing
+  `AiBudgetGuardTests` (80% warn/100% refuse/boundary-inclusive/real-pricing-math),
+  `AiCostRecorderTests`, and `InMemoryAiUsageQueryTests` — 14 tests on the ✔ filter, 228/228 full
+  suite. Two gaps found and fixed while closing, not expanded scope: (a) the generated migration
+  had no RLS policy at all — `ai_cost_records` is tenant data exactly like `flow_reports`, so one
+  tenant could otherwise have read another tenant's AI spend; added `ENABLE`/`FORCE ROW LEVEL
+  SECURITY` + the same `tenant_isolation` policy every other tenant table gets, verified against
+  the real local Postgres. (b) `EfAiCostRepository.Append` staged onto the shared request-scoped
+  DbContext like `EfAuditRepository` does — but `AuditableCommandHandler`'s failure path calls
+  `DiscardStaged()` (`ChangeTracker.Clear()`) *before* committing, which would have silently wiped
+  every cost row for a failed/retried generation attempt the moment the command ultimately threw —
+  exactly the spend §R5 most needs counted. Fixed by making it self-committing (`SaveChangesAsync`
+  inside `Append`, immediately) instead of riding the outer unit of work; safe because the only real
+  caller (`GenerateFlowCommandHandler`) never stages business state before the AI calls complete.
+  Also added placeholder Gemini pricing to `appsettings.json` (owner decision, spec Q4: "use a
+  placeholder, flag it") — `$0.10`/`$0.40` per 1M input/output tokens, clearly a stand-in, not
+  verified current Gemini pricing; owner should confirm real rates before this affects real spend
+  decisions. `dotnet format --verify-no-changes` clean.
 - **Exit check:** `dotnet build -warnaserror && dotnet test`; `Ai:Enabled=false` → `ai-off` CI green, 0
   outbound calls; eval harness ≥ 8/10; `npm run test:e2e -- ai-generation` (English → draft → publish →
   run); `grep -r "confidence.*=.*0\." src/` → no literal matches.

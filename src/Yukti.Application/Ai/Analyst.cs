@@ -1,3 +1,5 @@
+using Yukti.Domain.SharedKernel;
+
 namespace Yukti.Application.Ai;
 
 /// <summary>
@@ -27,5 +29,6 @@ public sealed record ParsedIntent(
 /// </summary>
 public interface IAnalyst
 {
-    Task<ParsedIntent> AnalyzeAsync(string description, CancellationToken ct);
+    /// <summary>D5-T9: <paramref name="tenantId"/> scopes this call's cost record and budget check — see <see cref="AiPlanningRequest{TOutput}.TenantId"/>'s own doc comment.</summary>
+    Task<ParsedIntent> AnalyzeAsync(string description, TenantId tenantId, CancellationToken ct);
 }

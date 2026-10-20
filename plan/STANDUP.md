@@ -889,3 +889,48 @@ Scope guards: none
 Exit check:  on track for this item — DISC-13 fully closed and verified. Day 5 exit overall still
              blocked on D5-T9/D5-T8 and DISC-10 (owner call), unchanged from the prior entry.
 Next:        Push `feature/nexus-design-system`, open PR, resume D5-T9 from its stash.
+
+## 2026-10-20 ~17:40 IST — Day 5 (cont.)
+Done:        D5-T9 (cost records + budget guard) closed on `feature/D5-T9-cost-budget-guard`.
+             PR #36 (DISC-13) had already merged, so re-read true state from `main` first
+             (213/213 .NET tests, build clean) before resuming — fast-forwarded the stale branch
+             onto `main` and popped the prior session's stash cleanly (no conflicts). Most of the
+             implementation was already built in that WIP: `AiCostRecord` (domain), `IAiBudgetGuard`
+             (composes `IAiUsageQuery`+`IAiPricingProvider`+`IAiBudgetOptionsProvider` into one
+             port, deliberately, so existing engine tests need one new fake, not three), DI wiring,
+             `GET /ai/usage` (admin-only via `Permission.UserManage`), and the `AiBudgetExceededException`
+             -> 503 "AI Budget Reached" mapping. Finished it: fixed 8 test files' call sites for the
+             new `TenantId` parameter on `Analyst.AnalyzeAsync`/`AiPlanningRequest` and the engine's
+             new `IAiBudgetGuard` constructor dependency; generated + applied migration
+             `AddAiCostRecords`; wrote `AiBudgetGuardTests` (80% warn still allows, 100%+ refuses,
+             cap boundary is inclusive, projected cost is the real pricing-table math, unpriced
+             provider = 0 never a guess), `AiCostRecorderTests`, `InMemoryAiUsageQueryTests` — 14
+             tests on the task's own ✔ filter, 228/228 full suite, `dotnet format --verify-no-changes`
+             clean.
+Discovered:  Two real gaps caught while closing, not scope creep: (1) the generated migration had
+             no RLS policy — `ai_cost_records` is tenant data (a tenant's AI spend) exactly like
+             `flow_reports`, so without it one tenant could read another's spend. Added the same
+             `ENABLE`/`FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy every other tenant
+             table gets (CLAUDE.md §9), verified against the real local Postgres
+             (`\d ai_cost_records` shows the forced policy). (2) `EfAiCostRepository.Append` staged
+             onto the shared request-scoped DbContext the same way `EfAuditRepository` does — but
+             `AuditableCommandHandler`'s failure path deliberately calls `DiscardStaged()`
+             (`ChangeTracker.Clear()`) *before* committing, to stop a half-done business mutation
+             riding along with a failure's audit entry. That same `Clear()` would have silently
+             wiped every cost row for a failed or retried generation attempt the instant the
+             command ultimately threw — exactly the spend §R5 most needs counted (a budget that
+             only counts successes is wrong). Fixed by making `EfAiCostRepository` self-committing
+             instead of riding the outer unit of work; safe today because the only real caller
+             (`GenerateFlowCommandHandler`) never stages Flow/business state before the AI calls
+             finish. (3) No `Ai:Pricing`/`Ai:Budget` config existed in `appsettings.json` at all —
+             every real call would have cost $0 and the budget guard would never have refused
+             anything. Added placeholder Gemini pricing ($0.10/$0.40 per 1M input/output tokens,
+             owner's spec-Q4 decision: "use a placeholder, flag it") and the $30/week cap — flagged
+             here as unverified against real Gemini rates, not to be trusted for real spend
+             decisions until the owner confirms.
+Scope guards: none
+Exit check:  at risk, improving — D5-T9 is now green (was the explicit "never cut" risk alongside
+             D5-T6/AI-off). Day 5 exit still needs D5-T8 (eval harness, first real Gemini spend —
+             correctly sequenced *after* T9 now that the budget guard actually exists) and DISC-10
+             (owner call on the legacy selector-heal literals).
+Next:        Push `feature/D5-T9-cost-budget-guard`, open PR. Then D5-T8 (evaluation harness).

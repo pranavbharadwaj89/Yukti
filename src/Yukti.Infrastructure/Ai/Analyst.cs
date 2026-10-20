@@ -2,6 +2,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Yukti.Application.Ai;
+using Yukti.Domain.SharedKernel;
 using Yukti.Orchestration;
 
 namespace Yukti.Infrastructure.Ai;
@@ -29,13 +30,13 @@ public sealed class Analyst : IAnalyst
         _registry = registry;
     }
 
-    public async Task<ParsedIntent> AnalyzeAsync(string description, CancellationToken ct)
+    public async Task<ParsedIntent> AnalyzeAsync(string description, TenantId tenantId, CancellationToken ct)
     {
         var registeredKinds = _registry.All.Select(m => m.Kind.Value).ToHashSet(StringComparer.Ordinal);
         var context = BuildRegistryContext(_registry);
 
         var result = await _engine.PlanAsync(
-            new AiPlanningRequest<ParsedIntent>(Capability, PromptVersion, description, context,
+            new AiPlanningRequest<ParsedIntent>(Capability, PromptVersion, description, context, tenantId,
                 (node, _) => Task.FromResult(Validate(node, registeredKinds))),
             ct);
 
