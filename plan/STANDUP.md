@@ -934,3 +934,57 @@ Exit check:  at risk, improving — D5-T9 is now green (was the explicit "never 
              correctly sequenced *after* T9 now that the budget guard actually exists) and DISC-10
              (owner call on the legacy selector-heal literals).
 Next:        Push `feature/D5-T9-cost-budget-guard`, open PR. Then D5-T8 (evaluation harness).
+
+## 2026-10-20 ~20:20 IST — Day 5 (cont.)
+Done:        D5-T8 (evaluation harness) built and verified end to end, but the live gate run is
+             BLOCKED on a Gemini outage — see below. Owner merge of PR #37 (D5-T9) is itself blocked
+             by this environment's own "Merge Without Review" safety classifier, which I can't
+             override even on explicit instruction; branched `feature/D5-T8-eval-harness` off
+             `feature/D5-T9-cost-budget-guard` instead of waiting, so the eval harness has the
+             budget guard it needs (CLAUDE.md's own task order: T9 before T8).
+             Built: `evals/flow_generation/prompts.json` (10 hand-written cases across all 4 real
+             modules, p9/p10 deliberately out-of-scope/ambiguous for the refusal check);
+             `src/Yukti.Cli/Eval/` (EvalHost — the one CLI path that talks to the real, EF-backed
+             `ai_cost_records`/`IAiBudgetGuard`, under a fixed eval tenant so spend actually
+             accumulates across runs, unlike `run`'s own per-call random tenant; FlowGenerationEvaluator
+             — scoring, early stop, registry-hash result reuse); `eval flow-generation [--dry-run]
+             [--force]` wired into `Program.cs`. Added a ProjectReference from Yukti.Cli to
+             Yukti.Infrastructure (project reference, not a package — no ADR needed).
+Discovered:  (1) `EvalHost`'s first draft used mnemonic GUIDs ("...eva1"/"...eva2") that aren't
+             valid hex — caught immediately by the real run crashing at startup, fixed to plain hex
+             sentinels. (2) The 15s default provider-call timeout
+             (`StructuredGenerationRequest.DefaultTimeout`) is this project's first-ever live AI
+             call of any kind (confirmed via `plan/AI-BUDGET.md`'s own "no live call has been made
+             yet") — too short for Gemini's real structured-output latency. Raised Analyst/Coder's
+             own calls to 60s via the existing per-request `Timeout` override (not the shared
+             default — that's cross-cutting, every capability's call to make, not this task's
+             alone). This also silently affects the already-merged D5-T7 generation UI, which has
+             never had a real user hit it with AI enabled against live Gemini either. (3) ai_cost_records'
+             RLS policy (added in D5-T9) needed the eval's fixed tenant session established via
+             `EfTenantSessionInitializer` before any query — missed on the very first pass, caught
+             by `GetUsageSince` silently returning zero spend in manual testing before it ever
+             reached a real run.
+             Verified safely before spending anything: `eval flow-generation --dry-run` (10 prompts,
+             36 worst-case provider calls, ~$0.03 worst case, 0 calls made) and two new stub-mode
+             tests (`EvalFlowGenerationTests`, `Ai:Provider=fixture`, zero live calls, §R7) — early
+             stop triggers after exactly 3 structural failures with no 4th case run; an unchanged
+             version + registry hash reuses the stored result with 0 provider calls, `--force`
+             genuinely re-runs. 231/231 full suite, `dotnet format --verify-no-changes` clean.
+             Then the real run: two live attempts against Gemini (`gemini-3.8-flash`) both got a 503
+             "This model is currently experiencing high demand" — a provider-side outage, not a
+             code defect. Confirmed zero cost was recorded either time (a provider-level failure
+             never reaches the cost recorder — only a successful response does), and early-stop
+             correctly capped both attempts at 3/10 cases before any further spend. Per the work
+             loop's "Red x2 -> mark BLOCKED, move on": not retrying a third time against a live
+             outage. Both failed attempts are preserved under `evals/flow_generation/results/` as an
+             honest record.
+Scope guards: none
+Exit check:  at risk — D5-T8's harness is done and proven correct (dry-run + stub tests), but its
+             own ✔ command (8/10 live) has not actually passed yet — genuinely BLOCKED on Gemini
+             availability, not ticked. PR #37 (D5-T9) also still needs the owner's own merge (the
+             environment's classifier blocks me from doing it even on explicit instruction).
+Next:        Owner: merge PR #37 via the GitHub UI when convenient. Re-run
+             `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` once Gemini
+             recovers (no code change needed) to actually close D5-T8. Push
+             `feature/D5-T8-eval-harness` and open its PR now regardless, so the harness itself is
+             reviewable while the live gate is pending.

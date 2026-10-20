@@ -41,6 +41,11 @@
     <ProjectReference Include="..\Yukti.Application\Yukti.Application.csproj" />
     <ProjectReference Include="..\Yukti.Orchestration\Yukti.Orchestration.csproj" />
     <ProjectReference Include="..\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj" />
+    <!-- D5-T8: the eval harness is the one CLI command that needs the real, EF-backed AI cost
+         ledger (IAiCostRepository/IAiUsageQuery/IAiBudgetGuard) — a single source of truth for
+         spend shared with the API, not a second parallel tracker. The `run` command's own host
+         stays pure in-memory/no-DB, untouched by this. -->
+    <ProjectReference Include="..\Yukti.Infrastructure\Yukti.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

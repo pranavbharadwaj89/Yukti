@@ -1,0 +1,35 @@
+{
+  "AnalystPromptVersion": "v1",
+  "CoderPromptVersion": "v1",
+  "RegistryHash": "43bfac8cb9fb",
+  "RanAtUtc": "2026-10-20T14:40:06.1413069+00:00",
+  "PassedCount": 0,
+  "TotalCount": 3,
+  "GatePassed": false,
+  "Cases": [
+    {
+      "Id": "p1",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": "Gemini request timed out after 15s."
+    },
+    {
+      "Id": "p2",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": "Gemini request timed out after 15s."
+    },
+    {
+      "Id": "p3",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": "Gemini request timed out after 15s."
+    }
+  ]
+}

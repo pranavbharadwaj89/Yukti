@@ -1,0 +1,72 @@
+[
+  {
+    "id": "p1",
+    "description": "Log in on the web at the login page using a username and password field, then assert the dashboard heading is visible.",
+    "expectRefusal": false,
+    "expectedModuleKinds": ["web"],
+    "expectAssertions": true
+  },
+  {
+    "id": "p2",
+    "description": "Send a GET request to the orders API and check the response status is confirmed.",
+    "expectRefusal": false,
+    "expectedModuleKinds": ["api"],
+    "expectAssertions": true
+  },
+  {
+    "id": "p3",
+    "description": "Log in on the web, then check the orders API says the order is confirmed.",
+    "expectRefusal": false,
+    "expectedModuleKinds": ["web", "api"],
+    "expectAssertions": true
+  },
+  {
+    "id": "p4",
+    "description": "Check the application log file has no ERROR lines in the last hour.",
+    "expectRefusal": false,
+    "expectedModuleKinds": ["logs"],
+    "expectAssertions": true
+  },
+  {
+    "id": "p5",
+    "description": "Open the mobile app, tap the login button, and assert the home screen is visible.",
+    "expectRefusal": false,
+    "expectedModuleKinds": ["mobile"],
+    "expectAssertions": true
+  },
+  {
+    "id": "p6",
+    "description": "Navigate to the checkout page on the web, then check the application logs show no anomalies during checkout.",
+    "expectRefusal": false,
+    "expectedModuleKinds": ["web", "logs"],
+    "expectAssertions": true
+  },
+  {
+    "id": "p7",
+    "description": "Send a POST request to create a new order, then check the application logs show no errors for that order.",
+    "expectRefusal": false,
+    "expectedModuleKinds": ["api", "logs"],
+    "expectAssertions": true
+  },
+  {
+    "id": "p8",
+    "description": "Log in on the web, place an order through the orders API, then open the mobile app and confirm the order appears in the order history screen.",
+    "expectRefusal": false,
+    "expectedModuleKinds": ["web", "api", "mobile"],
+    "expectAssertions": true
+  },
+  {
+    "id": "p9",
+    "description": "Send an SMS text message to the on-call engineer if the health check fails.",
+    "expectRefusal": true,
+    "expectedModuleKinds": [],
+    "expectAssertions": false
+  },
+  {
+    "id": "p10",
+    "description": "Check that it worked.",
+    "expectRefusal": true,
+    "expectedModuleKinds": [],
+    "expectAssertions": false
+  }
+]
