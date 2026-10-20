@@ -889,3 +889,102 @@ Scope guards: none
 Exit check:  on track for this item — DISC-13 fully closed and verified. Day 5 exit overall still
              blocked on D5-T9/D5-T8 and DISC-10 (owner call), unchanged from the prior entry.
 Next:        Push `feature/nexus-design-system`, open PR, resume D5-T9 from its stash.
+
+## 2026-10-20 ~17:40 IST — Day 5 (cont.)
+Done:        D5-T9 (cost records + budget guard) closed on `feature/D5-T9-cost-budget-guard`.
+             PR #36 (DISC-13) had already merged, so re-read true state from `main` first
+             (213/213 .NET tests, build clean) before resuming — fast-forwarded the stale branch
+             onto `main` and popped the prior session's stash cleanly (no conflicts). Most of the
+             implementation was already built in that WIP: `AiCostRecord` (domain), `IAiBudgetGuard`
+             (composes `IAiUsageQuery`+`IAiPricingProvider`+`IAiBudgetOptionsProvider` into one
+             port, deliberately, so existing engine tests need one new fake, not three), DI wiring,
+             `GET /ai/usage` (admin-only via `Permission.UserManage`), and the `AiBudgetExceededException`
+             -> 503 "AI Budget Reached" mapping. Finished it: fixed 8 test files' call sites for the
+             new `TenantId` parameter on `Analyst.AnalyzeAsync`/`AiPlanningRequest` and the engine's
+             new `IAiBudgetGuard` constructor dependency; generated + applied migration
+             `AddAiCostRecords`; wrote `AiBudgetGuardTests` (80% warn still allows, 100%+ refuses,
+             cap boundary is inclusive, projected cost is the real pricing-table math, unpriced
+             provider = 0 never a guess), `AiCostRecorderTests`, `InMemoryAiUsageQueryTests` — 14
+             tests on the task's own ✔ filter, 228/228 full suite, `dotnet format --verify-no-changes`
+             clean.
+Discovered:  Two real gaps caught while closing, not scope creep: (1) the generated migration had
+             no RLS policy — `ai_cost_records` is tenant data (a tenant's AI spend) exactly like
+             `flow_reports`, so without it one tenant could read another's spend. Added the same
+             `ENABLE`/`FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy every other tenant
+             table gets (CLAUDE.md §9), verified against the real local Postgres
+             (`\d ai_cost_records` shows the forced policy). (2) `EfAiCostRepository.Append` staged
+             onto the shared request-scoped DbContext the same way `EfAuditRepository` does — but
+             `AuditableCommandHandler`'s failure path deliberately calls `DiscardStaged()`
+             (`ChangeTracker.Clear()`) *before* committing, to stop a half-done business mutation
+             riding along with a failure's audit entry. That same `Clear()` would have silently
+             wiped every cost row for a failed or retried generation attempt the instant the
+             command ultimately threw — exactly the spend §R5 most needs counted (a budget that
+             only counts successes is wrong). Fixed by making `EfAiCostRepository` self-committing
+             instead of riding the outer unit of work; safe today because the only real caller
+             (`GenerateFlowCommandHandler`) never stages Flow/business state before the AI calls
+             finish. (3) No `Ai:Pricing`/`Ai:Budget` config existed in `appsettings.json` at all —
+             every real call would have cost $0 and the budget guard would never have refused
+             anything. Added placeholder Gemini pricing ($0.10/$0.40 per 1M input/output tokens,
+             owner's spec-Q4 decision: "use a placeholder, flag it") and the $30/week cap — flagged
+             here as unverified against real Gemini rates, not to be trusted for real spend
+             decisions until the owner confirms.
+Scope guards: none
+Exit check:  at risk, improving — D5-T9 is now green (was the explicit "never cut" risk alongside
+             D5-T6/AI-off). Day 5 exit still needs D5-T8 (eval harness, first real Gemini spend —
+             correctly sequenced *after* T9 now that the budget guard actually exists) and DISC-10
+             (owner call on the legacy selector-heal literals).
+Next:        Push `feature/D5-T9-cost-budget-guard`, open PR. Then D5-T8 (evaluation harness).
+
+## 2026-10-20 ~20:20 IST — Day 5 (cont.)
+Done:        D5-T8 (evaluation harness) built and verified end to end, but the live gate run is
+             BLOCKED on a Gemini outage — see below. Owner merge of PR #37 (D5-T9) is itself blocked
+             by this environment's own "Merge Without Review" safety classifier, which I can't
+             override even on explicit instruction; branched `feature/D5-T8-eval-harness` off
+             `feature/D5-T9-cost-budget-guard` instead of waiting, so the eval harness has the
+             budget guard it needs (CLAUDE.md's own task order: T9 before T8).
+             Built: `evals/flow_generation/prompts.json` (10 hand-written cases across all 4 real
+             modules, p9/p10 deliberately out-of-scope/ambiguous for the refusal check);
+             `src/Yukti.Cli/Eval/` (EvalHost — the one CLI path that talks to the real, EF-backed
+             `ai_cost_records`/`IAiBudgetGuard`, under a fixed eval tenant so spend actually
+             accumulates across runs, unlike `run`'s own per-call random tenant; FlowGenerationEvaluator
+             — scoring, early stop, registry-hash result reuse); `eval flow-generation [--dry-run]
+             [--force]` wired into `Program.cs`. Added a ProjectReference from Yukti.Cli to
+             Yukti.Infrastructure (project reference, not a package — no ADR needed).
+Discovered:  (1) `EvalHost`'s first draft used mnemonic GUIDs ("...eva1"/"...eva2") that aren't
+             valid hex — caught immediately by the real run crashing at startup, fixed to plain hex
+             sentinels. (2) The 15s default provider-call timeout
+             (`StructuredGenerationRequest.DefaultTimeout`) is this project's first-ever live AI
+             call of any kind (confirmed via `plan/AI-BUDGET.md`'s own "no live call has been made
+             yet") — too short for Gemini's real structured-output latency. Raised Analyst/Coder's
+             own calls to 60s via the existing per-request `Timeout` override (not the shared
+             default — that's cross-cutting, every capability's call to make, not this task's
+             alone). This also silently affects the already-merged D5-T7 generation UI, which has
+             never had a real user hit it with AI enabled against live Gemini either. (3) ai_cost_records'
+             RLS policy (added in D5-T9) needed the eval's fixed tenant session established via
+             `EfTenantSessionInitializer` before any query — missed on the very first pass, caught
+             by `GetUsageSince` silently returning zero spend in manual testing before it ever
+             reached a real run.
+             Verified safely before spending anything: `eval flow-generation --dry-run` (10 prompts,
+             36 worst-case provider calls, ~$0.03 worst case, 0 calls made) and two new stub-mode
+             tests (`EvalFlowGenerationTests`, `Ai:Provider=fixture`, zero live calls, §R7) — early
+             stop triggers after exactly 3 structural failures with no 4th case run; an unchanged
+             version + registry hash reuses the stored result with 0 provider calls, `--force`
+             genuinely re-runs. 231/231 full suite, `dotnet format --verify-no-changes` clean.
+             Then the real run: two live attempts against Gemini (`gemini-3.8-flash`) both got a 503
+             "This model is currently experiencing high demand" — a provider-side outage, not a
+             code defect. Confirmed zero cost was recorded either time (a provider-level failure
+             never reaches the cost recorder — only a successful response does), and early-stop
+             correctly capped both attempts at 3/10 cases before any further spend. Per the work
+             loop's "Red x2 -> mark BLOCKED, move on": not retrying a third time against a live
+             outage. Both failed attempts are preserved under `evals/flow_generation/results/` as an
+             honest record.
+Scope guards: none
+Exit check:  at risk — D5-T8's harness is done and proven correct (dry-run + stub tests), but its
+             own ✔ command (8/10 live) has not actually passed yet — genuinely BLOCKED on Gemini
+             availability, not ticked. PR #37 (D5-T9) also still needs the owner's own merge (the
+             environment's classifier blocks me from doing it even on explicit instruction).
+Next:        Owner: merge PR #37 via the GitHub UI when convenient. Re-run
+             `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` once Gemini
+             recovers (no code change needed) to actually close D5-T8. Push
+             `feature/D5-T8-eval-harness` and open its PR now regardless, so the harness itself is
+             reviewable while the live gate is pending.

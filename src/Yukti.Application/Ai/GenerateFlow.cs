@@ -55,7 +55,7 @@ public sealed class GenerateFlowCommandHandler : AuditableCommandHandler<Generat
         // pointing the UI at the manual endpoint instead.
         await _permissions.EnsurePermission(cmd.RequestedBy, Permission.FlowCreate, ct);
 
-        var intent = await _analyst.AnalyzeAsync(cmd.Description, ct);
+        var intent = await _analyst.AnalyzeAsync(cmd.Description, cmd.TenantId, ct);
         if (intent.CandidateModuleKinds.Count == 0)
         {
             // Never calls Coder with nothing to build from — Analyst already refused to guess.

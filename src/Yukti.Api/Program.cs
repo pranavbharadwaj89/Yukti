@@ -356,6 +356,10 @@ builder.Services.AddScoped<UpdateRolePermissionsCommandHandler>();
 // capability endpoints) are unrelated to this swap and untouched — they
 // already degrade to their own deterministic heuristic without a key.
 var aiEnabled = builder.Configuration.GetValue("Ai:Enabled", true);
+// D5-T9: registered unconditionally, unlike the pipeline below — GET /ai/usage can still show
+// historical week-to-date spend (and what the configured cap is) even while AI is currently off.
+builder.Services.AddSingleton<IAiPricingProvider, ConfigurationAiPricingProvider>();
+builder.Services.AddSingleton<IAiBudgetOptionsProvider, ConfigurationAiBudgetOptionsProvider>();
 if (aiEnabled)
 {
     builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
@@ -387,14 +391,19 @@ if (aiEnabled)
     // through IAiPlanningEngine, never IAiProvider directly. Same "off
     // means not registered at all" rule as IAiProvider itself.
     builder.Services.AddSingleton<IPromptLoader, FilePromptLoader>();
-    builder.Services.AddSingleton<IAiCostRecorder, LoggingAiCostRecorder>();
     // Token-economy spec §R4: per-capability MaxInputChars/MaxOutputTokens/Temperature and the
     // pipeline-wide validation-retry ceiling (§R3) both come from config (Ai:Capabilities:<name>,
     // Ai:MaxValidationRetries), never a literal in the engine.
     builder.Services.AddSingleton<IAiCapabilityOptionsProvider, ConfigurationAiCapabilityOptionsProvider>();
-    builder.Services.AddSingleton<IAiPlanningEngine, AiPlanningEngine>();
+    // D5-T9: the pre-call budget check depends on IAiUsageQuery (Scoped, EF-backed), which is why
+    // IAiPlanningEngine and IAnalyst below move from Singleton to Scoped too (a Singleton can't
+    // hold a captive Scoped dependency). Pricing/budget-cap options are registered unconditionally
+    // above this block.
+    builder.Services.AddScoped<IAiBudgetGuard, AiBudgetGuard>();
+    builder.Services.AddScoped<IAiCostRecorder, AiCostRecorder>();
+    builder.Services.AddScoped<IAiPlanningEngine, AiPlanningEngine>();
     // D5-T4: the first capability built on the planning pipeline above.
-    builder.Services.AddSingleton<IAnalyst, Analyst>();
+    builder.Services.AddScoped<IAnalyst, Analyst>();
     // D5-T5: Coder depends on IModuleActionResolver (EfModuleActionResolver, Scoped) to run Day
     // 2's own publish validator — Scoped here too, not Singleton like Analyst, so DI doesn't try
     // to inject a scoped service into a singleton.
@@ -502,6 +511,13 @@ app.Use(async (context, next) =>
     catch (AiUnavailableException ex)
     {
         await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Unavailable", ex.Message, context.RequestAborted);
+    }
+    // D5-T9/§R6: distinct from AiDisabledException above — AI is on, but this tenant's weekly
+    // spend (already spent + this call's own worst case) would cross the cap. The rest of Yukti
+    // keeps working; this blocks AI generation only, same as every other AI failure mode here.
+    catch (AiBudgetExceededException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Budget Reached", ex.Message, context.RequestAborted);
     }
 });
 
@@ -1280,6 +1296,30 @@ app.MapPost($"{apiV1}/ai/flows/suggest", async (SuggestFlowRequest req, IAiAssis
 
 // D5-T7: reports the same `Ai:Enabled` switch D5-T2 reads at startup — never calls a provider.
 app.MapGet($"{apiV1}/ai/status", () => Results.Ok(new AiStatusResponse(aiEnabled)))
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+
+// D5-T9/§R10: admin-only — spend data is sensitive the same way audit entries are, and
+// Permission.UserManage is the one permission only the baseline Administrator role holds (the
+// closest fit this enum has to a literal "admin" permission; GAP-MATRIX's own naming-gap pattern
+// for when the fixed vocabulary doesn't have an exact match — flagged, not silently invented).
+app.MapGet($"{apiV1}/ai/usage", async (
+    ClaimsPrincipal principal, IPermissionChecker permissions, IAiUsageQuery usageQuery, IAiBudgetOptionsProvider budget, CancellationToken ct) =>
+{
+    await permissions.EnsurePermission(principal.GetUserId(), Permission.UserManage, ct);
+
+    var since = AiWeek.StartOfCurrentWeekUtc(DateTimeOffset.UtcNow);
+    var usage = await usageQuery.GetUsageSince(principal.GetTenantId(), since, ct);
+    var cap = budget.WeeklyCapUsd;
+    var percentOfCap = cap > 0 ? (double)(usage.TotalCostUsd / cap) : 0;
+    var totalCalls = usage.ByCapability.Sum(c => c.Calls);
+    var totalRetries = usage.ByCapability.Sum(c => c.Retries);
+
+    return Results.Ok(new AiUsageResponse(
+        usage.TotalCostUsd, cap, percentOfCap, percentOfCap >= budget.WarnThreshold,
+        usage.TotalInputTokens, usage.TotalOutputTokens, usage.BudgetRefusals,
+        RetryShare: totalCalls > 0 ? (double)totalRetries / totalCalls : 0,
+        ByCapability: usage.ByCapability.Select(c => new AiCapabilityUsageResponse(c.Capability, c.Calls, c.Retries, c.InputTokens, c.OutputTokens, c.CostUsd)).ToList()));
+})
 .RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
 
 app.MapGet("/", () => Results.Ok(new { service = "Yukti.Api", status = "running" }));

@@ -449,10 +449,59 @@ have no old equivalent.
   module correctness, assertion presence, correct refusal (prompts 9–10); results written per
   prompt-version + timestamp; **gate: ≥ 8/10 structural validity**, up to 3 prompt versions, then escalate
   ✔ `dotnet run --project src/Yukti.Cli -- eval flow-generation` → 8/10 or better — **never cut**
-- [ ] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
+  **BLOCKED 2026-10-20** on `feature/D5-T8-eval-harness` (branched off `feature/D5-T9-cost-budget-guard`
+  since PR #37 is open but not yet merged — see that PR's own note). The harness itself is fully
+  built and verified: `eval flow-generation --dry-run` (zero DB/provider contact, prints a
+  worst-case estimate from the capabilities' own configured caps), the real run wired to the same
+  EF-backed `ai_cost_records`/`IAiBudgetGuard` the API uses (one source of truth for spend, under a
+  fixed eval tenant so cost actually accumulates across runs — not `run`'s own per-call random
+  tenant), result storage keyed by prompt-version + registry hash with reuse-unless-`--force`, and
+  early stop once 3 structural failures make 8/10 impossible. Two new stub-mode tests
+  (`EvalFlowGenerationTests`: early-stop triggers and stops after exactly 3 failures with no 4th
+  call; an unchanged version+registry reuses the stored result with 0 provider calls, `--force`
+  genuinely re-runs) plus the dry-run test — 231/231 full suite, `dotnet format --verify-no-changes`
+  clean. **What's blocked:** this is the project's first-ever live Gemini call (confirmed via
+  `plan/AI-BUDGET.md`'s own "no live call has been made yet" note going into this task) — it
+  surfaced two real gaps, both fixed in this same branch: (1) the 15s provider-call default
+  (`StructuredGenerationRequest.DefaultTimeout`) was too short for real Gemini structured-output
+  latency; raised Analyst/Coder's own calls to 60s via the existing per-request `Timeout` override,
+  not a change to the shared default (cross-cutting, not this task's call alone). (2) after that
+  fix, two consecutive real attempts both got Gemini 503 "This model is currently experiencing high
+  demand" (`gemini-3.8-flash`, ADR-0004) — a provider-side outage, not a defect: confirmed zero cost
+  was recorded either time (a provider-level failure never reaches the cost recorder), and the
+  early-stop correctly capped both attempts at 3/10 cases before any further spend. Per the work
+  loop's "Red x2 -> mark BLOCKED, move on" — not retried a third time against a live outage.
+  **Next:** re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` once Gemini
+  recovers; no code change needed. Three real (failed) attempts are preserved under
+  `evals/flow_generation/results/` as an honest record, not deleted.
+- [x] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
   provider, model, tokens, cost, prompt version, tenant); configured monthly cap, 80% warns, 100% returns
   503 "AI budget reached" while the rest of Yukti keeps working; `GET /api/v1/ai/usage` (admin role)
   ✔ `dotnet test --filter "FullyQualifiedName~AiCost|FullyQualifiedName~Budget"`
+  **Closed 2026-10-20** on `feature/D5-T9-cost-budget-guard`: resumed from a prior session's
+  stashed WIP (TenantId threading through Analyst/Coder/AiPlanningEngine, the domain
+  `AiCostRecord`, `IAiBudgetGuard`/`AiBudgetGuard` composing `IAiUsageQuery` + `IAiPricingProvider`
+  + `IAiBudgetOptionsProvider` into one port, DI wiring, the `/ai/usage` endpoint, and the 503 "AI
+  Budget Reached" exception mapping were already built and wired); finished by (1) fixing 8 test
+  files' call sites for the new `TenantId` parameter and the `IAiBudgetGuard` constructor
+  dependency, (2) generating and applying migration `20261020125127_AddAiCostRecords`, (3) writing
+  `AiBudgetGuardTests` (80% warn/100% refuse/boundary-inclusive/real-pricing-math),
+  `AiCostRecorderTests`, and `InMemoryAiUsageQueryTests` — 14 tests on the ✔ filter, 228/228 full
+  suite. Two gaps found and fixed while closing, not expanded scope: (a) the generated migration
+  had no RLS policy at all — `ai_cost_records` is tenant data exactly like `flow_reports`, so one
+  tenant could otherwise have read another tenant's AI spend; added `ENABLE`/`FORCE ROW LEVEL
+  SECURITY` + the same `tenant_isolation` policy every other tenant table gets, verified against
+  the real local Postgres. (b) `EfAiCostRepository.Append` staged onto the shared request-scoped
+  DbContext like `EfAuditRepository` does — but `AuditableCommandHandler`'s failure path calls
+  `DiscardStaged()` (`ChangeTracker.Clear()`) *before* committing, which would have silently wiped
+  every cost row for a failed/retried generation attempt the moment the command ultimately threw —
+  exactly the spend §R5 most needs counted. Fixed by making it self-committing (`SaveChangesAsync`
+  inside `Append`, immediately) instead of riding the outer unit of work; safe because the only real
+  caller (`GenerateFlowCommandHandler`) never stages business state before the AI calls complete.
+  Also added placeholder Gemini pricing to `appsettings.json` (owner decision, spec Q4: "use a
+  placeholder, flag it") — `$0.10`/`$0.40` per 1M input/output tokens, clearly a stand-in, not
+  verified current Gemini pricing; owner should confirm real rates before this affects real spend
+  decisions. `dotnet format --verify-no-changes` clean.
 - **Exit check:** `dotnet build -warnaserror && dotnet test`; `Ai:Enabled=false` → `ai-off` CI green, 0
   outbound calls; eval harness ≥ 8/10; `npm run test:e2e -- ai-generation` (English → draft → publish →
   run); `grep -r "confidence.*=.*0\." src/` → no literal matches.

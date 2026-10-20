@@ -25,7 +25,7 @@ public sealed class GenerateFlowCommandHandlerTests
     {
         private readonly ParsedIntent _intent;
         public FakeAnalyst(ParsedIntent intent) => _intent = intent;
-        public Task<ParsedIntent> AnalyzeAsync(string description, CancellationToken ct) => Task.FromResult(_intent);
+        public Task<ParsedIntent> AnalyzeAsync(string description, TenantId tenantId, CancellationToken ct) => Task.FromResult(_intent);
     }
 
     private sealed class FakeCoder : ICoder

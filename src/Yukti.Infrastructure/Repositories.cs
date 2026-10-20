@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Yukti.Application.Abstractions;
+using Yukti.Application.Ai;
 using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
@@ -278,6 +279,38 @@ public sealed class EfAuditSummaryQuery : IAuditSummaryQuery
         return entry is null
             ? null
             : new AuditEntryDetail(entry.Id, entry.CommandType, entry.TenantId, entry.Succeeded, entry.FailureReason, entry.Metadata, entry.OccurredAt);
+    }
+}
+
+/// <summary>D5-T9/§R10: week-to-date totals, grouped by capability, for the budget guard's own pre-call check and the <c>GET /ai/usage</c> endpoint — the same query backs both.</summary>
+public sealed class EfAiUsageQuery : IAiUsageQuery
+{
+    private readonly YuktiDbContext _context;
+    public EfAiUsageQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<AiUsageSummary> GetUsageSince(TenantId tenantId, DateTimeOffset since, CancellationToken ct)
+    {
+        var rows = await _context.AiCostRecords
+            .Where(r => r.TenantId == tenantId && r.OccurredAt >= since)
+            .ToListAsync(ct);
+
+        var byCapability = rows
+            .GroupBy(r => r.Capability)
+            .Select(g => new AiCapabilityUsage(
+                g.Key,
+                Calls: g.Count(r => !r.BudgetRefused),
+                Retries: g.Count(r => !r.BudgetRefused && r.Attempt > 1),
+                InputTokens: g.Sum(r => r.InputTokens),
+                OutputTokens: g.Sum(r => r.OutputTokens),
+                CostUsd: g.Sum(r => r.CostUsd)))
+            .ToList();
+
+        return new AiUsageSummary(
+            TotalCostUsd: rows.Sum(r => r.CostUsd),
+            TotalInputTokens: rows.Sum(r => r.InputTokens),
+            TotalOutputTokens: rows.Sum(r => r.OutputTokens),
+            BudgetRefusals: rows.Count(r => r.BudgetRefused),
+            ByCapability: byCapability);
     }
 }
 

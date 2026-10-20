@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using Yukti.Application.Ai;
+using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure.Ai;
 
 namespace Yukti.Infrastructure.Tests;
@@ -66,6 +67,15 @@ public sealed class AiPlanningEngineTests
         public AiCapabilityOptions GetFor(string capability) => _options;
     }
 
+    /// <summary>D5-T9: this file's engine tests are about the generation loop, not the budget
+    /// check itself (that's <c>AiBudgetGuardTests</c>) — always-allowed, never-near-cap, so every
+    /// existing scenario here keeps meaning exactly what it did before the guard existed.</summary>
+    private sealed class AlwaysAllowedBudgetGuard : IAiBudgetGuard
+    {
+        public Task<AiBudgetCheck> CheckAsync(TenantId tenantId, string provider, int estimatedInputTokens, int maxOutputTokens, CancellationToken ct) =>
+            Task.FromResult(new AiBudgetCheck(Allowed: true, NearCap: false, SpentUsd: 0m, ProjectedUsd: 0m, CapUsd: 1000m));
+    }
+
     private static ProviderResponse Response(string json, int inputTokens = 10, int outputTokens = 20) =>
         new(json, JsonNode.Parse(json), inputTokens, outputTokens, TimeSpan.FromMilliseconds(5));
 
@@ -80,8 +90,9 @@ public sealed class AiPlanningEngineTests
 
     private static AiPlanningEngine BuildEngine(
         IAiProvider provider, IPromptLoader promptLoader, IAiCostRecorder costs,
-        IAiCapabilityOptionsProvider? capabilityOptions = null) =>
-        new(provider, promptLoader, costs, capabilityOptions ?? new FixedCapabilityOptions(), NullLogger<AiPlanningEngine>.Instance);
+        IAiCapabilityOptionsProvider? capabilityOptions = null, IAiBudgetGuard? budgetGuard = null) =>
+        new(provider, promptLoader, costs, capabilityOptions ?? new FixedCapabilityOptions(),
+            budgetGuard ?? new AlwaysAllowedBudgetGuard(), NullLogger<AiPlanningEngine>.Instance);
 
     [Fact]
     public async Task Happy_path_calls_the_provider_once_validates_records_cost_and_returns_the_output()
@@ -91,7 +102,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
 
         var result = await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "registry subset here", Sync(AlwaysValid)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "registry subset here", TenantId.New(), Sync(AlwaysValid)),
             CancellationToken.None);
 
         Assert.Equal("ok", result.Output.Value);
@@ -121,7 +132,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("System text.\n{{CONTEXT}}\nMore text."), new RecordingCostRecorder());
 
         await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "the user's own description", "REGISTRY-SUBSET-XYZ", Sync(AlwaysValid)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "the user's own description", "REGISTRY-SUBSET-XYZ", TenantId.New(), Sync(AlwaysValid)),
             CancellationToken.None);
 
         var sent = provider.Requests[0];
@@ -139,7 +150,7 @@ public sealed class AiPlanningEngineTests
             new FixedCapabilityOptions(options));
 
         await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(AlwaysValid)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysValid)),
             CancellationToken.None);
 
         Assert.Equal(777, provider.Requests[0].MaxTokens);
@@ -163,7 +174,7 @@ public sealed class AiPlanningEngineTests
         }
 
         var result = await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(ValidateOnceThenSucceed)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(ValidateOnceThenSucceed)),
             CancellationToken.None);
 
         Assert.Equal("good", result.Output.Value);
@@ -201,7 +212,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
 
         var ex = await Assert.ThrowsAsync<AiGenerationFailedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(AlwaysInvalid)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysInvalid)),
             CancellationToken.None));
 
         Assert.Equal(2, provider.Requests.Count);
@@ -225,7 +236,7 @@ public sealed class AiPlanningEngineTests
             new FixedCapabilityOptions(maxValidationRetries: 2));
 
         await Assert.ThrowsAsync<AiGenerationFailedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(AlwaysInvalid)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysInvalid)),
             CancellationToken.None));
 
         Assert.Equal(3, provider.Requests.Count);
@@ -249,7 +260,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), new RecordingCostRecorder());
 
         await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(FailOnceWithManyErrors)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(FailOnceWithManyErrors)),
             CancellationToken.None);
 
         var retryPrompt = provider.Requests[1].SystemPrompt;
@@ -272,7 +283,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), new RecordingCostRecorder());
 
         await engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", Sync(FailOnceWithHugeErrors)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(FailOnceWithHugeErrors)),
             CancellationToken.None);
 
         var retryPrompt = provider.Requests[1].SystemPrompt;
@@ -292,7 +303,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
 
         await Assert.ThrowsAsync<AiGuardrailRejectedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "", "ctx", Sync(AlwaysValid)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "", "ctx", TenantId.New(), Sync(AlwaysValid)),
             CancellationToken.None));
 
         Assert.Empty(provider.Requests);
@@ -310,7 +321,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
 
         var ex = await Assert.ThrowsAsync<AiGuardrailRejectedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "   ", Sync(AlwaysValid)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "   ", TenantId.New(), Sync(AlwaysValid)),
             CancellationToken.None));
 
         Assert.Contains("no modules are registered", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -332,7 +343,7 @@ public sealed class AiPlanningEngineTests
 
         var hugeContext = new string('x', 500);
         var ex = await Assert.ThrowsAsync<AiGuardrailRejectedException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", hugeContext, Sync(AlwaysValid)),
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", hugeContext, TenantId.New(), Sync(AlwaysValid)),
             CancellationToken.None));
 
         Assert.Contains("50", ex.Message);
@@ -347,7 +358,7 @@ public sealed class AiPlanningEngineTests
         var engine = BuildEngine(provider, new FilePromptLoaderThatAlwaysMisses(), new RecordingCostRecorder());
 
         await Assert.ThrowsAsync<PromptNotFoundException>(() => engine.PlanAsync(
-            new AiPlanningRequest<TestOutput>("ghost-capability", "v1", "do the thing", "ctx", Sync(AlwaysValid)),
+            new AiPlanningRequest<TestOutput>("ghost-capability", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysValid)),
             CancellationToken.None));
 
         Assert.Empty(provider.Requests);

@@ -2,6 +2,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Yukti.Application.Ai;
+using Yukti.Domain.SharedKernel;
 using Yukti.Orchestration;
 
 namespace Yukti.Infrastructure.Ai;
@@ -20,6 +21,15 @@ public sealed class Analyst : IAnalyst
     public const string Capability = "analyst";
     public const string PromptVersion = "v1";
 
+    /// <summary>D5-T8: <see cref="StructuredGenerationRequest"/>'s generic 15s default (meant to
+    /// cover any capability, including fast ones) proved too short for this one's first-ever live
+    /// call — Gemini's real structured-JSON generation latency, discovered running the eval
+    /// harness against the real provider for the first time in this project. 60s is this
+    /// capability's own override via the existing per-request <c>Timeout</c> field, not a change
+    /// to the shared default (that's a cross-cutting call for every capability, not this task's to
+    /// make alone).</summary>
+    private static readonly TimeSpan RealProviderTimeout = TimeSpan.FromSeconds(60);
+
     private readonly IAiPlanningEngine _engine;
     private readonly IModuleRegistry _registry;
 
@@ -29,14 +39,14 @@ public sealed class Analyst : IAnalyst
         _registry = registry;
     }
 
-    public async Task<ParsedIntent> AnalyzeAsync(string description, CancellationToken ct)
+    public async Task<ParsedIntent> AnalyzeAsync(string description, TenantId tenantId, CancellationToken ct)
     {
         var registeredKinds = _registry.All.Select(m => m.Kind.Value).ToHashSet(StringComparer.Ordinal);
         var context = BuildRegistryContext(_registry);
 
         var result = await _engine.PlanAsync(
-            new AiPlanningRequest<ParsedIntent>(Capability, PromptVersion, description, context,
-                (node, _) => Task.FromResult(Validate(node, registeredKinds))),
+            new AiPlanningRequest<ParsedIntent>(Capability, PromptVersion, description, context, tenantId,
+                (node, _) => Task.FromResult(Validate(node, registeredKinds)), Timeout: RealProviderTimeout),
             ct);
 
         return result.Output;

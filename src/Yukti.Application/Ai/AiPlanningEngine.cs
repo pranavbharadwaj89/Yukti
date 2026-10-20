@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Application.Ai;
 
@@ -43,12 +44,19 @@ public interface IAiPlanningEngine
 /// from <see cref="IAiCapabilityOptionsProvider"/> (token-economy spec §R4: configuration, never
 /// a literal spread through callers), so <see cref="AiPlanningEngine"/> sources it per
 /// <see cref="Capability"/> rather than accepting whatever a caller happens to pass.
+///
+/// <see cref="TenantId"/> (D5-T9): every cost record and the budget check itself (§R6) are
+/// tenant-scoped, same as every other query in this codebase (CLAUDE.md §7 — "every repository
+/// query is tenant-scoped"). The weekly cap in <c>plan/AI-BUDGET.md</c> is evaluated per tenant,
+/// not pooled across the whole deployment — a deliberate choice documented in D5-T9's own PLAN.md
+/// entry, not an accident of this field simply existing.
 /// </summary>
 public sealed record AiPlanningRequest<TOutput>(
     string Capability,
     string PromptVersion,
     string Description,
     string PromptContext,
+    TenantId TenantId,
     Func<JsonNode?, CancellationToken, Task<AiValidationOutcome<TOutput>>> Validate,
     TimeSpan Timeout = default);
 
@@ -125,7 +133,10 @@ public interface IAiCostRecorder
 /// no modules registered, assembled prompt over the capability's cap) never reaches the provider, so
 /// it never reaches this type at all — nothing was spent, nothing to record (§R1).
 /// </summary>
+// BudgetRefused (D5-T9/§R10): true only for the budget guard's own refusal (zero tokens, zero
+// cost, Attempt 0) — never for a guardrail reject, which still records nothing at all (§R1).
 public sealed record AiCostRecordData(
+    TenantId TenantId,
     string Capability,
     string Provider,
     string PromptVersion,
@@ -134,7 +145,8 @@ public sealed record AiCostRecordData(
     int InputTokens,
     int OutputTokens,
     TimeSpan Latency,
-    DateTimeOffset OccurredAt);
+    DateTimeOffset OccurredAt,
+    bool BudgetRefused = false);
 
 /// <summary>
 /// D5-T3: "Prompts live in Sarvagna/Prompts/&lt;capability&gt;.v1.md,

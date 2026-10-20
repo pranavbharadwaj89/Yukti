@@ -1,9 +1,12 @@
 using System.CommandLine;
 using Microsoft.Extensions.Logging;
+using Yukti.Application.Ai;
 using Yukti.Cli;
+using Yukti.Cli.Eval;
 using Yukti.Domain.Events;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
+using Yukti.Infrastructure.Ai;
 
 var flowFileArgument = new Argument<FileInfo>("flow-file")
 {
@@ -155,7 +158,111 @@ runCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 });
 
+var dryRunOption = new Option<bool>("--dry-run") { Description = "Print the worst-case cost estimate and exit. Makes no provider calls." };
+var forceOption = new Option<bool>("--force") { Description = "Re-run even if a stored result already exists for this prompt version + registry hash." };
+
+var flowGenerationCommand = new Command("flow-generation",
+    "Evaluate the Analyst/Coder flow-generation pipeline against evals/flow_generation/prompts.json.");
+flowGenerationCommand.Options.Add(dryRunOption);
+flowGenerationCommand.Options.Add(forceOption);
+
+flowGenerationCommand.SetAction(async (parseResult, ct) =>
+{
+    var dryRun = parseResult.GetValue(dryRunOption);
+    var force = parseResult.GetValue(forceOption);
+    var repoRoot = EvalHost.RepoRoot();
+    var cases = FlowGenerationEvaluator.LoadPromptCases(repoRoot);
+
+    // §R9: the dry-run path never builds the real host — no DB connection, no Gemini client,
+    // no outbound call of any kind, even an accidental one.
+    if (dryRun)
+    {
+        var estimateConfig = EvalHost.BuildForEstimate();
+        var estimate = FlowGenerationEvaluator.EstimateCost(estimateConfig, cases);
+        PrintEstimate(estimate, estimateConfig.ProviderId);
+        Console.WriteLine("Dry run - no provider was called."); // plain hyphen: Windows mangles U+2014 on redirected stdout
+        return 0;
+    }
+
+    // A cache hit (§R9: unchanged prompt version + unchanged registry) must also cost nothing —
+    // computed before the real host (and its DB connection) is ever built.
+    var registry = EvalHost.BuildRegistry();
+    var registryHash = FlowGenerationEvaluator.ComputeRegistryHash(registry);
+    if (!force)
+    {
+        var reused = FlowGenerationEvaluator.FindReusableResult(repoRoot, Analyst.PromptVersion, Coder.PromptVersion, registryHash);
+        if (reused is not null)
+        {
+            PrintResult(reused, fromCache: true);
+            return reused.GatePassed ? 0 : 1;
+        }
+    }
+
+    using var loggerFactory = LoggerFactory.Create(logging => logging
+        .AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace)
+        .SetMinimumLevel(LogLevel.Warning));
+
+    using var host = await EvalHost.Build(loggerFactory, ct);
+
+    var estimateForThisRun = FlowGenerationEvaluator.EstimateCost(
+        new EvalHost.EstimateConfig(host.CapabilityOptions, host.Pricing, host.ProviderId, host.Registry), cases);
+    PrintEstimate(estimateForThisRun, host.ProviderId);
+
+    // §R9: "A real run prints the same estimate first and refuses if it would cross the remaining
+    // budget" — checked for real, against the real guard, before a single case runs.
+    var budgetCheck = await host.BudgetGuard.CheckAsync(
+        EvalHost.EvalTenantId, host.ProviderId, estimateForThisRun.WorstCaseInputTokens, estimateForThisRun.WorstCaseOutputTokens, ct);
+    if (!budgetCheck.Allowed)
+    {
+        await Console.Error.WriteLineAsync(
+            $"AI budget reached: ${budgetCheck.SpentUsd:F2} already spent this week, plus this run's own worst-case " +
+            $"${budgetCheck.ProjectedUsd:F2}, would exceed the ${budgetCheck.CapUsd:F2} weekly cap. Refused before any provider call.");
+        return 1;
+    }
+
+    try
+    {
+        var result = await FlowGenerationEvaluator.Run(host, cases, ct);
+        var savedPath = FlowGenerationEvaluator.SaveResult(repoRoot, result);
+        PrintResult(result, fromCache: false);
+        Console.WriteLine($"Result saved to {savedPath}");
+        return result.GatePassed ? 0 : 1;
+    }
+    catch (AiBudgetExceededException ex)
+    {
+        // Mid-run refusal is a budget event, not a structural failure — never saved as if it were
+        // a complete, conclusive evaluation of this prompt version.
+        await Console.Error.WriteLineAsync($"AI budget reached mid-run: {ex.Message} This partial run was not saved.");
+        return 1;
+    }
+
+    static void PrintEstimate(EvalCostEstimate estimate, string providerId)
+    {
+        Console.WriteLine($"Prompts: {estimate.PromptCount}");
+        Console.WriteLine($"Worst-case provider calls: {estimate.WorstCaseProviderCalls}");
+        Console.WriteLine($"Worst-case tokens: {estimate.WorstCaseInputTokens} in / {estimate.WorstCaseOutputTokens} out");
+        Console.WriteLine($"Worst-case cost: ${estimate.WorstCaseCostUsd:F4} ({providerId})");
+    }
+
+    static void PrintResult(EvalRunResult result, bool fromCache)
+    {
+        Console.WriteLine(fromCache
+            ? $"Reusing stored result for {result.AnalystPromptVersion}/{result.CoderPromptVersion}/{result.RegistryHash} (ran {result.RanAtUtc:u})."
+            : $"Ran {result.TotalCount}/10 cases.");
+        foreach (var c in result.Cases)
+        {
+            var detail = c.Error is null ? "" : $" - {c.Error}";
+            Console.WriteLine($"  [{(c.Passed ? "PASS" : "FAIL")}] {c.Id}{detail}");
+        }
+        Console.WriteLine($"{result.PassedCount}/{result.TotalCount} passed - gate (8/10): {(result.GatePassed ? "PASSED" : "FAILED")}");
+    }
+});
+
+var evalCommand = new Command("eval", "Evaluate AI capabilities against their recorded prompt sets.");
+evalCommand.Subcommands.Add(flowGenerationCommand);
+
 var rootCommand = new RootCommand("Yukti — author, validate and run automation flows.");
 rootCommand.Subcommands.Add(runCommand);
+rootCommand.Subcommands.Add(evalCommand);
 
 return await rootCommand.Parse(args).InvokeAsync();

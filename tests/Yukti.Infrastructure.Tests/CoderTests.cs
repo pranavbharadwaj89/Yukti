@@ -114,7 +114,7 @@ public sealed class CoderTests
 
         var provider = new Yukti.Infrastructure.InMemory.Ai.StubAiProvider();
         var engine = new AiPlanningEngine(provider, new FixedPromptLoader("Coder instructions.\n{{CONTEXT}}"),
-            new NoOpCostRecorder(), new FixedCapabilityOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
+            new NoOpCostRecorder(), new FixedCapabilityOptions(), new AlwaysAllowedBudgetGuard(), Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
 
         return (new Coder(engine, registry, resolver), provider);
     }
@@ -135,6 +135,12 @@ public sealed class CoderTests
     {
         public AiCapabilityOptions GetFor(string capability) => AiCapabilityOptions.Default;
         public int MaxValidationRetries => 1;
+    }
+
+    private sealed class AlwaysAllowedBudgetGuard : IAiBudgetGuard
+    {
+        public Task<AiBudgetCheck> CheckAsync(TenantId tenantId, string provider, int estimatedInputTokens, int maxOutputTokens, CancellationToken ct) =>
+            Task.FromResult(new AiBudgetCheck(Allowed: true, NearCap: false, SpentUsd: 0m, ProjectedUsd: 0m, CapUsd: 1000m));
     }
 
     private static readonly ParsedIntent WebAndApiIntent = new(
@@ -201,7 +207,7 @@ public sealed class CoderTests
         var provider = new SequencedProvider(badJson, goodJson);
 
         var engine = new AiPlanningEngine(provider, new FixedPromptLoader("Coder instructions.\n{{CONTEXT}}"),
-            new NoOpCostRecorder(), new FixedCapabilityOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
+            new NoOpCostRecorder(), new FixedCapabilityOptions(), new AlwaysAllowedBudgetGuard(), Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
         var coder = new Coder(engine, registry, resolver);
 
         var flow = await coder.GenerateAsync(new ParsedIntent(["web"], [], []), TestTenant, TestUser, CancellationToken.None);
@@ -343,7 +349,7 @@ public sealed class CoderTests
             .Register(FakeWebModule.Kind, new ActionSchema { ActionName = "navigate", Parameters = new[] { new ParamSpec { Name = "url", Type = ParamType.String, Required = true } } });
         var coderCap = new AiCapabilityOptions(MaxInputChars: 12000, MaxOutputTokens: 2048, Temperature: 0);
         var engine = new AiPlanningEngine(provider, new FixedPromptLoader("Coder instructions.\n{{CONTEXT}}"),
-            new NoOpCostRecorder(), new ConstantCapabilityOptions(coderCap), Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
+            new NoOpCostRecorder(), new ConstantCapabilityOptions(coderCap), new AlwaysAllowedBudgetGuard(), Microsoft.Extensions.Logging.Abstractions.NullLogger<AiPlanningEngine>.Instance);
         var coder = new Coder(engine, registry, resolver);
 
         provider.SetFixture(Coder.Capability, """

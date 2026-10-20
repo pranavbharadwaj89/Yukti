@@ -73,6 +73,11 @@ public readonly record struct AuditEntryId(Guid Value)
     public static AuditEntryId New() => new(Guid.NewGuid());
 }
 
+public readonly record struct AiCostRecordId(Guid Value)
+{
+    public static AiCostRecordId New() => new(Guid.NewGuid());
+}
+
 public readonly record struct TriggerId(Guid Value)
 {
     public static TriggerId New() => new(Guid.NewGuid());

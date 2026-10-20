@@ -38,6 +38,7 @@ public sealed class AiPlanningEngine : IAiPlanningEngine
     private readonly IPromptLoader _promptLoader;
     private readonly IAiCostRecorder _costRecorder;
     private readonly IAiCapabilityOptionsProvider _capabilityOptions;
+    private readonly IAiBudgetGuard _budgetGuard;
     private readonly ILogger<AiPlanningEngine> _logger;
 
     public AiPlanningEngine(
@@ -45,12 +46,14 @@ public sealed class AiPlanningEngine : IAiPlanningEngine
         IPromptLoader promptLoader,
         IAiCostRecorder costRecorder,
         IAiCapabilityOptionsProvider capabilityOptions,
+        IAiBudgetGuard budgetGuard,
         ILogger<AiPlanningEngine> logger)
     {
         _provider = provider;
         _promptLoader = promptLoader;
         _costRecorder = costRecorder;
         _capabilityOptions = capabilityOptions;
+        _budgetGuard = budgetGuard;
         _logger = logger;
     }
 
@@ -83,13 +86,33 @@ public sealed class AiPlanningEngine : IAiPlanningEngine
 
         for (var attempt = 1; attempt <= maxRetries + 1; attempt++)
         {
+            // §R6: worst-case-before-calling, every attempt — spent-so-far can cross the cap
+            // mid-retry even when the first attempt's own projection didn't.
+            var estimatedInputTokens = Math.Max(1, currentPrompt.Length / 4 + description.Length / 4);
+            var budgetCheck = await _budgetGuard.CheckAsync(request.TenantId, _provider.Id, estimatedInputTokens, options.MaxOutputTokens, ct);
+            if (!budgetCheck.Allowed)
+            {
+                await _costRecorder.RecordAsync(
+                    new AiCostRecordData(request.TenantId, request.Capability, _provider.Id, request.PromptVersion,
+                        Attempt: 0, Succeeded: false, InputTokens: 0, OutputTokens: 0, TimeSpan.Zero, DateTimeOffset.UtcNow,
+                        BudgetRefused: true),
+                    ct);
+                throw new AiBudgetExceededException(budgetCheck.SpentUsd, budgetCheck.ProjectedUsd, budgetCheck.CapUsd);
+            }
+            if (budgetCheck.NearCap)
+            {
+                _logger.LogWarning(
+                    "AI budget for tenant {TenantId} is approaching its weekly cap (${SpentUsd:F2} spent, ${CapUsd:F2} cap) — capability {Capability} is proceeding",
+                    request.TenantId, budgetCheck.SpentUsd, budgetCheck.CapUsd, request.Capability);
+            }
+
             var response = await _provider.GenerateStructuredAsync(
                 new StructuredGenerationRequest(request.Capability, currentPrompt, description, JsonSchema: "", options.MaxOutputTokens, request.Timeout),
                 ct);
             var outcome = await request.Validate(response.Parsed, ct);
 
             await _costRecorder.RecordAsync(
-                new AiCostRecordData(request.Capability, _provider.Id, request.PromptVersion, attempt, outcome.IsValid,
+                new AiCostRecordData(request.TenantId, request.Capability, _provider.Id, request.PromptVersion, attempt, outcome.IsValid,
                     response.InputTokens, response.OutputTokens, response.Latency, DateTimeOffset.UtcNow),
                 ct);
 

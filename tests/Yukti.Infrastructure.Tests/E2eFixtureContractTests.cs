@@ -27,6 +27,12 @@ public sealed class E2eFixtureContractTests
         public Task RecordAsync(AiCostRecordData record, CancellationToken ct) => Task.CompletedTask;
     }
 
+    private sealed class AlwaysAllowedBudgetGuard : IAiBudgetGuard
+    {
+        public Task<AiBudgetCheck> CheckAsync(TenantId tenantId, string provider, int estimatedInputTokens, int maxOutputTokens, CancellationToken ct) =>
+            Task.FromResult(new AiBudgetCheck(Allowed: true, NearCap: false, SpentUsd: 0m, ProjectedUsd: 0m, CapUsd: 1000m));
+    }
+
     private sealed class RealModuleResolver : IModuleActionResolver
     {
         private readonly ModuleRegistry _registry;
@@ -57,7 +63,7 @@ public sealed class E2eFixtureContractTests
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Ai:PromptsBasePath"] = Path.Combine(root, "Sarvagna", "Prompts") })
             .Build();
         var engine = new AiPlanningEngine(provider, new FilePromptLoader(config), new NoOpCostRecorder(),
-            new ConfigurationAiCapabilityOptionsProvider(config), NullLogger<AiPlanningEngine>.Instance);
+            new ConfigurationAiCapabilityOptionsProvider(config), new AlwaysAllowedBudgetGuard(), NullLogger<AiPlanningEngine>.Instance);
 
         var registry = new ModuleRegistry();
         registry.Register(new ApiModule());
@@ -65,7 +71,7 @@ public sealed class E2eFixtureContractTests
         registry.Register(new LogsModule());
         registry.Register(new MobileModule());
 
-        var intent = await new Analyst(engine, registry).AnalyzeAsync("Check the Yukti API is up", CancellationToken.None);
+        var intent = await new Analyst(engine, registry).AnalyzeAsync("Check the Yukti API is up", TenantId.New(), CancellationToken.None);
         var flow = await new Coder(engine, registry, new RealModuleResolver(registry))
             .GenerateAsync(intent, TenantId.New(), new UserId(Guid.NewGuid()), CancellationToken.None);
 
