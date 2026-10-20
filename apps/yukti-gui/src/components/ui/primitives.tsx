@@ -59,22 +59,29 @@ export function Card({ className = "", children }: { className?: string; childre
   return <div className={`rounded-lg border border-border bg-surface ${className}`}>{children}</div>;
 }
 
+// Volume 2 §2.6's closed signal-state vocabulary (six states, reused identically everywhere
+// a StepStatus/RunStatus renders): Passed=green, Failed=red, Skipped=dim/outline,
+// Running/Live=amber, AI-assisted=teal (reserved for that state alone — never reused for
+// "pending" or any other non-AI meaning), Flaky=green with an amber outline/asterisk.
+// Published/Cancelled/Draft/Pending are FlowStatus values outside that table; mapped onto the
+// nearest signal rather than left undefined.
 const statusStyles: Record<string, string> = {
   Passed: "bg-success-soft text-success",
   Published: "bg-success-soft text-success",
   Failed: "bg-danger-soft text-danger",
   Cancelled: "bg-danger-soft text-danger",
-  Running: "bg-info-soft text-info",
-  Pending: "bg-info-soft text-info",
+  Running: "bg-accent-soft text-accent",
+  Pending: "bg-surface-2 text-ink-dim",
   Draft: "bg-surface-2 text-ink-dim",
-  Skipped: "bg-warning-soft text-warning",
-  Flaky: "bg-warning-soft text-warning",
+  Skipped: "bg-surface-2 text-ink-dim border border-border",
+  Flaky: "bg-success-soft text-success border border-accent",
 };
 
 export function StatusPill({ status }: { status: string }) {
   const style = statusStyles[status] ?? "bg-surface-2 text-ink-dim";
+  const label = status === "Flaky" ? `${status}*` : status;
   return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-mono font-medium ${style}`}>{status}</span>
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-mono font-medium ${style}`}>{label}</span>
   );
 }
 
