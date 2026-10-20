@@ -853,3 +853,39 @@ Exit check:  at risk — D5-T7 is green, but the Day 5 exit check still needs D5
 Next:        Merge PR #35 (owner). Then D5-T9 *before* D5-T8 — the token-economy spec's own
              timeline: the budget guard (R6) must exist before the eval harness spends real money.
              D5-T9 needs Q4 answered first (Gemini price per 1M tokens for `Ai:Pricing`).
+
+## 2026-10-20 ~16:45 IST — Day 5 (cont.)
+Done:        DISC-13 closed on `feature/nexus-design-system`: full app-wide retheme of
+             `apps/yukti-gui` to match this repo's own Volume 2 ("Nexus") design-system spec —
+             owner's explicit choice ("full app-wide retheme now") over scoping to new pieces only
+             or deferring. `index.css` tokens rewritten to §2.3's dark palette (amber accent/primary,
+             teal reserved for `info`/AI-assisted only — no longer double-booked with primary
+             action), light and high-contrast themes re-derived under the same hue semantics, new
+             `border-strong`/`ink-dimmer` tokens, IBM Plex Mono/Sans via Google Fonts link tags (no
+             new npm dependency). `StatusPill` (`primitives.tsx`) remapped to §2.6's closed
+             six-state signal vocabulary — `Running` moved off teal onto amber (teal is AI-assisted
+             only), `Skipped` moved off amber onto dim/outline, `Flaky` moved off amber onto
+             green-with-amber-outline (+ asterisk). `AiAssistedBadge` renamed to
+             `AiAttributionBadge` (file + component + both call sites) to match §9.3's exact
+             component name — already used the correct teal/info token, just the wrong name.
+Verified:    `npx vitest run src/a11y/contrast.test.ts` — 150/150 (every theme × token-pair ≥ WCAG
+             AA; dark danger-soft and light accent both needed a second-pass hex adjustment to clear
+             4.5:1, confirmed via a throwaway Node ratio script before writing back to `index.css`).
+             Full `vitest run` 247/247, `npm run lint` clean (pre-existing warnings only), `tsc
+             --noEmit` clean, `npm run build` clean. Visually verified against the real local stack
+             (Postgres/Redis already up, API started fresh, `admin@yukti.local` bootstrap login) via
+             a throwaway Playwright script — dashboard, Flows (AI-generation panel + status table),
+             dark/light/high-contrast all screenshot-checked; amber primary actions, correct
+             Draft/Published pill colors, legible in all three themes.
+In progress: D5-T9 (cost records + budget guard) remains paused, stashed on
+             `feature/D5-T9-cost-budget-guard` (TenantId threading done, test call sites and the EF
+             migration for `ai_cost_records` still outstanding) — intentionally set aside for this
+             owner-requested retheme, not abandoned.
+Discovered:  Storybook (§9.6) and visual-regression testing (§9.7) are both out of scope for this
+             pass — real, separate infrastructure undertakings, not "look and feel." Flagging as
+             future DISCOVERED work if the owner wants the design system build-time-enforced rather
+             than code-reviewed.
+Scope guards: none
+Exit check:  on track for this item — DISC-13 fully closed and verified. Day 5 exit overall still
+             blocked on D5-T9/D5-T8 and DISC-10 (owner call), unchanged from the prior entry.
+Next:        Push `feature/nexus-design-system`, open PR, resume D5-T9 from its stash.

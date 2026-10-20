@@ -5,7 +5,7 @@ import type { AiAttribution } from "@/services/types";
  * D5-T6 formula value, shown as-is — never re-derived or guessed here; a missing value says
  * "confidence unavailable" rather than inventing one.
  */
-export function AiAssistedBadge({ attribution }: { attribution: AiAttribution }) {
+export function AiAttributionBadge({ attribution }: { attribution: AiAttribution }) {
   const confidence =
     typeof attribution.confidence === "number"
       ? `${Math.round(attribution.confidence * 100)}% confidence`

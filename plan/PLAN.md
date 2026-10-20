@@ -579,3 +579,19 @@ have no old equivalent.
   full-suite Vitest run (2026-10-18), then passed 3/3 in isolation and on a full re-run. Pre-existing,
   untouched by D5-T7 — likely a `findBy` timeout under full-suite load. Flaky, not fixed; logged so it
   isn't mistaken for a regression next time it fires.
+- [x] DISC-13 `apps/yukti-gui`'s actual tokens/typography/signal-state mapping deviated from this
+  repo's own authoritative design-system spec (`docs/specification/volume-2-frontend-architecture/
+  README.md` §2.3/2.6): teal doubled as both "primary action" and "AI-assisted," no IBM Plex
+  typography, and the `StatusPill` map put `Running` on teal (should be amber/live) and
+  `Skipped`/`Flaky` on amber/warning (should be dim and green-with-amber-outline per §2.6's six-state
+  table). Found while the owner asked for a full look-and-feel pass; owner chose "full app-wide
+  retheme now" over scoping it to new pieces only or deferring it.
+  **Closed 2026-10-20:** `index.css` tokens rewritten to §2.3's dark palette (amber accent, teal
+  reserved for `info`/AI-assisted only, new `border-strong`/`ink-dimmer` tokens), light and
+  high-contrast themes re-derived under the same hue semantics, IBM Plex Mono/Sans loaded via Google
+  Fonts link tags (no new npm dependency). `StatusPill` remapped to §2.6's closed six-state
+  vocabulary. `AiAssistedBadge` renamed to `AiAttributionBadge` to match §9.3's exact component name.
+  ✔ `npx vitest run src/a11y/contrast.test.ts` (150/150, every theme/token pair ≥ WCAG AA) + full
+  suite 247/247 + `npm run lint` + `tsc --noEmit` + `npm run build`, all clean; visually verified
+  against the real stack (dark/light/high-contrast) via Playwright screenshots. Storybook (§9.6) and
+  visual-regression testing (§9.7) are out of scope — not built, not required by this pass.

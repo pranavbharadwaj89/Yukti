@@ -12,7 +12,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { AiGenerationPanel, MAX_DESCRIPTION_LENGTH, REUSE_WINDOW_MS } from "./ai-generation-panel";
-import { AiAssistedBadge } from "./ai-assisted-badge";
+import { AiAttributionBadge } from "./ai-attribution-badge";
 import { aiApi, ApiError, flowsApi } from "@/services/api-client";
 import type { GenerateFlowResponse } from "@/services/types";
 
@@ -223,14 +223,14 @@ describe("AiGenerationPanel", () => {
   });
 });
 
-describe("AiAssistedBadge", () => {
+describe("AiAttributionBadge", () => {
   it("shows the backend's own confidence as a percentage", () => {
-    render(<AiAssistedBadge attribution={{ capability: "coder", confidence: 0.6, modelIdentifier: "gemini", promptVersion: "v1" }} />);
+    render(<AiAttributionBadge attribution={{ capability: "coder", confidence: 0.6, modelIdentifier: "gemini", promptVersion: "v1" }} />);
     expect(screen.getByText(/AI-assisted · 60% confidence/)).toBeInTheDocument();
   });
 
   it('says "confidence unavailable" rather than inventing a number', () => {
-    render(<AiAssistedBadge attribution={{ capability: "coder", confidence: null, modelIdentifier: "gemini", promptVersion: "v1" }} />);
+    render(<AiAttributionBadge attribution={{ capability: "coder", confidence: null, modelIdentifier: "gemini", promptVersion: "v1" }} />);
     expect(screen.getByText(/AI-assisted · confidence unavailable/)).toBeInTheDocument();
   });
 });

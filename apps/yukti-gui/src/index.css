@@ -1,124 +1,143 @@
 @import "tailwindcss";
 
-/* FR-STACK-03/FR-CL-01: Yukti's own design tokens — Tailwind's theme below
-   only ever references these, never a hardcoded hex. Same visual language
-   as this session's PRD-status artifact (deep slate neutrals, one teal
-   accent, monospace for technical labels) so Yukti's own tooling reads as
-   one product, not two unrelated skins.
+/* FR-STACK-03/FR-CL-01: Yukti's own design tokens, implementing the Nexus design system
+   (docs/specification/volume-2-frontend-architecture/README.md §2-3) — a closed, four-color
+   signal vocabulary (amber = primary action/live, teal = AI-assisted/verified, red = fail,
+   green = pass), never used decoratively (§2.3's own governance rule), over an "instrument
+   panel" dark-slate ground. Token NAMES stay --yukti-* (CLAUDE.md: use this repo's own names,
+   don't rename to the blueprint's literal --nexus-* prefix) — only the VALUES and semantic
+   mapping change to match the spec. `info` is deliberately the same teal as the AI-assisted
+   signal, not a separate hue: §2.3 names "--nexus-teal" as serving "secondary signal,
+   AI-assisted indicator, verified states" all at once — one color, one meaning, reused.
    FR-UX-01: dark is the default ground; :root[data-theme] overrides in
    both directions so the in-app theme toggle always wins over the OS
    preference. */
 :root {
-  --yukti-bg: #0e1416;
-  --yukti-surface: #141c1f;
-  --yukti-surface-2: #1c262a;
-  --yukti-border: #2a363a;
-  --yukti-ink: #e7eef0;
-  --yukti-ink-dim: #9aaab0;
-  --yukti-accent: #5ab4d1;
-  --yukti-accent-ink: #08151a;
-  --yukti-accent-soft: #173038;
+  --yukti-bg: #0c1015;
+  --yukti-surface: #12171f;
+  --yukti-surface-2: #161c25;
+  --yukti-border: #232a35;
+  --yukti-border-strong: #333c4a;
+  --yukti-ink: #e7eaee;
+  --yukti-ink-dim: #8892a0;
+  --yukti-ink-dimmer: #5b6472;
+  --yukti-accent: #e8a33d;
+  --yukti-accent-ink: #1a1206;
+  --yukti-accent-soft: #2e2510;
 
-  --yukti-success: #4cbe7d;
+  --yukti-success: #57ab5a;
   --yukti-success-soft: #173225;
-  --yukti-warning: #e0a83e;
-  --yukti-warning-soft: #2e2510;
-  --yukti-danger: #e2695a;
-  --yukti-danger-soft: #301917;
-  --yukti-info: #5ab4d1;
-  --yukti-info-soft: #173038;
+  --yukti-warning: #c9852e;
+  --yukti-warning-soft: #2b1d0d;
+  --yukti-danger: #e5534b;
+  --yukti-danger-soft: #2a1412;
+  --yukti-info: #4fb0a5;
+  --yukti-info-soft: #122e2a;
 
-  --yukti-focus-ring: #5ab4d1;
+  --yukti-focus-ring: #e8a33d;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --yukti-bg: #f4f6f7;
+    --yukti-bg: #f7f8fa;
     --yukti-surface: #ffffff;
-    --yukti-surface-2: #e9edee;
-    --yukti-border: #d3dadc;
-    --yukti-ink: #172023;
-    --yukti-ink-dim: #55636a;
-    --yukti-accent: #1c6e8c;
+    --yukti-surface-2: #eef0f2;
+    --yukti-border: #d7dbe0;
+    --yukti-border-strong: #b9c0c8;
+    --yukti-ink: #1a1f26;
+    --yukti-ink-dim: #4c5663;
+    --yukti-ink-dimmer: #7c8692;
+    --yukti-accent: #8a5600;
     --yukti-accent-ink: #ffffff;
-    --yukti-accent-soft: #dcebf0;
+    --yukti-accent-soft: #fbead2;
 
     --yukti-success: #1f6b40;
     --yukti-success-soft: #e3f1e9;
-    --yukti-warning: #7a5a12;
+    --yukti-warning: #8a5a12;
     --yukti-warning-soft: #f6ecd8;
     --yukti-danger: #a63a2e;
     --yukti-danger-soft: #fbe7e4;
-    --yukti-info: #1c6e8c;
-    --yukti-info-soft: #dcebf0;
+    --yukti-info: #15756b;
+    --yukti-info-soft: #dcf0ed;
   }
 }
 
 :root[data-theme="dark"] {
-  --yukti-bg: #0e1416;
-  --yukti-surface: #141c1f;
-  --yukti-surface-2: #1c262a;
-  --yukti-border: #2a363a;
-  --yukti-ink: #e7eef0;
-  --yukti-ink-dim: #9aaab0;
-  --yukti-accent: #5ab4d1;
-  --yukti-accent-ink: #08151a;
-  --yukti-accent-soft: #173038;
-  --yukti-success: #4cbe7d;
+  --yukti-bg: #0c1015;
+  --yukti-surface: #12171f;
+  --yukti-surface-2: #161c25;
+  --yukti-border: #232a35;
+  --yukti-border-strong: #333c4a;
+  --yukti-ink: #e7eaee;
+  --yukti-ink-dim: #8892a0;
+  --yukti-ink-dimmer: #5b6472;
+  --yukti-accent: #e8a33d;
+  --yukti-accent-ink: #1a1206;
+  --yukti-accent-soft: #2e2510;
+  --yukti-success: #57ab5a;
   --yukti-success-soft: #173225;
-  --yukti-warning: #e0a83e;
-  --yukti-warning-soft: #2e2510;
-  --yukti-danger: #e2695a;
-  --yukti-danger-soft: #301917;
-  --yukti-info: #5ab4d1;
-  --yukti-info-soft: #173038;
+  --yukti-warning: #c9852e;
+  --yukti-warning-soft: #2b1d0d;
+  --yukti-danger: #e5534b;
+  --yukti-danger-soft: #2a1412;
+  --yukti-info: #4fb0a5;
+  --yukti-info-soft: #122e2a;
+  --yukti-focus-ring: #e8a33d;
 }
 
 :root[data-theme="light"] {
-  --yukti-bg: #f4f6f7;
+  --yukti-bg: #f7f8fa;
   --yukti-surface: #ffffff;
-  --yukti-surface-2: #e9edee;
-  --yukti-border: #d3dadc;
-  --yukti-ink: #172023;
-  --yukti-ink-dim: #55636a;
-  --yukti-accent: #1c6e8c;
+  --yukti-surface-2: #eef0f2;
+  --yukti-border: #d7dbe0;
+  --yukti-border-strong: #b9c0c8;
+  --yukti-ink: #1a1f26;
+  --yukti-ink-dim: #4c5663;
+  --yukti-ink-dimmer: #7c8692;
+  --yukti-accent: #8a5600;
   --yukti-accent-ink: #ffffff;
-  --yukti-accent-soft: #dcebf0;
+  --yukti-accent-soft: #fbead2;
   --yukti-success: #1f6b40;
   --yukti-success-soft: #e3f1e9;
-  --yukti-warning: #7a5a12;
+  --yukti-warning: #8a5a12;
   --yukti-warning-soft: #f6ecd8;
   --yukti-danger: #a63a2e;
   --yukti-danger-soft: #fbe7e4;
-  --yukti-info: #1c6e8c;
-  --yukti-info-soft: #dcebf0;
+  --yukti-info: #15756b;
+  --yukti-info-soft: #dcf0ed;
+  --yukti-focus-ring: #8a5600;
 }
 
 /* FR-PHIL-03/FR-UX-01: high-contrast variant — larger contrast ratios
-   between ink/bg and a border that's always visible, not merely themed. */
+   between ink/bg and a border that's always visible, not merely themed.
+   Volume 2 §3.7: a fourth, complete, independently-specified token set,
+   not a tweak of dark/light. */
 :root[data-theme="high-contrast"] {
   --yukti-bg: #000000;
   --yukti-surface: #0a0a0a;
   --yukti-surface-2: #171717;
   --yukti-border: #6b6b6b;
+  --yukti-border-strong: #9a9a9a;
   --yukti-ink: #ffffff;
   --yukti-ink-dim: #d4d4d4;
-  --yukti-accent: #7cd6f2;
+  --yukti-ink-dimmer: #a8a8a8;
+  --yukti-accent: #ffc250;
   --yukti-accent-ink: #000000;
-  --yukti-accent-soft: #003a47;
+  --yukti-accent-soft: #3d2900;
   --yukti-success: #6ee8a0;
   --yukti-success-soft: #04331a;
-  --yukti-warning: #ffcf5c;
+  --yukti-warning: #ffc250;
   --yukti-warning-soft: #3d2900;
   --yukti-danger: #ff9284;
   --yukti-danger-soft: #440e08;
-  --yukti-info: #7cd6f2;
-  --yukti-info-soft: #003a47;
+  --yukti-info: #7cebdb;
+  --yukti-info-soft: #00332c;
+  --yukti-focus-ring: #ffc250;
 }
 
 @theme {
-  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   --color-bg: var(--yukti-bg);
   --color-surface: var(--yukti-surface);
