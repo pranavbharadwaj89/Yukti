@@ -34,6 +34,10 @@ public sealed class Coder : ICoder
     public const string Capability = "coder";
     public const string PromptVersion = "v1";
 
+    /// <summary>D5-T8: see <see cref="Analyst.RealProviderTimeout"/>'s own doc comment — same
+    /// discovery, same reasoning, same per-request override rather than a shared-default change.</summary>
+    private static readonly TimeSpan RealProviderTimeout = TimeSpan.FromSeconds(60);
+
     private readonly IAiPlanningEngine _engine;
     private readonly IModuleRegistry _registry;
     private readonly IModuleActionResolver _resolver;
@@ -52,7 +56,7 @@ public sealed class Coder : ICoder
 
         var result = await _engine.PlanAsync(
             new AiPlanningRequest<ParsedFlowSpec>(Capability, PromptVersion, description, context, tenantId,
-                (node, innerCt) => ValidateAsync(node, intent, tenantId, createdBy, innerCt)),
+                (node, innerCt) => ValidateAsync(node, intent, tenantId, createdBy, innerCt), Timeout: RealProviderTimeout),
             ct);
 
         // D5-T6: confidence (and the capability/model/prompt version alongside it) is only known
