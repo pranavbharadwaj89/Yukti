@@ -988,3 +988,35 @@ Next:        Owner: merge PR #37 via the GitHub UI when convenient. Re-run
              recovers (no code change needed) to actually close D5-T8. Push
              `feature/D5-T8-eval-harness` and open its PR now regardless, so the harness itself is
              reviewable while the live gate is pending.
+
+## 2026-10-20 ~21:15 IST — Day 5 (cont.)
+Done:        Owner merged PR #38 (D5-T8) directly, then flagged the api-types-drift CI failure on
+             PR #37: the new `GET /api/v1/ai/usage` endpoint (D5-T9) was never regenerated into
+             `apps/yukti-gui/src/api/generated/schema.ts`. Fixed on the live branch — started the
+             real API, ran `npm run generate:api` against it, the diff was exactly the new
+             endpoint's path block. Rebased cleanly onto the owner's #38 merge, rebuilt, pushed; all
+             6 PR #37 checks went green (including api-types-drift) and the owner merged it. `main`
+             now has D5-T9 and D5-T8 both in. Deleted both now-merged feature branches, local and
+             remote. Synced `main`, rebuilt: 231/231 full suite green (one single flaky timeout in
+             `EvalFlowGenerationTests`'s reuse test under full-suite parallel load, passed cleanly
+             in isolation and on a clean re-run — logged here, not fixed, same pattern as DISC-12).
+Discovered:  DISC-14 (logged in PLAN.md): the live eval's actual root cause is now confirmed, not
+             just "an outage." A third real attempt (~1.5h after the first two) got Gemini's real
+             answer: HTTP 429, `generate_content_free_tier_requests` quota, limit 20/day for
+             `gemini-3.8-flash`, already exhausted, ~15h to reset. The configured key is **free
+             tier**, not the dollar-metered key the $30/week `ai_cost_records` budget guard
+             (D5-T9) was designed around — and that same 20/day ceiling is shared with Sarvaghna's
+             own commit/push-hook AI reviews, several of which showed "Skipped (503)" in today's own
+             commits, independently corroborating the same underlying constraint. The dollar-based
+             guard has no visibility into this request-count ceiling at all. Flagged as an owner
+             decision (upgrade the key off free tier vs. build quota tracking into
+             `IAiBudgetGuard`) — not built silently, cross-cutting and partly outside .NET's reach
+             (Sarvaghna's hook is Node).
+Scope guards: none
+Exit check:  at risk — D5-T9 and D5-T8's code are both done and in `main`. D5-T8's own live ≥8/10
+             gate still has not run to completion — genuinely blocked on the free-tier quota
+             resetting (~2026-10-21 06:00 UTC) or a key upgrade, not on anything left to build.
+             DISC-10 (legacy selector-heal literals) still needs an owner call.
+Next:        Once the quota resets or the key is upgraded: `dotnet run --project src/Yukti.Cli --
+             eval flow-generation --force` to actually close D5-T8. In parallel, owner decision
+             needed on DISC-14 and DISC-10.
