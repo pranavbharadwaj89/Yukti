@@ -449,31 +449,34 @@ have no old equivalent.
   module correctness, assertion presence, correct refusal (prompts 9–10); results written per
   prompt-version + timestamp; **gate: ≥ 8/10 structural validity**, up to 3 prompt versions, then escalate
   ✔ `dotnet run --project src/Yukti.Cli -- eval flow-generation` → 8/10 or better — **never cut**
-  **BLOCKED 2026-10-20** on `feature/D5-T8-eval-harness` (branched off `feature/D5-T9-cost-budget-guard`
-  since PR #37 is open but not yet merged — see that PR's own note). The harness itself is fully
-  built and verified: `eval flow-generation --dry-run` (zero DB/provider contact, prints a
-  worst-case estimate from the capabilities' own configured caps), the real run wired to the same
-  EF-backed `ai_cost_records`/`IAiBudgetGuard` the API uses (one source of truth for spend, under a
-  fixed eval tenant so cost actually accumulates across runs — not `run`'s own per-call random
-  tenant), result storage keyed by prompt-version + registry hash with reuse-unless-`--force`, and
-  early stop once 3 structural failures make 8/10 impossible. Two new stub-mode tests
-  (`EvalFlowGenerationTests`: early-stop triggers and stops after exactly 3 failures with no 4th
-  call; an unchanged version+registry reuses the stored result with 0 provider calls, `--force`
-  genuinely re-runs) plus the dry-run test — 231/231 full suite, `dotnet format --verify-no-changes`
-  clean. **What's blocked:** this is the project's first-ever live Gemini call (confirmed via
-  `plan/AI-BUDGET.md`'s own "no live call has been made yet" note going into this task) — it
-  surfaced two real gaps, both fixed in this same branch: (1) the 15s provider-call default
-  (`StructuredGenerationRequest.DefaultTimeout`) was too short for real Gemini structured-output
-  latency; raised Analyst/Coder's own calls to 60s via the existing per-request `Timeout` override,
-  not a change to the shared default (cross-cutting, not this task's call alone). (2) after that
-  fix, two consecutive real attempts both got Gemini 503 "This model is currently experiencing high
-  demand" (`gemini-3.8-flash`, ADR-0004) — a provider-side outage, not a defect: confirmed zero cost
-  was recorded either time (a provider-level failure never reaches the cost recorder), and the
-  early-stop correctly capped both attempts at 3/10 cases before any further spend. Per the work
-  loop's "Red x2 -> mark BLOCKED, move on" — not retried a third time against a live outage.
-  **Next:** re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` once Gemini
-  recovers; no code change needed. Three real (failed) attempts are preserved under
-  `evals/flow_generation/results/` as an honest record, not deleted.
+  **BLOCKED 2026-10-20**, merged to `main` via PR #37/#38 (the harness code itself; the live gate
+  is not yet green). The harness is fully built and verified: `eval flow-generation --dry-run`
+  (zero DB/provider contact, prints a worst-case estimate from the capabilities' own configured
+  caps), the real run wired to the same EF-backed `ai_cost_records`/`IAiBudgetGuard` the API uses
+  (one source of truth for spend, under a fixed eval tenant so cost actually accumulates across
+  runs — not `run`'s own per-call random tenant), result storage keyed by prompt-version + registry
+  hash with reuse-unless-`--force`, and early stop once 3 structural failures make 8/10 impossible.
+  Two stub-mode tests plus the dry-run test — 231/231 full suite, `dotnet format
+  --verify-no-changes` clean.
+  **What's blocked, and why (root cause now confirmed, not just "an outage"):** this is the
+  project's first-ever live Gemini call (confirmed via `plan/AI-BUDGET.md`'s own "no live call has
+  been made yet" note). Along the way: (1) the 15s provider-call default was too short for real
+  Gemini structured-output latency — raised Analyst/Coder's own calls to 60s via the existing
+  per-request `Timeout` override (not the shared default). (2) The first two real attempts got
+  Gemini 503 "high demand." (3) A third attempt, ~1.5h later, got the real answer: **HTTP 429,
+  `generativelanguage.googleapis.com/generate_content_free_tier_requests`, limit 20/day for
+  `gemini-3.8-flash`, quota already exhausted, retry in ~15h.** The configured key is a **free-tier**
+  key with a hard 20-requests-per-day ceiling — not a dollar-metered pay-as-you-go key the $30/week
+  `ai_cost_records` budget guard was designed around. That same 20/day quota is also spent by
+  Sarvaghna's own commit/push-hook AI reviews (confirmed: several of today's commits/pushes showed
+  "AI Semantic Review: Skipped (Gemini API returned error 503)" in their own Sarvaghna output,
+  competing for the identical quota). See new DISC-14 below — the dollar-based budget guard has no
+  visibility into this request-count ceiling at all; it would happily "allow" a call that the
+  provider itself then hard-refuses.
+  **Next:** re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` after the
+  quota resets (~2026-10-21 06:00 UTC) or once the key is upgraded off the free tier; no code change
+  needed either way. Four real (failed) attempts are preserved under `evals/flow_generation/results/`
+  as an honest record, not deleted.
 - [x] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
   provider, model, tokens, cost, prompt version, tenant); configured monthly cap, 80% warns, 100% returns
   503 "AI budget reached" while the rest of Yukti keeps working; `GET /api/v1/ai/usage` (admin role)
@@ -644,3 +647,17 @@ have no old equivalent.
   suite 247/247 + `npm run lint` + `tsc --noEmit` + `npm run build`, all clean; visually verified
   against the real stack (dark/light/high-contrast) via Playwright screenshots. Storybook (§9.6) and
   visual-regression testing (§9.7) are out of scope — not built, not required by this pass.
+- [ ] DISC-14 `IAiBudgetGuard` (D5-T9) only models dollar cost against the configured `$30/week` cap
+  — it has no concept of a provider's own request-count quota. Found running D5-T8's live eval: the
+  configured Gemini key is a **free-tier** key with a hard ceiling of 20 `generateContent` calls per
+  day for `gemini-3.8-flash` (confirmed via the provider's own 429 `RESOURCE_EXHAUSTED` response),
+  shared across *every* caller of that key — Sarvagna's own Analyst/Coder calls AND Sarvaghna's
+  separate commit/push-hook AI reviews (`sarvaghna/sarvaghna.mjs`) draw from the identical daily
+  allowance. The dollar-based guard would happily "allow" a call (worst-case ~$0.03, nowhere near
+  $30) that the provider itself then hard-refuses with no budget-guard visibility into why. Two
+  different fixes, an owner decision, not a silent pick: (a) upgrade the key off the free tier (the
+  $30/week dollar model then becomes the real constraint again, as designed), or (b) teach
+  `IAiBudgetGuard`/`ai_cost_records` to also track and cap daily request *count*, independent of
+  cost, and have Sarvaghna's own hook calls write to the same ledger. Not built here — this is a new,
+  cross-cutting capability (and Sarvaghna's hook is Node, outside `ai_cost_records`' own .NET/EF
+  reach), not a one-line fix inside D5-T8.
