@@ -76,6 +76,16 @@ public sealed class AiPlanningEngineTests
             Task.FromResult(new AiBudgetCheck(Allowed: true, NearCap: false, SpentUsd: 0m, ProjectedUsd: 0m, CapUsd: 1000m));
     }
 
+    /// <summary>DISC-14: lets a test dictate exactly which refusal shape the guard returns, to
+    /// prove the engine raises the *right* exception type for which constraint failed.</summary>
+    private sealed class FixedResultBudgetGuard : IAiBudgetGuard
+    {
+        private readonly AiBudgetCheck _result;
+        public FixedResultBudgetGuard(AiBudgetCheck result) => _result = result;
+        public Task<AiBudgetCheck> CheckAsync(TenantId tenantId, string provider, int estimatedInputTokens, int maxOutputTokens, CancellationToken ct) =>
+            Task.FromResult(_result);
+    }
+
     private static ProviderResponse Response(string json, int inputTokens = 10, int outputTokens = 20) =>
         new(json, JsonNode.Parse(json), inputTokens, outputTokens, TimeSpan.FromMilliseconds(5));
 
@@ -362,6 +372,48 @@ public sealed class AiPlanningEngineTests
             CancellationToken.None));
 
         Assert.Empty(provider.Requests);
+    }
+
+    [Fact]
+    public async Task A_cost_cap_refusal_raises_AiBudgetExceededException_not_the_quota_one()
+    {
+        // DISC-14: QuotaExceeded false — this is the pre-existing §R6 dollar-cap refusal, unchanged.
+        var provider = new SequencedProvider();
+        var costs = new RecordingCostRecorder();
+        var guard = new FixedResultBudgetGuard(new AiBudgetCheck(
+            Allowed: false, NearCap: true, SpentUsd: 29m, ProjectedUsd: 2m, CapUsd: 30m, QuotaExceeded: false));
+        var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs, budgetGuard: guard);
+
+        await Assert.ThrowsAsync<AiBudgetExceededException>(() => engine.PlanAsync(
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysValid)),
+            CancellationToken.None));
+
+        Assert.Empty(provider.Requests);
+        Assert.Single(costs.Records); // the zero-cost budget-refusal row still gets written
+        Assert.True(costs.Records[0].BudgetRefused);
+    }
+
+    [Fact]
+    public async Task A_request_count_quota_refusal_raises_AiRequestQuotaExceededException_not_the_dollar_one()
+    {
+        // DISC-14: the real-world case — a free-tier key's daily request ceiling hit while cost is
+        // nowhere near the dollar cap; the engine must raise the quota-specific exception, not the
+        // generic budget one, so callers (and the owner reading the error) see the real cause.
+        var provider = new SequencedProvider();
+        var costs = new RecordingCostRecorder();
+        var guard = new FixedResultBudgetGuard(new AiBudgetCheck(
+            Allowed: false, NearCap: false, SpentUsd: 0.03m, ProjectedUsd: 0m, CapUsd: 30m,
+            QuotaExceeded: true, RequestsToday: 20, DailyRequestQuota: 20));
+        var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs, budgetGuard: guard);
+
+        var ex = await Assert.ThrowsAsync<AiRequestQuotaExceededException>(() => engine.PlanAsync(
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysValid)),
+            CancellationToken.None));
+
+        Assert.Contains("20 of 20", ex.Message);
+        Assert.Empty(provider.Requests);
+        Assert.Single(costs.Records);
+        Assert.True(costs.Records[0].BudgetRefused);
     }
 
     private sealed class FilePromptLoaderThatAlwaysMisses : IPromptLoader

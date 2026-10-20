@@ -1046,3 +1046,47 @@ Exit check:  on track for this item — DISC-10 fully closed. Day 5 exit overall
 Next:        Push `fix/disc-10-selector-heal-confidence`, open PR. Then start DISC-14 (request-count
              quota tracking in `IAiBudgetGuard`, plus wiring Sarvaghna's Node-side hook into the same
              ledger) — the larger of the two owner-approved tasks.
+
+## 2026-10-20 ~22:15 IST — Day 5 (cont.)
+Done:        DISC-14 closed on `feat/disc-14-request-quota-guard`, owner's explicit choice (build
+             request-count quota tracking, not upgrade the key). New `IAiRequestQuotaLedger` port;
+             `AiBudgetCheck` extended with `QuotaExceeded`/`RequestsToday`/`DailyRequestQuota`
+             (default unbounded so a paid-tier/unconfigured environment is never artificially
+             capped); `AiBudgetGuard` now checks both the dollar cap and the request quota, either
+             refusing; the engine raises a new `AiRequestQuotaExceededException`, distinct from the
+             dollar one, when that's the actual cause. `FileAiRequestQuotaLedger`: one shared,
+             append-only JSON-lines file at `sarvaghna/ledger/gemini-requests.jsonl` (same
+             gitignored directory Sarvaghna's own decision log already uses) — file-based, not
+             Postgres, since the constraint is per API key, shared across two runtimes with no
+             other common storage. `sarvaghna/core/gemini-client.mjs` (the one chokepoint all 5
+             Node callers already go through) now checks/records against the identical file.
+             `GET /api/v1/ai/usage` reports `RequestsToday`/`DailyRequestQuota` too (global, unlike
+             every other field there — confirmed no frontend schema drift, since this endpoint's
+             response body was never declared to Swagger in the first place, DISC-3).
+Discovered:  A real bug, caught manually verifying end-to-end rather than only in unit tests: .NET's
+             `JsonSerializer` defaults to PascalCase, Node's `JSON.stringify` naturally writes
+             camelCase — each side could write its own ledger lines fine but silently failed to
+             *count* the other's (no exception, just fields deserializing to their default values,
+             undercounting to 0 instead of the real 20). Caught by manually seeding the real shared
+             ledger with today's known 20/20 usage (confirmed earlier via Gemini's own 429) and
+             watching the CLI eval still call Gemini anyway and waste 3 more real requests against
+             an already-exhausted quota; fixed with an explicit camelCase `JsonSerializerOptions`,
+             confirmed by re-running the identical real scenario (now correctly refused, 0 further
+             calls) and a new test reading a hand-written camelCase line in Node's own exact shape.
+             A second bug found in the same pass: the CLI's own pre-flight message was hardcoded to
+             the dollar-cap wording regardless of which constraint actually failed — fixed to branch
+             on `QuotaExceeded`.
+Verified:    9 new/extended .NET tests + 3 new Node tests (`npm test --prefix sarvaghna`, new
+             script, built-in `node --test`, no new npm package). Full .NET suite 242/242, `dotnet
+             format --verify-no-changes` clean. Verified against the real, live-exhausted quota —
+             the CLI eval now correctly refuses with the quota-specific message instead of wasting
+             real requests, the exact end-to-end proof unit tests alone couldn't give.
+Scope guards: none
+Exit check:  on track for this item — DISC-14 fully closed and proven against real, live state, not
+             just mocks. D5-T8's own live ≥8/10 gate is still blocked on the same quota resetting
+             (unaffected by this work — the guard now just refuses *faster and more clearly*, it
+             doesn't bypass the provider's own real limit).
+Next:        Push `feat/disc-14-request-quota-guard`, open PR. Then: wait for the Gemini quota to
+             reset to actually close D5-T8 (no code change needed), or ask the owner whether to
+             upgrade the key sooner.
+>>>>>>> 8647097 (feat(ai): DISC-14 request-count quota guard, shared with Sarvaghna's own hook)

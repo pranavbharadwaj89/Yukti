@@ -97,6 +97,12 @@ public sealed class AiPlanningEngine : IAiPlanningEngine
                         Attempt: 0, Succeeded: false, InputTokens: 0, OutputTokens: 0, TimeSpan.Zero, DateTimeOffset.UtcNow,
                         BudgetRefused: true),
                     ct);
+                // DISC-14: a request-count quota breach (free-tier key) is a different constraint
+                // from the dollar cap, and gets its own, distinctly-worded exception.
+                if (budgetCheck.QuotaExceeded)
+                {
+                    throw new AiRequestQuotaExceededException(budgetCheck.RequestsToday, budgetCheck.DailyRequestQuota);
+                }
                 throw new AiBudgetExceededException(budgetCheck.SpentUsd, budgetCheck.ProjectedUsd, budgetCheck.CapUsd);
             }
             if (budgetCheck.NearCap)

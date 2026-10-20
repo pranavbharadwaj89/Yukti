@@ -102,7 +102,7 @@ Return pure JSON:
   "feedback": "1-2 sentence honest assessment, naming the biggest real gap if any"
 }`;
 
-    const result = await callGeminiJson({ prompt, maxOutputTokens: 8192 });
+    const result = await callGeminiJson({ prompt, maxOutputTokens: 8192, capability: 'crew-reviewer' });
     if (!result.ok) {
       this.lastAiFallbackReason = result.reason;
       return null;

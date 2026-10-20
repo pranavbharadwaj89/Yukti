@@ -658,17 +658,40 @@ have no old equivalent.
   suite 247/247 + `npm run lint` + `tsc --noEmit` + `npm run build`, all clean; visually verified
   against the real stack (dark/light/high-contrast) via Playwright screenshots. Storybook (§9.6) and
   visual-regression testing (§9.7) are out of scope — not built, not required by this pass.
-- [ ] DISC-14 `IAiBudgetGuard` (D5-T9) only models dollar cost against the configured `$30/week` cap
-  — it has no concept of a provider's own request-count quota. Found running D5-T8's live eval: the
-  configured Gemini key is a **free-tier** key with a hard ceiling of 20 `generateContent` calls per
-  day for `gemini-3.8-flash` (confirmed via the provider's own 429 `RESOURCE_EXHAUSTED` response),
-  shared across *every* caller of that key — Sarvagna's own Analyst/Coder calls AND Sarvaghna's
-  separate commit/push-hook AI reviews (`sarvaghna/sarvaghna.mjs`) draw from the identical daily
-  allowance. The dollar-based guard would happily "allow" a call (worst-case ~$0.03, nowhere near
-  $30) that the provider itself then hard-refuses with no budget-guard visibility into why. Two
-  different fixes, an owner decision, not a silent pick: (a) upgrade the key off the free tier (the
-  $30/week dollar model then becomes the real constraint again, as designed), or (b) teach
-  `IAiBudgetGuard`/`ai_cost_records` to also track and cap daily request *count*, independent of
-  cost, and have Sarvaghna's own hook calls write to the same ledger. Not built here — this is a new,
-  cross-cutting capability (and Sarvaghna's hook is Node, outside `ai_cost_records`' own .NET/EF
-  reach), not a one-line fix inside D5-T8.
+- [x] DISC-14 `IAiBudgetGuard` (D5-T9) only modeled dollar cost against the $30/week cap — no
+  concept of a provider's own request-count quota. Found running D5-T8's live eval: the configured
+  Gemini key is **free-tier**, hard ceiling 20 `generateContent` calls/day for `gemini-3.8-flash`
+  (confirmed via the provider's own 429 `RESOURCE_EXHAUSTED`), shared across *every* caller of that
+  key — Sarvagna's own Analyst/Coder calls AND Sarvaghna's separate commit/push-hook AI reviews
+  (`sarvaghna/sarvaghna.mjs`) draw from the identical daily allowance. Owner's explicit choice:
+  build request-count quota tracking (not upgrade the key).
+  **Closed 2026-10-20:** `IAiRequestQuotaLedger` (new port, `Yukti.Application.Ai`) + `AiBudgetCheck`
+  extended with `QuotaExceeded`/`RequestsToday`/`DailyRequestQuota` (defaulted so an unconfigured/
+  paid-tier environment is never artificially capped). `AiBudgetGuard` now checks both constraints,
+  either refusing; the engine raises a new, distinctly-worded `AiRequestQuotaExceededException`
+  when it's the quota, not the dollar cap. `FileAiRequestQuotaLedger`: one shared, append-only
+  JSON-lines file at `sarvaghna/ledger/gemini-requests.jsonl` (same gitignored `ledger/` directory
+  Sarvaghna's own decision log already uses) — file-based, not Postgres, since the constraint is
+  per API *key*, shared across two runtimes with no other common storage. `sarvaghna/core/
+  gemini-client.mjs` (the one chokepoint all 5 Node callers already go through) now checks/records
+  against the identical file, so neither side can blow past the other's calls unknowingly.
+  `GET /api/v1/ai/usage` now also reports `RequestsToday`/`DailyRequestQuota` (global, not
+  tenant-scoped, unlike every other field there).
+  **A real bug caught and fixed while verifying end-to-end, not just in unit tests:** .NET's
+  `JsonSerializer` defaults to PascalCase; Node's `JSON.stringify` naturally writes camelCase. Each
+  side could write its own lines but silently fail to *count* the other's — not an exception, just
+  `TimestampUtc` deserializing to its default value, a result of `0` instead of `20`. Caught by
+  manually seeding the real shared ledger with the day's known 20/20 usage and watching the CLI
+  eval still call Gemini anyway; fixed by giving `FileAiRequestQuotaLedger` an explicit camelCase
+  `JsonSerializerOptions`, confirmed by re-running the exact same real scenario (now correctly
+  refused, 0 further provider calls) and by a new test reading a hand-written camelCase line in
+  Node's own exact shape. A second, smaller bug in the same verification pass: the CLI's own
+  pre-flight budget message was hardcoded to the dollar-cap wording regardless of which constraint
+  actually failed — fixed to branch on `QuotaExceeded`.
+  ✔ 9 new tests (`AiBudgetGuardTests` ×3, `AiCostRecorderTests` ×2, `AiPlanningEngineTests` ×2,
+  `FileAiRequestQuotaLedgerTests` ×5 — some new, some folded into existing files) + 3 new Node tests
+  (`sarvaghna/core/gemini-client.test.mjs`, `npm test --prefix sarvaghna`, new script, `node --test`,
+  no new npm package) — full .NET suite 242/242, `dotnet format --verify-no-changes` clean. Verified
+  against the real, live-exhausted quota: the CLI eval now correctly refuses before any provider
+  call with the quota-specific message, instead of wasting 3 more real requests against Gemini's
+  own 429 the way it did before the fix.

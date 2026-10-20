@@ -214,9 +214,16 @@ flowGenerationCommand.SetAction(async (parseResult, ct) =>
         EvalHost.EvalTenantId, host.ProviderId, estimateForThisRun.WorstCaseInputTokens, estimateForThisRun.WorstCaseOutputTokens, ct);
     if (!budgetCheck.Allowed)
     {
-        await Console.Error.WriteLineAsync(
-            $"AI budget reached: ${budgetCheck.SpentUsd:F2} already spent this week, plus this run's own worst-case " +
-            $"${budgetCheck.ProjectedUsd:F2}, would exceed the ${budgetCheck.CapUsd:F2} weekly cap. Refused before any provider call.");
+        // DISC-14: a request-count quota refusal is a different constraint from the dollar cap —
+        // must not print the dollar message when that's not actually why this was refused (the
+        // real case that surfaced this: cost nowhere near the cap, but the free-tier key's own
+        // daily request ceiling already hit).
+        var message = budgetCheck.QuotaExceeded
+            ? $"AI request quota reached: {budgetCheck.RequestsToday} of {budgetCheck.DailyRequestQuota} requests already made " +
+              "today (shared with every other caller of this key, including Sarvaghna's own commit/push-hook AI reviews). Refused before any provider call."
+            : $"AI budget reached: ${budgetCheck.SpentUsd:F2} already spent this week, plus this run's own worst-case " +
+              $"${budgetCheck.ProjectedUsd:F2}, would exceed the ${budgetCheck.CapUsd:F2} weekly cap. Refused before any provider call.";
+        await Console.Error.WriteLineAsync(message);
         return 1;
     }
 

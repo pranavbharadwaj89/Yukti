@@ -1,0 +1,35 @@
+{
+  "AnalystPromptVersion": "v1",
+  "CoderPromptVersion": "v1",
+  "RegistryHash": "43bfac8cb9fb",
+  "RanAtUtc": "2026-10-20T16:24:04.1544562+00:00",
+  "PassedCount": 0,
+  "TotalCount": 3,
+  "GatePassed": false,
+  "Cases": [
+    {
+      "Id": "p1",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": "Gemini responded with 429 TooManyRequests."
+    },
+    {
+      "Id": "p2",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": "Gemini responded with 429 TooManyRequests."
+    },
+    {
+      "Id": "p3",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": "Gemini responded with 429 TooManyRequests."
+    }
+  ]
+}

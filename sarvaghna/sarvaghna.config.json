@@ -51,7 +51,8 @@
       "enabled": true,
       "model": "gemini-3.8-flash",
       "temperature": 0.2,
-      "maxOutputTokens": 4096
+      "maxOutputTokens": 4096,
+      "dailyRequestQuota": 20
     }
   },
   "ignoredPaths": [

@@ -23,6 +23,7 @@ __pycache__/
 
 ## Sarvaghna Agent Runtime Ledger
 sarvaghna/ledger/decisions.jsonl
+sarvaghna/ledger/gemini-requests.jsonl
 
 ## Sarvaghna local-only secrets for manual CLI testing (never committed)
 sarvaghna/.env.local
