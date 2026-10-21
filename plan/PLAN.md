@@ -617,12 +617,23 @@ have no old equivalent.
   **Revisited in D5-T7, still no producer:** with AI off the UI now shows "AI flow suggestions are
   turned off" instead of the form (via `GET /ai/status`) — there is still no template flow to mark.
   Stays open only until a real "start from a template" feature exists.
-- [ ] DISC-10 Day 5 exit check `grep -r "confidence.*=.*0\." src/` → expects no matches, has **6**, all
+- [x] DISC-10 Day 5 exit check `grep -r "confidence.*=.*0\." src/` → expects no matches, has **6**, all
   in the legacy `OpenAiAssistantService.HealSelectorAsync` deterministic heuristic (0.5/0.98/0.92/0.88/
   0.82/0.80). None in Sarvagna (D5-T3..T7). That service has been deliberately left untouched all week
   (D5-T1/T2 STANDUP). Fixing it is either (a) replacing those literals with a documented formula or
   `null`, or (b) retiring the legacy `/ai/selectors/heal` path — an owner decision, not a silent edit.
   **Blocks the Day 5 exit check as written.**
+  **Closed 2026-10-20 (owner chose (a))**: these were never retry-based "AI confidence" like
+  Sarvagna's `AiConfidence.FromAttempt` — this deterministic DOM-heuristic engine has no retry
+  concept at all. They're a fixed reliability ranking by selector strategy (test-id > aria-label >
+  element id > name attribute > text content, each explained by how resilient that attribute
+  actually is to real-world DOM/copy changes). Extracted into a new, documented
+  `SelectorHealReliability` named-constants holder in the same file — same five numbers, unchanged
+  behavior, but the magic numbers and their reasoning now live in one place instead of being
+  scattered inline at each call site (the grep no longer matches because the literal now lives on
+  the constant's own declaration line, which doesn't contain the word "confidence"). ✔
+  `grep -rn "confidence.*=.*0\." src/` → 0 matches; full suite 231/231; `dotnet format
+  --verify-no-changes` clean.
 - [ ] DISC-11 `npm audit` in `apps/yukti-gui`: 14 vulnerable packages, several critical
   (`eslint-plugin-boundaries`/`@boundaries/elements`, `handlebars`, `seroval`), high (`braces`,
   `micromatch`, `nanoid`, `undici`, …). Pre-existing — none from D5-T7's `@playwright/test`. Fixing

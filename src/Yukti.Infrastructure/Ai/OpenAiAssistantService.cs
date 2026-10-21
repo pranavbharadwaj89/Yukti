@@ -21,6 +21,28 @@ namespace Yukti.Infrastructure.Ai;
 /// </summary>
 public sealed class OpenAiAssistantService : IAiAssistantService
 {
+    /// <summary>
+    /// DISC-10: the deterministic selector-healing fallback's reliability ranking, by strategy —
+    /// not a retry-based confidence (there is no retry concept in this DOM-heuristic engine, unlike
+    /// Sarvagna's <see cref="Yukti.Application.Ai.AiConfidence.FromAttempt"/>), but a fixed,
+    /// documented ranking of how stable each selector strategy is under real-world DOM churn:
+    /// test ids are purpose-built for this and survive redesigns; aria-labels are
+    /// accessibility-driven and usually stable; element ids can be stable but are sometimes
+    /// framework-generated; name attributes are less consistently maintained; visible text is the
+    /// least stable of the five (any copy change breaks it). Named constants, not inline literals,
+    /// so the reasoning for each number lives in one place instead of being re-derived at every
+    /// call site.
+    /// </summary>
+    private static class SelectorHealReliability
+    {
+        public const double NoResilientAlternativeFound = 0.5;
+        public const double DataTestId = 0.98;
+        public const double AriaLabel = 0.92;
+        public const double ElementId = 0.88;
+        public const double ElementName = 0.82;
+        public const double TextContent = 0.80;
+    }
+
     private readonly IConfiguration _config;
     private readonly ILogger<OpenAiAssistantService> _logger;
     private readonly HttpClient _httpClient;
@@ -193,7 +215,7 @@ Return ONLY valid JSON with this schema:
         // Deterministic Self-Healing Engine
         string healed = request.FailedSelector;
         string strategy = "Original";
-        double confidence = 0.5;
+        double confidence = SelectorHealReliability.NoResilientAlternativeFound;
         string explanation = "No resilient alternatives found in DOM.";
 
         if (!string.IsNullOrEmpty(request.DomSnippet))
@@ -204,7 +226,7 @@ Return ONLY valid JSON with this schema:
             {
                 healed = $"[data-{testIdMatch.Groups[1].Value}='{testIdMatch.Groups[2].Value}']";
                 strategy = "DataTestId";
-                confidence = 0.98;
+                confidence = SelectorHealReliability.DataTestId;
                 explanation = $"Healed to high-resilience test attribute '{testIdMatch.Groups[0].Value}'.";
             }
             // 2. Check aria-label
@@ -212,7 +234,7 @@ Return ONLY valid JSON with this schema:
             {
                 healed = $"[aria-label='{ariaMatch.Groups[1].Value}']";
                 strategy = "AriaLabel";
-                confidence = 0.92;
+                confidence = SelectorHealReliability.AriaLabel;
                 explanation = $"Healed to accessibility attribute aria-label='{ariaMatch.Groups[1].Value}'.";
             }
             // 3. Check ID
@@ -220,7 +242,7 @@ Return ONLY valid JSON with this schema:
             {
                 healed = $"#{idMatch.Groups[1].Value}";
                 strategy = "ElementId";
-                confidence = 0.88;
+                confidence = SelectorHealReliability.ElementId;
                 explanation = $"Healed to ID selector '#{idMatch.Groups[1].Value}'.";
             }
             // 4. Check name attribute
@@ -228,7 +250,7 @@ Return ONLY valid JSON with this schema:
             {
                 healed = $"[name='{nameMatch.Groups[1].Value}']";
                 strategy = "ElementName";
-                confidence = 0.82;
+                confidence = SelectorHealReliability.ElementName;
                 explanation = $"Healed to name attribute '{nameMatch.Groups[1].Value}'.";
             }
             // 5. Check button or link text
@@ -238,7 +260,7 @@ Return ONLY valid JSON with this schema:
                 var text = textMatch.Groups[2].Value.Trim();
                 healed = $"{tag}:has-text('{text}')";
                 strategy = "TextContent";
-                confidence = 0.80;
+                confidence = SelectorHealReliability.TextContent;
                 explanation = $"Healed to text-based locator matching '{text}'.";
             }
         }
