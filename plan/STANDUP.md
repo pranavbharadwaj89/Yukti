@@ -1121,3 +1121,28 @@ Exit check:  at risk, but meaningfully less blind than this morning — D5-T8's 
 Next:        Re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` after the
              next daily reset (~07:00 UTC — consistent across two resets now). Push the engine fix to
              PR #41. No code change expected to be needed for D5-T8 itself at that point.
+
+## 2026-10-21 ~19:50 IST — Day 5 (cont.)
+Done:        **D5-T8 closed for real.** Owner corrected my own repeated "free-tier" framing — pushed
+             back, then confirmed directly: the key really was on AI Studio's free tier (Google AI
+             Studio keys carry their own pay-as-you-go toggle, independent of whether the Cloud
+             project has billing enabled in general — exactly why every 429 all session named the
+             quota `GenerateRequestsPerDayPerProjectPerModel-FreeTier` explicitly, Google's own
+             classification, not a guess on my part). Owner rotated the key to a paid plan. Archived
+             (not reused) the local request-count ledger, since 13 of today's entries were spend
+             against the *old* key and no longer reflected the credential actually in use — reusing
+             them would have artificially shrunk the new key's fresh budget. First real run against
+             the new key: **10/10 structural validity** — every one of the 8 generation cases got
+             both module selection and assertion presence right, and both refusal cases (p9/p10)
+             correctly refused rather than hallucinating. Gate PASSED, ticked in PLAN.md.
+Discovered:  In hindsight, the DISC-14 request-count guard and the engine's failure-recording fix
+             (both built and merged today) were real, worthwhile work regardless of the root cause
+             turning out to be the key's tier rather than "no tracking at all" — they're a genuine
+             safety net for any future rate-limited/free-tier key, not wasted effort now that the
+             immediate symptom is gone.
+Scope guards: none
+Exit check:  on track — D5-T8 is genuinely done, not just unblocked. Day 5's AI layer (D5-T3 through
+             D5-T9, plus DISC-5/7/8/10/13/14) is now fully closed. Remaining Day 5 items: none open
+             that I'm aware of — next is Day 6 (RLS/RBAC/audit verification) once the owner's ready.
+Next:        Owner to merge PR #40 (DISC-10) and #41 (DISC-14 + the engine fix) whenever convenient.
+             Then: Day 6 verification work, or whatever the owner wants to prioritize next.

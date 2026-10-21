@@ -445,7 +445,7 @@ have no old equivalent.
   Clarifying-question buttons: Analyst returns free-text reasons, not structured options, so each
   reason is a button that appends "(Re: …)" to the description for the user to answer — no new
   backend contract invented to fake structured choices.
-- [ ] D5-T8 Evaluation harness: 10 prompts (`evals/flow_generation/`) scored on structural validity,
+- [x] D5-T8 Evaluation harness: 10 prompts (`evals/flow_generation/`) scored on structural validity,
   module correctness, assertion presence, correct refusal (prompts 9–10); results written per
   prompt-version + timestamp; **gate: ≥ 8/10 structural validity**, up to 3 prompt versions, then escalate
   ✔ `dotnet run --project src/Yukti.Cli -- eval flow-generation` → 8/10 or better — **never cut**
@@ -490,6 +490,17 @@ have no old equivalent.
   after the next reset (~07:00 UTC daily, a consistent pattern across two resets now) — no code
   change needed. Nine real attempts (mixed pass/fail) are preserved under
   `evals/flow_generation/results/` as an honest record, not deleted.
+  **Closed 2026-10-21, ✔ genuinely passed:** the root cause was neither Gemini's own instability nor
+  our tracking gap — the configured key really was on AI Studio's free tier (owner confirmed and
+  rotated it to a paid-plan key; Google AI Studio keys carry their own pay-as-you-go toggle,
+  independent of whether the underlying Cloud project has billing enabled in general, which is why
+  every 429 this session named the quota `GenerateRequestsPerDayPerProjectPerModel-FreeTier`
+  explicitly). The stale local ledger (tracking the *old* key's spend) was archived, not reused,
+  since it no longer corresponded to the credential actually in use. First real run against the new
+  key: **10/10 structural validity**, module correctness and assertion presence both correct on
+  every one of the 8 generation cases, and both refusal cases (p9/p10) correctly refused rather than
+  hallucinating a flow. ✔ `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` → 10/10,
+  gate PASSED. Result: `evals/flow_generation/results/v1_v1_43bfac8cb9fb_20261021T141457Z.json`.
 - [x] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
   provider, model, tokens, cost, prompt version, tenant); configured monthly cap, 80% warns, 100% returns
   503 "AI budget reached" while the rest of Yukti keeps working; `GET /api/v1/ai/usage` (admin role)
