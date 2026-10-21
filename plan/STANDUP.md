@@ -1253,3 +1253,30 @@ Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275, 
              --verify-no-changes` clean.
 Next:        Push the fix to `feature/D6-T2-rbac-proof` (same PR #43 — this is the CI gate it hit,
              not a separate concern), confirm CI green, then D6-T4 (audit proof).
+
+## 2026-10-21 ~22:05 IST — Day 6 (cont.)
+Done:        AuditEntryGrantsTests fix confirmed working — `build-and-test` passed on the re-run,
+             both audit tests green. A second, unrelated failure then surfaced on the same PR's
+             `ai-off` job: `Yukti.Cli.Tests.EvalFlowGenerationTests.
+             An_unchanged_version_and_registry_reuses_the_stored_result_without_force` — `Expected:
+             2, Actual: 1` on the file count after a `--force` re-run. Confirmed this is genuinely
+             unrelated to D6-T2 (nothing in this branch touches `Yukti.Cli`/`Eval` code) and is a
+             real, pre-existing bug, not a flake to shrug off: `FlowGenerationEvaluator.SaveResult`
+             names each stored result `{analystVersion}_{coderVersion}_{registryHash}_
+             {RanAtUtc:yyyyMMddTHHmmssZ}.json` — **second**-granularity only. The test's three
+             back-to-back `CliProcess.Run` calls (all fixture-backed, zero network calls) can land
+             the first run and the forced third run in the same wall-clock second on a fast CI
+             runner, producing an identical filename and silently overwriting the first result
+             instead of adding a second one. Fixed by widening the timestamp format to millisecond
+             precision (`yyyyMMddTHHmmssfffZ`) — still fixed-width/zero-padded, so
+             `FindReusableResult`'s lexicographic "latest by filename" ordering is unaffected.
+Discovered:  Re-ran the affected test 5x locally after the fix, all green (previously exposed to
+             this same-second collision on every run, just hadn't landed in it before). A genuine
+             latent bug in D5-T8's own eval-result storage, caught only because this unrelated PR's
+             CI run happened to hit the race — not something D6-T2 introduced.
+Scope guards: none — this is a minimal, targeted fix to the exact collision the test exposed, not a
+             redesign of the eval storage scheme.
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275, 0 skipped.
+             `dotnet format --verify-no-changes` clean.
+Next:        Push to `feature/D6-T2-rbac-proof`, confirm all 6 CI checks green, merge, then D6-T4
+             (audit proof).
