@@ -1184,3 +1184,35 @@ Exit check:  on track, pending CI confirmation of the new Postgres service in `b
 Next:        Push `feature/D6-T1-rls-proof`, open PR, confirm CI green (especially the new service
              block), then D6-T2 — RBAC proof (authorized-success + unauthorized-403 per write
              command).
+
+## 2026-10-21 ~21:10 IST — Day 6 (cont.)
+Done:        D6-T1 merged (PR #42) — owner merged directly; all 6 CI checks passed, including
+             `build-and-test` on its first real run with the new Postgres service (confirmed, not
+             assumed). Local `main` fast-forwarded to the merge commit.
+             D6-T2 RBAC proof. Scoped first via a research pass: every write command handler in the
+             codebase (16 total, found by reading the `AuditableCommandHandler` call sites directly,
+             not guessed) and how `IPermissionChecker`/`ForbiddenException` map to the API's real
+             403 response. No dedicated RBAC test file existed at all — confirmed independently of
+             `GAP-MATRIX.md`'s own prior finding, same conclusion. Built `AuthorizationTests.cs`: 14
+             authorized-success/unauthorized-403 pairs (28 tests) covering `AssignRole`,
+             `UpdateRolePermissions`, `CreateFlow`, `AddFlowStep`, `PublishFlow`, `TriggerFlowRun`,
+             `CancelFlowRun`, `RegisterModule`, and all 5 `ApiCollection`/`ApiRequest` commands.
+Discovered:  1. `RegisterUserCommand` has no permission check by design (open self-registration,
+             no caller identity exists yet) — excluded with an explicit in-file note rather than
+             silently skipped. `GenerateFlowCommand`'s own pair already exists in
+             `GenerateFlowCommandHandlerTests.cs` (D5-T7) — not duplicated.
+             2. No in-memory implementation of `IApiCollectionRepository` exists anywhere in the
+             codebase (only the real EF one) — added a minimal test-only stub in the new file,
+             not a production `InMemoryApiCollectionRepository` nothing else needs yet.
+             3. A real test-authoring mistake caught by the first run, not a product bug: 10 of 28
+             tests failed with "not found"/`NullReferenceException` because `InMemory*Repository
+             .Save` only stages a write — nothing lands in the backing store until
+             `IUnitOfWork.Commit()` runs (the same FR-OPS-03 mechanic `AuditableCommandHandler`
+             itself depends on). Setup fixtures built directly via a repository, bypassing the
+             handler under test, need an explicit commit first; fixed by adding one after every such
+             setup `.Save()` call.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275 (was 247/247, +28 new),
+             0 skipped. `dotnet format --verify-no-changes` clean.
+Next:        Push `feature/D6-T2-rbac-proof`, open PR. Then D6-T4 (audit proof) — D6-T3 (Vault) is
+             already closed from earlier in the week.

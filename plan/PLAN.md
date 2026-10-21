@@ -571,8 +571,30 @@ have no old equivalent.
   (safe — a fresh, torn-down-after container every run, never the real credential). ✔ Full suite
   locally with `YuktiRuntime` configured: 247/247, **0 skipped** (was 243/245 skipped-2 before).
   `dotnet format --verify-no-changes` clean.
-- [ ] D6-T2 RBAC proof: for every write command, an authorized-success and unauthorized-403 test (Vol 1 §25.8)
+- [x] D6-T2 RBAC proof: for every write command, an authorized-success and unauthorized-403 test (Vol 1 §25.8)
   ✔ `dotnet test --filter "FullyQualifiedName~Authorization"`
+  **Closed 2026-10-21:** new `AuthorizationTests.cs` — 14 authorized-success/unauthorized-403 pairs
+  (28 tests) covering every write command handler in the codebase: `AssignRole`,
+  `UpdateRolePermissions`, `CreateFlow`, `AddFlowStep`, `PublishFlow`, `TriggerFlowRun`,
+  `CancelFlowRun`, `RegisterModule`, and all 5 `ApiCollection`/`ApiRequest` commands. Confirmed
+  before building: no dedicated RBAC test file existed at all (`Authorization` filter matched 0
+  tests, matching `GAP-MATRIX.md`'s own finding) — the mechanism (`IPermissionChecker`,
+  `FR-AUTHZ-02`'s "every command handler calls EnsurePermission as its first statement") was real
+  and correct, just unproven per-command. `RegisterUserCommand` deliberately excluded — open
+  self-registration by design, no caller identity exists yet to check a permission against (noted
+  inline in the test file, not silently skipped). `GenerateFlowCommand`'s own pair already exists
+  in `GenerateFlowCommandHandlerTests.cs` (D5-T7) — not duplicated here.
+  No production in-memory implementation of `IApiCollectionRepository` existed (only the real EF
+  one) — added a minimal test-only stub in the same file rather than building a production
+  `InMemoryApiCollectionRepository` nobody else needs yet.
+  First run found a real test-authoring mistake, not a product bug: 10 of 28 failed with
+  "not found"/`NullReferenceException` because `InMemory*Repository.Save` only *stages* a write —
+  nothing lands in the backing store until a `IUnitOfWork.Commit()` runs, the same mechanic
+  `AuditableCommandHandler` itself relies on (FR-OPS-03). Setup fixtures built directly via a
+  repository (bypassing the handler under test, which commits its own staged work) need an
+  explicit commit first — fixed by adding one after every such setup `.Save()` call.
+  ✔ Full suite: 275/275 (Cli 11 + Analyzers 17 + Infrastructure 145 + Orchestration 102), 0 skipped.
+  `dotnet format --verify-no-changes` clean.
 - [x] D6-T3 Vault proof: secrets resolved from Vault at runtime, never logged; credential rotation audited
   ✔ ALREADY DONE (evidence): `dotnet test --filter "FullyQualifiedName~Vault"` → 4/4 passing in
   `VaultCredentialResolverTests.cs`, against a real local Vault dev server (built 2026-10-11)
