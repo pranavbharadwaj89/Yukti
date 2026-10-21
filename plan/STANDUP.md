@@ -1216,3 +1216,40 @@ Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275 (
              0 skipped. `dotnet format --verify-no-changes` clean.
 Next:        Push `feature/D6-T2-rbac-proof`, open PR. Then D6-T4 (audit proof) — D6-T3 (Vault) is
              already closed from earlier in the week.
+
+## 2026-10-21 ~21:40 IST — Day 6 (cont.)
+Done:        Fixed a real, order-dependent flake in `AuditEntryGrantsTests.cs` that CI's
+             `build-and-test` surfaced on PR #43's own run — the first time this file has ever run
+             for real against Postgres in CI (D6-T1 added the Postgres service that makes it run at
+             all). `Direct_UPDATE_against_audit_entries_fails_with_a_permissions_error` got Postgres
+             error `22P02` (invalid uuid cast) instead of the expected `42501`. Root-caused by reading
+             the actual Postgres container log (`ERROR: invalid input syntax for type uuid: ""`,
+             `STATEMENT: UPDATE audit_entries SET "Succeeded" = false WHERE "Id" = $1`) rather than
+             guessing from the xUnit assertion diff alone, and confirmed the same backend PID (164)
+             ran a `TenantIsolationTests` INSERT moments later — proving the two files share Npgsql's
+             connection pool (same `ConnectionStrings:YuktiRuntime`, same process). `yukti_app`'s
+             grants are correct (confirmed by re-reading both `AddAuditEntryGrants` and
+             `AddYuktiAppRuntimeRole` migrations directly: SELECT+INSERT only on `audit_entries`,
+             never UPDATE/DELETE) — the bug is that this test never establishes any tenant context
+             before touching `audit_entries`, unlike every other RLS-aware live-DB test in this
+             suite. `audit_entries`'s own RLS policy is permissive (`"TenantId" IS NULL OR ...`), and
+             yukti_app's SELECT grant lets the UPDATE's WHERE-clause row scan reach that policy's
+             `current_setting(...)::uuid` cast — so whatever stale/absent session-level GUC value a
+             reused pooled connection happens to carry decides whether the cast even succeeds, before
+             the real, intended 42501 (missing UPDATE privilege) is ever reached. Fixed by calling
+             `EfTenantSessionInitializer.EstablishTenantContext` with a fresh `TenantId` before the
+             UPDATE/DELETE in both tests — any valid tenant makes the cast succeed and the row
+             visible (the policy's `TenantId IS NULL` branch is already unconditionally true for this
+             row regardless), making the GRANT-level 42501 the only possible outcome. Not a RLS or
+             grants bug — the security behavior itself was always correct; only this test's own setup
+             was nondeterministic.
+Discovered:  Re-ran the two files together 5x locally after the fix with no failures (was previously
+             exposed to this ordering dependency on every run, just hadn't lost the race until CI's
+             first real execution). Worth remembering for any future live-DB test added to this
+             suite: establish tenant context explicitly, never rely on a connection's ambient state.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275, 0 skipped (5 repeated
+             local runs of the two real-DB files together, all green). `dotnet format
+             --verify-no-changes` clean.
+Next:        Push the fix to `feature/D6-T2-rbac-proof` (same PR #43 — this is the CI gate it hit,
+             not a separate concern), confirm CI green, then D6-T4 (audit proof).
