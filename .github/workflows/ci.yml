@@ -9,6 +9,26 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # D6-T1: a real Postgres, with real RLS policies applied via migrations — without this, every
+    # test that needs a live database (TenantIsolationTests, AuditEntryGrantsTests) silently
+    # Skip()s rather than fails, so CI never actually proved RLS/grants enforcement despite the
+    # tests existing. Same throwaway, well-known-placeholder-credential service every other job
+    # here already uses (api-types-drift/ai-off/e2e) — safe because it's a fresh container, never
+    # persisted, torn down at the end of this one job run.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: yukti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
     - uses: actions/checkout@v4
@@ -30,8 +50,57 @@ jobs:
     - name: Install Playwright browsers
       run: pwsh tests/Yukti.Orchestration.Tests/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
 
+    - name: Install dotnet-ef
+      run: dotnet tool install --global dotnet-ef --version 8.0.11
+
+    # D6-T1: applies every migration, including AddRowLevelSecurity and AddYuktiAppRuntimeRole —
+    # the latter creates yukti_app with its own documented placeholder password (safe in this
+    # throwaway container; never the real credential, see that migration's own comment).
+    - name: Apply EF migrations to the throwaway database
+      env:
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
+        dotnet ef database update --project src/Yukti.Infrastructure --startup-project src/Yukti.Api --connection "$CONN"
+
+    # D6-T1/FR-AUDIT-03: a second connection, as the genuinely non-superuser yukti_app role —
+    # ConnectionStrings__Yukti above authenticates as the table OWNER (postgres), which PostgreSQL
+    # always lets bypass RLS regardless of FORCE, so it alone can't prove anything RLS/grants
+    # tests check. Both assembled from separate PG*/YUKTI_APP_* pieces at shell runtime, same
+    # convention as every other job's migration step in this file, so no literal credential
+    # string sits in the YAML diff.
     - name: Run .NET Unit & Integration Tests
-      run: dotnet test --no-build -c Release --verbosity normal
+      env:
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+        YUKTI_APP_USERNAME: yukti_app
+        YUKTI_APP_PASSWORD: placeholder-rotate-immediately
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
+        RUNTIME_CONN="Host=$PGHOST"
+        RUNTIME_CONN="$RUNTIME_CONN;Port=$PGPORT"
+        RUNTIME_CONN="$RUNTIME_CONN;Database=$PGDATABASE"
+        RUNTIME_CONN="$RUNTIME_CONN;Username=$YUKTI_APP_USERNAME"
+        RUNTIME_CONN="$RUNTIME_CONN;Password=$YUKTI_APP_PASSWORD"
+        export ConnectionStrings__YuktiRuntime="$RUNTIME_CONN"
+        dotnet test --no-build -c Release --verbosity normal
 
     - name: Build Docker Container
       run: docker build -t yukti-platform:latest .

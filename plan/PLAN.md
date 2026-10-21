@@ -534,8 +534,43 @@ have no old equivalent.
   run); `grep -r "confidence.*=.*0\." src/` → no literal matches.
 
 ## Day 6 — Sat 17 Oct · Verify the enterprise features + hardening
-- [ ] D6-T1 RLS proof: tenant A cannot read/write tenant B flows, runs, results (API and direct DB with tenant session)
+- [x] D6-T1 RLS proof: tenant A cannot read/write tenant B flows, runs, results (API and direct DB with tenant session)
   ✔ `dotnet test --filter "FullyQualifiedName~TenantIsolation"`
+  **Closed 2026-10-21:** new `TenantIsolationTests.cs` (4 tests), following `AuditEntryGrantsTests`'s
+  own real-Postgres pattern — skip, not fail, when unconfigured. Proves all three documented layers
+  from `AddRowLevelSecurity`'s own migration comment independently: (1) the real repository
+  (`EfFlowRepository`/`EfFlowRunRepository`, Layer 1 + Layer 2 combined) returns `null` for a
+  cross-tenant id; (2) a raw, unfiltered SQL count against `flows`/`step_results` — zero C#
+  `WHERE TenantId=...` involved — still returns 0, proving Layer 2 (the RLS policy) holds on its
+  own; (3) attempting to `SaveChanges` a row tagged for a *different* tenant than the current
+  session is rejected by Postgres itself (`SqlState 42501`, insufficient_privilege) — the write
+  half of "cannot read/write."
+  **A real, non-trivial finding before the tests would pass at all:** the first draft, run against
+  `ConnectionStrings:Yukti` (this machine's configured connection), failed 3 of 4 — the row was
+  visible, and the illegal write was *not* rejected. Root cause: that connection authenticates as
+  `postgres`, Postgres's own bootstrap **superuser**, and superusers unconditionally bypass RLS —
+  `FORCE ROW LEVEL SECURITY` cannot override that (`FORCE` only binds the table *owner*, a
+  different concept). Confirmed directly: `relrowsecurity`/`relforcerowsecurity` were both `true`
+  on all three tables the whole time; the policies were never the problem. Local environment setup
+  gap, not a product bug — `yukti_app` (a genuine non-superuser role, created by the pre-existing
+  `AddYuktiAppRuntimeRole` migration for exactly this reason, confirmed via `pg_roles` and its own
+  grants) is the role that should be used, and once `ConnectionStrings:YuktiRuntime` pointed at it,
+  all 4 tests passed for real.
+  **Second finding, same investigation:** `yukti_app`'s password was still that migration's own
+  documented placeholder (`placeholder-rotate-immediately`) — its own comment says to rotate it
+  "immediately after this migration applies," which evidently never happened on this machine.
+  Attempting to rotate it and persist the new value to user-secrets was blocked by this
+  environment's own safety classifier (a secret-store write) — correctly so, not something to work
+  around. Flagged to the owner directly, not silently left unrotated and unmentioned.
+  **Third finding, the most consequential:** the CI job that actually runs `dotnet test`
+  (`build-and-test`) has no Postgres service at all — meaning `AuditEntryGrantsTests` (pre-existing)
+  and this new `TenantIsolationTests` have been silently `Skip()`-ing in CI on every single run,
+  never actually proving anything there. Fixed in the same PR: added the same throwaway
+  `postgres:16` service + migration-apply step the `api-types-drift`/`ai-off`/`e2e` jobs already
+  use, plus `ConnectionStrings__YuktiRuntime` pointed at `yukti_app` with its documented placeholder
+  (safe — a fresh, torn-down-after container every run, never the real credential). ✔ Full suite
+  locally with `YuktiRuntime` configured: 247/247, **0 skipped** (was 243/245 skipped-2 before).
+  `dotnet format --verify-no-changes` clean.
 - [ ] D6-T2 RBAC proof: for every write command, an authorized-success and unauthorized-403 test (Vol 1 §25.8)
   ✔ `dotnet test --filter "FullyQualifiedName~Authorization"`
 - [x] D6-T3 Vault proof: secrets resolved from Vault at runtime, never logged; credential rotation audited

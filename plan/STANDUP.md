@@ -1146,3 +1146,41 @@ Exit check:  on track — D5-T8 is genuinely done, not just unblocked. Day 5's A
              that I'm aware of — next is Day 6 (RLS/RBAC/audit verification) once the owner's ready.
 Next:        Owner to merge PR #40 (DISC-10) and #41 (DISC-14 + the engine fix) whenever convenient.
              Then: Day 6 verification work, or whatever the owner wants to prioritize next.
+
+## 2026-10-21 ~20:40 IST — Day 6 begins
+Done:        D6-T1 RLS proof. New `tests/Yukti.Infrastructure.Tests/TenantIsolationTests.cs` (4
+             tests), same skip-if-unconfigured pattern as `AuditEntryGrantsTests`. Proves all three
+             layers `AddRowLevelSecurity`'s own migration documents, independently: (1) the real
+             repository returns null across tenants; (2) a raw, unparameterized-by-tenant SQL count
+             against `flows`/`step_results` is still 0 — the database's own policy, not any C#
+             filter; (3) writing a row tagged for a tenant other than the session's own is rejected
+             by Postgres directly (`SqlState 42501`).
+Discovered:  1. First run (3 of 4 failing) was a real finding, not a flaky test: the configured
+             `ConnectionStrings:Yukti` authenticates as `postgres`, a Postgres superuser —
+             superusers unconditionally bypass RLS, and `FORCE ROW LEVEL SECURITY` does not override
+             that (`FORCE` only binds the table *owner*, a different mechanism). The policies
+             themselves were never the problem (`relrowsecurity`/`relforcerowsecurity` both true the
+             whole time, confirmed directly). `yukti_app` — a genuine non-superuser role the
+             existing `AddYuktiAppRuntimeRole` migration created for exactly this reason — is the
+             role these tests need; pointed `ConnectionStrings:YuktiRuntime` at it and all 4 passed.
+             2. `yukti_app`'s password on this machine is still that migration's own documented
+             placeholder (`placeholder-rotate-immediately`) — its comment says to rotate it
+             immediately after the migration applies; that evidently never happened here. Rotating
+             it and persisting the new value to user-secrets is a secret-store write, correctly
+             blocked by this environment's own safety tooling — not routed around. **Flagging to the
+             owner: `yukti_app`'s local password needs manual rotation (`ALTER USER` + `dotnet
+             user-secrets set "ConnectionStrings:YuktiRuntime" ...`), at the owner's own hands.**
+             3. The real gap: the CI job that runs `dotnet test` (`build-and-test`) has no Postgres
+             service at all — `AuditEntryGrantsTests` (pre-existing) and this new file have been
+             silently skipping in CI on every run, never proving anything there. Fixed in this same
+             PR: added the same throwaway `postgres:16` service + migration-apply step the
+             `api-types-drift`/`ai-off`/`e2e` jobs already use, plus `ConnectionStrings__YuktiRuntime`
+             pointed at `yukti_app` with its documented placeholder (safe in CI — a fresh,
+             torn-down-every-run container, never the real credential).
+Scope guards: none — Vault/RLS/RBAC/audit stay frozen (fix-and-test only); this is exactly that nothing more.
+Exit check:  on track, pending CI confirmation of the new Postgres service in `build-and-test` (first
+             real run of that YAML change — no local YAML validator was available to check it ahead
+             of time; matched structurally against the already-working `api-types-drift` job).
+Next:        Push `feature/D6-T1-rls-proof`, open PR, confirm CI green (especially the new service
+             block), then D6-T2 — RBAC proof (authorized-success + unauthorized-403 per write
+             command).
