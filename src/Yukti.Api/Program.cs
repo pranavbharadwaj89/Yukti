@@ -360,6 +360,9 @@ var aiEnabled = builder.Configuration.GetValue("Ai:Enabled", true);
 // historical week-to-date spend (and what the configured cap is) even while AI is currently off.
 builder.Services.AddSingleton<IAiPricingProvider, ConfigurationAiPricingProvider>();
 builder.Services.AddSingleton<IAiBudgetOptionsProvider, ConfigurationAiBudgetOptionsProvider>();
+// DISC-14: same reasoning as the two providers above — the request-count ledger is read by
+// GET /ai/usage even while AI is off, and it's file-based (not EF/DbContext), so Singleton is safe.
+builder.Services.AddSingleton<IAiRequestQuotaLedger, FileAiRequestQuotaLedger>();
 if (aiEnabled)
 {
     builder.Services.AddSingleton<IAiAssistantService, OpenAiAssistantService>();
@@ -518,6 +521,13 @@ app.Use(async (context, next) =>
     catch (AiBudgetExceededException ex)
     {
         await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Budget Reached", ex.Message, context.RequestAborted);
+    }
+    // DISC-14: a different constraint from the dollar cap above (a provider's own request-count
+    // quota, e.g. a free-tier key's 20/day) — same 503/"rest of Yukti keeps working" treatment,
+    // distinct title so it's never confused with a dollar-cap refusal in logs or client handling.
+    catch (AiRequestQuotaExceededException ex)
+    {
+        await ProblemResults.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, "AI Request Quota Reached", ex.Message, context.RequestAborted);
     }
 });
 
@@ -1303,7 +1313,8 @@ app.MapGet($"{apiV1}/ai/status", () => Results.Ok(new AiStatusResponse(aiEnabled
 // closest fit this enum has to a literal "admin" permission; GAP-MATRIX's own naming-gap pattern
 // for when the fixed vocabulary doesn't have an exact match — flagged, not silently invented).
 app.MapGet($"{apiV1}/ai/usage", async (
-    ClaimsPrincipal principal, IPermissionChecker permissions, IAiUsageQuery usageQuery, IAiBudgetOptionsProvider budget, CancellationToken ct) =>
+    ClaimsPrincipal principal, IPermissionChecker permissions, IAiUsageQuery usageQuery,
+    IAiBudgetOptionsProvider budget, IAiRequestQuotaLedger quotaLedger, CancellationToken ct) =>
 {
     await permissions.EnsurePermission(principal.GetUserId(), Permission.UserManage, ct);
 
@@ -1313,11 +1324,14 @@ app.MapGet($"{apiV1}/ai/usage", async (
     var percentOfCap = cap > 0 ? (double)(usage.TotalCostUsd / cap) : 0;
     var totalCalls = usage.ByCapability.Sum(c => c.Calls);
     var totalRetries = usage.ByCapability.Sum(c => c.Retries);
+    // DISC-14: global, not tenant-scoped — see AiUsageResponse's own doc comment.
+    var requestsToday = await quotaLedger.CountTodayAsync(ct);
 
     return Results.Ok(new AiUsageResponse(
         usage.TotalCostUsd, cap, percentOfCap, percentOfCap >= budget.WarnThreshold,
         usage.TotalInputTokens, usage.TotalOutputTokens, usage.BudgetRefusals,
         RetryShare: totalCalls > 0 ? (double)totalRetries / totalCalls : 0,
+        RequestsToday: requestsToday, DailyRequestQuota: budget.DailyRequestQuota,
         ByCapability: usage.ByCapability.Select(c => new AiCapabilityUsageResponse(c.Capability, c.Calls, c.Retries, c.InputTokens, c.OutputTokens, c.CostUsd)).ToList()));
 })
 .RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");

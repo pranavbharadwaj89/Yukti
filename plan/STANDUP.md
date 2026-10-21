@@ -1046,3 +1046,103 @@ Exit check:  on track for this item — DISC-10 fully closed. Day 5 exit overall
 Next:        Push `fix/disc-10-selector-heal-confidence`, open PR. Then start DISC-14 (request-count
              quota tracking in `IAiBudgetGuard`, plus wiring Sarvaghna's Node-side hook into the same
              ledger) — the larger of the two owner-approved tasks.
+
+## 2026-10-20 ~22:15 IST — Day 5 (cont.)
+Done:        DISC-14 closed on `feat/disc-14-request-quota-guard`, owner's explicit choice (build
+             request-count quota tracking, not upgrade the key). New `IAiRequestQuotaLedger` port;
+             `AiBudgetCheck` extended with `QuotaExceeded`/`RequestsToday`/`DailyRequestQuota`
+             (default unbounded so a paid-tier/unconfigured environment is never artificially
+             capped); `AiBudgetGuard` now checks both the dollar cap and the request quota, either
+             refusing; the engine raises a new `AiRequestQuotaExceededException`, distinct from the
+             dollar one, when that's the actual cause. `FileAiRequestQuotaLedger`: one shared,
+             append-only JSON-lines file at `sarvaghna/ledger/gemini-requests.jsonl` (same
+             gitignored directory Sarvaghna's own decision log already uses) — file-based, not
+             Postgres, since the constraint is per API key, shared across two runtimes with no
+             other common storage. `sarvaghna/core/gemini-client.mjs` (the one chokepoint all 5
+             Node callers already go through) now checks/records against the identical file.
+             `GET /api/v1/ai/usage` reports `RequestsToday`/`DailyRequestQuota` too (global, unlike
+             every other field there — confirmed no frontend schema drift, since this endpoint's
+             response body was never declared to Swagger in the first place, DISC-3).
+Discovered:  A real bug, caught manually verifying end-to-end rather than only in unit tests: .NET's
+             `JsonSerializer` defaults to PascalCase, Node's `JSON.stringify` naturally writes
+             camelCase — each side could write its own ledger lines fine but silently failed to
+             *count* the other's (no exception, just fields deserializing to their default values,
+             undercounting to 0 instead of the real 20). Caught by manually seeding the real shared
+             ledger with today's known 20/20 usage (confirmed earlier via Gemini's own 429) and
+             watching the CLI eval still call Gemini anyway and waste 3 more real requests against
+             an already-exhausted quota; fixed with an explicit camelCase `JsonSerializerOptions`,
+             confirmed by re-running the identical real scenario (now correctly refused, 0 further
+             calls) and a new test reading a hand-written camelCase line in Node's own exact shape.
+             A second bug found in the same pass: the CLI's own pre-flight message was hardcoded to
+             the dollar-cap wording regardless of which constraint actually failed — fixed to branch
+             on `QuotaExceeded`.
+Verified:    9 new/extended .NET tests + 3 new Node tests (`npm test --prefix sarvaghna`, new
+             script, built-in `node --test`, no new npm package). Full .NET suite 242/242, `dotnet
+             format --verify-no-changes` clean. Verified against the real, live-exhausted quota —
+             the CLI eval now correctly refuses with the quota-specific message instead of wasting
+             real requests, the exact end-to-end proof unit tests alone couldn't give.
+Scope guards: none
+Exit check:  on track for this item — DISC-14 fully closed and proven against real, live state, not
+             just mocks. D5-T8's own live ≥8/10 gate is still blocked on the same quota resetting
+             (unaffected by this work — the guard now just refuses *faster and more clearly*, it
+             doesn't bypass the provider's own real limit).
+Next:        Push `feat/disc-14-request-quota-guard`, open PR. Then: wait for the Gemini quota to
+             reset to actually close D5-T8 (no code change needed), or ask the owner whether to
+             upgrade the key sooner.
+
+## 2026-10-21 ~19:15 IST — Day 5 (cont.)
+Done:        Resumed D5-T8's live gate once the session's own date rolled to Oct 21 — checked the
+             real UTC clock first (13:39 UTC, not local IST) rather than trust the date change
+             literally, since Gemini's reset clock isn't IST. Quota genuinely had reset: five real
+             runs this session, no more 429s for the first several, and real passes for the first
+             time all week (`p1`/`p2`/`p3` each passed at least once). No single run hit 8/10 yet —
+             Gemini itself is intermittently 503 "experiencing high demand" across several
+             consecutive attempts, separate from the quota issue, and chasing it with retries burned
+             today's 20/day allowance back down to exhausted (confirmed again via a fresh 429, ~17h
+             retry window).
+Discovered:  A second real bug, found because the guard kept allowing calls through against an
+             already-exhausted quota instead of refusing (same symptom DISC-14 was built to catch,
+             but still happening) — `AiPlanningEngine.PlanAsync` never wrapped the provider call in
+             a try/catch, so a 429/503/timeout (`AiUnavailableException`) propagated straight out,
+             skipping `_costRecorder.RecordAsync` entirely. Every failed real attempt vanished from
+             both ledgers without a trace, leaving the budget guard's own local count blind to
+             exactly the attempts it most needed to see. Fixed by recording a zero-token (unknown,
+             never guessed) cost+quota row before rethrowing; new test
+             `A_provider_failure_still_writes_a_cost_and_quota_record_before_the_exception_propagates`.
+             Landed on the same `feat/disc-14-request-quota-guard` branch (still open as PR #41) —
+             a direct refinement of that task's own guard logic, not a separate concern.
+Verified:    Full suite 243/243 (one more than before — the new engine test), `dotnet format
+             --verify-no-changes` clean.
+Scope guards: none
+Exit check:  at risk, but meaningfully less blind than this morning — D5-T8's live gate has not
+             reached 8/10 yet, still genuinely blocked, but now on a well-understood, named cause
+             (today's quota re-exhausted via real retries against Gemini's own intermittent 503s)
+             rather than an unknown one, and the tracking bug that let it happen invisibly is fixed.
+Next:        Re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` after the
+             next daily reset (~07:00 UTC — consistent across two resets now). Push the engine fix to
+             PR #41. No code change expected to be needed for D5-T8 itself at that point.
+
+## 2026-10-21 ~19:50 IST — Day 5 (cont.)
+Done:        **D5-T8 closed for real.** Owner corrected my own repeated "free-tier" framing — pushed
+             back, then confirmed directly: the key really was on AI Studio's free tier (Google AI
+             Studio keys carry their own pay-as-you-go toggle, independent of whether the Cloud
+             project has billing enabled in general — exactly why every 429 all session named the
+             quota `GenerateRequestsPerDayPerProjectPerModel-FreeTier` explicitly, Google's own
+             classification, not a guess on my part). Owner rotated the key to a paid plan. Archived
+             (not reused) the local request-count ledger, since 13 of today's entries were spend
+             against the *old* key and no longer reflected the credential actually in use — reusing
+             them would have artificially shrunk the new key's fresh budget. First real run against
+             the new key: **10/10 structural validity** — every one of the 8 generation cases got
+             both module selection and assertion presence right, and both refusal cases (p9/p10)
+             correctly refused rather than hallucinating. Gate PASSED, ticked in PLAN.md.
+Discovered:  In hindsight, the DISC-14 request-count guard and the engine's failure-recording fix
+             (both built and merged today) were real, worthwhile work regardless of the root cause
+             turning out to be the key's tier rather than "no tracking at all" — they're a genuine
+             safety net for any future rate-limited/free-tier key, not wasted effort now that the
+             immediate symptom is gone.
+Scope guards: none
+Exit check:  on track — D5-T8 is genuinely done, not just unblocked. Day 5's AI layer (D5-T3 through
+             D5-T9, plus DISC-5/7/8/10/13/14) is now fully closed. Remaining Day 5 items: none open
+             that I'm aware of — next is Day 6 (RLS/RBAC/audit verification) once the owner's ready.
+Next:        Owner to merge PR #40 (DISC-10) and #41 (DISC-14 + the engine fix) whenever convenient.
+             Then: Day 6 verification work, or whatever the owner wants to prioritize next.

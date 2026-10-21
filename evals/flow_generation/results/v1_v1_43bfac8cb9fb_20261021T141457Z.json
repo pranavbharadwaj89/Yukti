@@ -1,0 +1,91 @@
+{
+  "AnalystPromptVersion": "v1",
+  "CoderPromptVersion": "v1",
+  "RegistryHash": "43bfac8cb9fb",
+  "RanAtUtc": "2026-10-21T14:14:57.2517006+00:00",
+  "PassedCount": 10,
+  "TotalCount": 10,
+  "GatePassed": true,
+  "Cases": [
+    {
+      "Id": "p1",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p2",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p3",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p4",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p5",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p6",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p7",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p8",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p9",
+      "Passed": true,
+      "ActualRefused": true,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": null
+    },
+    {
+      "Id": "p10",
+      "Passed": true,
+      "ActualRefused": true,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": null
+    }
+  ]
+}

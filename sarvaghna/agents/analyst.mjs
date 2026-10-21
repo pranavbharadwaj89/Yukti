@@ -173,7 +173,7 @@ DOCUMENT EXCERPT (source: ${sourceName}, part ${chunkIndex}/${chunkCount}):
 ${truncated}
 """`;
 
-    const result = await callGeminiJson({ prompt, maxOutputTokens: 8192 });
+    const result = await callGeminiJson({ prompt, maxOutputTokens: 8192, capability: 'crew-analyst' });
     if (!result.ok) {
       this.lastAiFallbackReason = `chunk ${chunkIndex}/${chunkCount}: ${result.reason}`;
       return null;

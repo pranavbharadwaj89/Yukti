@@ -445,7 +445,7 @@ have no old equivalent.
   Clarifying-question buttons: Analyst returns free-text reasons, not structured options, so each
   reason is a button that appends "(Re: …)" to the description for the user to answer — no new
   backend contract invented to fake structured choices.
-- [ ] D5-T8 Evaluation harness: 10 prompts (`evals/flow_generation/`) scored on structural validity,
+- [x] D5-T8 Evaluation harness: 10 prompts (`evals/flow_generation/`) scored on structural validity,
   module correctness, assertion presence, correct refusal (prompts 9–10); results written per
   prompt-version + timestamp; **gate: ≥ 8/10 structural validity**, up to 3 prompt versions, then escalate
   ✔ `dotnet run --project src/Yukti.Cli -- eval flow-generation` → 8/10 or better — **never cut**
@@ -473,10 +473,34 @@ have no old equivalent.
   competing for the identical quota). See new DISC-14 below — the dollar-based budget guard has no
   visibility into this request-count ceiling at all; it would happily "allow" a call that the
   provider itself then hard-refuses.
-  **Next:** re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` after the
-  quota resets (~2026-10-21 06:00 UTC) or once the key is upgraded off the free tier; no code change
-  needed either way. Four real (failed) attempts are preserved under `evals/flow_generation/results/`
-  as an honest record, not deleted.
+  **2026-10-21 follow-up — still blocked, but real progress and a clearer picture:** the quota did
+  reset overnight (confirmed: no more 429s for several attempts), and real passes happened for the
+  first time all session — `p1`/`p2`/`p3` each passed on at least one run. But no single run has
+  reached 8/10 yet: Gemini itself is intermittently returning 503 "experiencing high demand" across
+  several consecutive attempts (a second, separate availability issue, distinct from the quota),
+  and today's 20/day quota was burned back down to exhausted by the combination of genuine retries
+  against that instability — confirmed again via a fresh 429 with its own ~17h retry window. While
+  chasing this, found and fixed a second real DISC-14-adjacent bug (see DISC-14's own entry above):
+  the engine was silently dropping every failed real attempt from both ledgers, which is *why* the
+  guard kept allowing calls through against an already-exhausted quota instead of refusing
+  immediately. That's fixed now (landed on DISC-14's branch/PR #41) — going forward, our local
+  tracking will accurately mirror real usage, including failures, so this exact waste pattern
+  shouldn't recur. Today's quota is confirmed exhausted again (~17h retry window as of ~13:45 UTC
+  2026-10-21). **Next:** re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force`
+  after the next reset (~07:00 UTC daily, a consistent pattern across two resets now) — no code
+  change needed. Nine real attempts (mixed pass/fail) are preserved under
+  `evals/flow_generation/results/` as an honest record, not deleted.
+  **Closed 2026-10-21, ✔ genuinely passed:** the root cause was neither Gemini's own instability nor
+  our tracking gap — the configured key really was on AI Studio's free tier (owner confirmed and
+  rotated it to a paid-plan key; Google AI Studio keys carry their own pay-as-you-go toggle,
+  independent of whether the underlying Cloud project has billing enabled in general, which is why
+  every 429 this session named the quota `GenerateRequestsPerDayPerProjectPerModel-FreeTier`
+  explicitly). The stale local ledger (tracking the *old* key's spend) was archived, not reused,
+  since it no longer corresponded to the credential actually in use. First real run against the new
+  key: **10/10 structural validity**, module correctness and assertion presence both correct on
+  every one of the 8 generation cases, and both refusal cases (p9/p10) correctly refused rather than
+  hallucinating a flow. ✔ `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` → 10/10,
+  gate PASSED. Result: `evals/flow_generation/results/v1_v1_43bfac8cb9fb_20261021T141457Z.json`.
 - [x] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
   provider, model, tokens, cost, prompt version, tenant); configured monthly cap, 80% warns, 100% returns
   503 "AI budget reached" while the rest of Yukti keeps working; `GET /api/v1/ai/usage` (admin role)
@@ -658,17 +682,52 @@ have no old equivalent.
   suite 247/247 + `npm run lint` + `tsc --noEmit` + `npm run build`, all clean; visually verified
   against the real stack (dark/light/high-contrast) via Playwright screenshots. Storybook (§9.6) and
   visual-regression testing (§9.7) are out of scope — not built, not required by this pass.
-- [ ] DISC-14 `IAiBudgetGuard` (D5-T9) only models dollar cost against the configured `$30/week` cap
-  — it has no concept of a provider's own request-count quota. Found running D5-T8's live eval: the
-  configured Gemini key is a **free-tier** key with a hard ceiling of 20 `generateContent` calls per
-  day for `gemini-3.8-flash` (confirmed via the provider's own 429 `RESOURCE_EXHAUSTED` response),
-  shared across *every* caller of that key — Sarvagna's own Analyst/Coder calls AND Sarvaghna's
-  separate commit/push-hook AI reviews (`sarvaghna/sarvaghna.mjs`) draw from the identical daily
-  allowance. The dollar-based guard would happily "allow" a call (worst-case ~$0.03, nowhere near
-  $30) that the provider itself then hard-refuses with no budget-guard visibility into why. Two
-  different fixes, an owner decision, not a silent pick: (a) upgrade the key off the free tier (the
-  $30/week dollar model then becomes the real constraint again, as designed), or (b) teach
-  `IAiBudgetGuard`/`ai_cost_records` to also track and cap daily request *count*, independent of
-  cost, and have Sarvaghna's own hook calls write to the same ledger. Not built here — this is a new,
-  cross-cutting capability (and Sarvaghna's hook is Node, outside `ai_cost_records`' own .NET/EF
-  reach), not a one-line fix inside D5-T8.
+- [x] DISC-14 `IAiBudgetGuard` (D5-T9) only modeled dollar cost against the $30/week cap — no
+  concept of a provider's own request-count quota. Found running D5-T8's live eval: the configured
+  Gemini key is **free-tier**, hard ceiling 20 `generateContent` calls/day for `gemini-3.8-flash`
+  (confirmed via the provider's own 429 `RESOURCE_EXHAUSTED`), shared across *every* caller of that
+  key — Sarvagna's own Analyst/Coder calls AND Sarvaghna's separate commit/push-hook AI reviews
+  (`sarvaghna/sarvaghna.mjs`) draw from the identical daily allowance. Owner's explicit choice:
+  build request-count quota tracking (not upgrade the key).
+  **Closed 2026-10-20:** `IAiRequestQuotaLedger` (new port, `Yukti.Application.Ai`) + `AiBudgetCheck`
+  extended with `QuotaExceeded`/`RequestsToday`/`DailyRequestQuota` (defaulted so an unconfigured/
+  paid-tier environment is never artificially capped). `AiBudgetGuard` now checks both constraints,
+  either refusing; the engine raises a new, distinctly-worded `AiRequestQuotaExceededException`
+  when it's the quota, not the dollar cap. `FileAiRequestQuotaLedger`: one shared, append-only
+  JSON-lines file at `sarvaghna/ledger/gemini-requests.jsonl` (same gitignored `ledger/` directory
+  Sarvaghna's own decision log already uses) — file-based, not Postgres, since the constraint is
+  per API *key*, shared across two runtimes with no other common storage. `sarvaghna/core/
+  gemini-client.mjs` (the one chokepoint all 5 Node callers already go through) now checks/records
+  against the identical file, so neither side can blow past the other's calls unknowingly.
+  `GET /api/v1/ai/usage` now also reports `RequestsToday`/`DailyRequestQuota` (global, not
+  tenant-scoped, unlike every other field there).
+  **A real bug caught and fixed while verifying end-to-end, not just in unit tests:** .NET's
+  `JsonSerializer` defaults to PascalCase; Node's `JSON.stringify` naturally writes camelCase. Each
+  side could write its own lines but silently fail to *count* the other's — not an exception, just
+  `TimestampUtc` deserializing to its default value, a result of `0` instead of `20`. Caught by
+  manually seeding the real shared ledger with the day's known 20/20 usage and watching the CLI
+  eval still call Gemini anyway; fixed by giving `FileAiRequestQuotaLedger` an explicit camelCase
+  `JsonSerializerOptions`, confirmed by re-running the exact same real scenario (now correctly
+  refused, 0 further provider calls) and by a new test reading a hand-written camelCase line in
+  Node's own exact shape. A second, smaller bug in the same verification pass: the CLI's own
+  pre-flight budget message was hardcoded to the dollar-cap wording regardless of which constraint
+  actually failed — fixed to branch on `QuotaExceeded`.
+  ✔ 9 new tests (`AiBudgetGuardTests` ×3, `AiCostRecorderTests` ×2, `AiPlanningEngineTests` ×2,
+  `FileAiRequestQuotaLedgerTests` ×5 — some new, some folded into existing files) + 3 new Node tests
+  (`sarvaghna/core/gemini-client.test.mjs`, `npm test --prefix sarvaghna`, new script, `node --test`,
+  no new npm package) — full .NET suite 242/242, `dotnet format --verify-no-changes` clean. Verified
+  against the real, live-exhausted quota: the CLI eval now correctly refuses before any provider
+  call with the quota-specific message, instead of wasting 3 more real requests against Gemini's
+  own 429 the way it did before the fix.
+  **2026-10-21, a second real bug found closing out D5-T8:** `AiPlanningEngine.PlanAsync` never
+  wrapped `_provider.GenerateStructuredAsync` in a try/catch — a provider-level failure
+  (`AiUnavailableException`: 429, 503, timeout) propagated straight out of the loop, skipping
+  `_costRecorder.RecordAsync` entirely. Every failed real attempt vanished from *both* ledgers
+  without a trace, so the budget guard's own local quota count stayed blind to exactly the
+  attempts it most needed to see — confirmed live: the guard kept letting real calls through
+  against an already-exhausted quota (Gemini's own 429 message unchanged between attempts, proving
+  nothing had actually reset). Fixed by wrapping the call, recording a zero-token (unknown, never
+  guessed) cost+quota row on `AiUnavailableException`, then rethrowing. New test:
+  `A_provider_failure_still_writes_a_cost_and_quota_record_before_the_exception_propagates`. Full
+  suite 243/243, `dotnet format --verify-no-changes` clean. Landed on this same branch/PR rather
+  than a separate one — a direct refinement of this task's own guard logic, not a new concern.

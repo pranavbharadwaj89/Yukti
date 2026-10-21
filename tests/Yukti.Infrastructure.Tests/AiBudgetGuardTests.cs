@@ -32,17 +32,30 @@ public sealed class AiBudgetGuardTests
 
     private sealed class FixedBudgetOptions : IAiBudgetOptionsProvider
     {
-        public FixedBudgetOptions(decimal weeklyCapUsd, double warnThreshold)
+        public FixedBudgetOptions(decimal weeklyCapUsd, double warnThreshold, int dailyRequestQuota = int.MaxValue)
         {
             WeeklyCapUsd = weeklyCapUsd;
             WarnThreshold = warnThreshold;
+            DailyRequestQuota = dailyRequestQuota;
         }
         public decimal WeeklyCapUsd { get; }
         public double WarnThreshold { get; }
+        public int DailyRequestQuota { get; }
     }
 
-    private static AiBudgetGuard BuildGuard(decimal spentUsd, AiPricing pricing, decimal capUsd, double warnThreshold = 0.8) =>
-        new(new FixedUsageQuery(spentUsd), new FixedPricingProvider(pricing), new FixedBudgetOptions(capUsd, warnThreshold));
+    private sealed class FixedRequestQuotaLedger : IAiRequestQuotaLedger
+    {
+        private readonly int _requestsToday;
+        public FixedRequestQuotaLedger(int requestsToday = 0) => _requestsToday = requestsToday;
+        public Task<int> CountTodayAsync(CancellationToken ct) => Task.FromResult(_requestsToday);
+        public Task RecordAsync(string source, string capability, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private static AiBudgetGuard BuildGuard(
+        decimal spentUsd, AiPricing pricing, decimal capUsd, double warnThreshold = 0.8,
+        int requestsToday = 0, int dailyRequestQuota = int.MaxValue) =>
+        new(new FixedUsageQuery(spentUsd), new FixedPricingProvider(pricing),
+            new FixedBudgetOptions(capUsd, warnThreshold, dailyRequestQuota), new FixedRequestQuotaLedger(requestsToday));
 
     [Fact]
     public async Task Well_under_the_cap_and_under_the_warn_threshold_is_allowed_and_not_near_cap()
@@ -130,5 +143,48 @@ public sealed class AiBudgetGuardTests
 
         Assert.Equal(0m, check.ProjectedUsd);
         Assert.True(check.Allowed);
+    }
+
+    // DISC-14: a provider's own request-count quota (e.g. a free-tier Gemini key's 20/day) is a
+    // different constraint from dollar cost — a free-tier call is $0, so none of the cost-based
+    // tests above would ever catch it.
+
+    [Fact]
+    public async Task Under_the_daily_request_quota_is_allowed_even_at_zero_cost()
+    {
+        var guard = BuildGuard(spentUsd: 0m, pricing: AiPricing.Zero, capUsd: 30.00m, requestsToday: 10, dailyRequestQuota: 20);
+
+        var check = await guard.CheckAsync(SomeTenant, "gemini", estimatedInputTokens: 100, maxOutputTokens: 100, CancellationToken.None);
+
+        Assert.True(check.Allowed);
+        Assert.False(check.QuotaExceeded);
+        Assert.Equal(10, check.RequestsToday);
+        Assert.Equal(20, check.DailyRequestQuota);
+    }
+
+    [Fact]
+    public async Task At_the_daily_request_quota_is_refused_even_though_the_dollar_cost_is_nowhere_near_the_cap()
+    {
+        // The exact real-world case that surfaced this: a free-tier key's 20/day limit hit while
+        // the $30/week dollar guard alone would have happily allowed a ~$0.03 call.
+        var guard = BuildGuard(spentUsd: 0.03m, pricing: AiPricing.Zero, capUsd: 30.00m, requestsToday: 20, dailyRequestQuota: 20);
+
+        var check = await guard.CheckAsync(SomeTenant, "gemini", estimatedInputTokens: 100, maxOutputTokens: 100, CancellationToken.None);
+
+        Assert.False(check.Allowed);
+        Assert.True(check.QuotaExceeded);
+    }
+
+    [Fact]
+    public async Task An_unconfigured_daily_quota_defaults_to_unbounded()
+    {
+        // ConfigurationAiBudgetOptionsProvider's own default (int.MaxValue) — an environment that
+        // never set Ai:Budget:DailyRequestQuota (a paid-tier key, say) is never artificially capped.
+        var guard = BuildGuard(spentUsd: 0m, pricing: AiPricing.Zero, capUsd: 30.00m, requestsToday: 10_000);
+
+        var check = await guard.CheckAsync(SomeTenant, "gemini", estimatedInputTokens: 100, maxOutputTokens: 100, CancellationToken.None);
+
+        Assert.True(check.Allowed);
+        Assert.False(check.QuotaExceeded);
     }
 }

@@ -85,7 +85,9 @@ ${truncatedDiff}
     prompt,
     model,
     temperature: config.rules.aiReview?.temperature || 0.2,
-    maxOutputTokens: config.rules.aiReview?.maxOutputTokens || 4096
+    maxOutputTokens: config.rules.aiReview?.maxOutputTokens || 4096,
+    dailyRequestQuota: config.rules.aiReview?.dailyRequestQuota,
+    capability: 'semantic-review'
   });
 
   if (!result.ok) {

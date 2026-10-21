@@ -105,6 +105,7 @@ public sealed class EvalHost : IDisposable
         IAiProvider provider;
         IAiCostRepository costRepository;
         IAiUsageQuery usageQuery;
+        IAiRequestQuotaLedger quotaLedger;
         YuktiDbContext? dbContext = null;
 
         if (useFixture)
@@ -118,6 +119,8 @@ public sealed class EvalHost : IDisposable
             var inMemoryRepo = new InMemoryAiCostRepository();
             costRepository = inMemoryRepo;
             usageQuery = new InMemoryAiUsageQuery(inMemoryRepo);
+            // §R7: fixture mode never touches the real, shared quota ledger either.
+            quotaLedger = new InMemoryAiRequestQuotaLedger();
         }
         else
         {
@@ -135,11 +138,15 @@ public sealed class EvalHost : IDisposable
             await new EfTenantSessionInitializer(dbContext).EstablishTenantContext(EvalTenantId, ct);
             costRepository = new EfAiCostRepository(dbContext);
             usageQuery = new EfAiUsageQuery(dbContext);
+            // DISC-14: the same shared, on-disk ledger the real API and Sarvaghna's own Node
+            // commit/push-hook calls write to — a real eval run must see (and count against) the
+            // exact same daily request quota they do.
+            quotaLedger = new FileAiRequestQuotaLedger(config);
         }
 
         var budgetOptions = new ConfigurationAiBudgetOptionsProvider(config);
-        var budgetGuard = new AiBudgetGuard(usageQuery, pricing, budgetOptions);
-        var costRecorder = new AiCostRecorder(costRepository, pricing);
+        var budgetGuard = new AiBudgetGuard(usageQuery, pricing, budgetOptions, quotaLedger);
+        var costRecorder = new AiCostRecorder(costRepository, pricing, quotaLedger);
         var engine = new AiPlanningEngine(provider, promptLoader, costRecorder, capabilityOptions, budgetGuard,
             loggerFactory.CreateLogger<AiPlanningEngine>());
 

@@ -15,10 +15,15 @@ public sealed record CreateFlowRequest(string Name, string? Description, Guid? P
 /// <summary>D5-T7: plain-English description of the test to generate.</summary>
 public sealed record GenerateFlowRequest(string Description);
 
-/// <summary>D5-T9/§R10: week-to-date AI spend for the caller's own tenant. <paramref name="Warning"/> is true once spend crosses the configured warn threshold (default 80%) of <paramref name="CapUsd"/>.</summary>
+/// <summary>D5-T9/§R10: week-to-date AI spend for the caller's own tenant. <paramref name="Warning"/> is true
+/// once spend crosses the configured warn threshold (default 80%) of <paramref name="CapUsd"/>.
+/// DISC-14: <paramref name="RequestsToday"/>/<paramref name="DailyRequestQuota"/> are global (not
+/// tenant-scoped — the underlying constraint is a provider's own per-key request quota, shared
+/// across every tenant and even across runtimes), unlike every other field here.</summary>
 public sealed record AiUsageResponse(
     decimal TotalCostUsd, decimal CapUsd, double PercentOfCap, bool Warning,
     int TotalInputTokens, int TotalOutputTokens, int BudgetRefusals, double RetryShare,
+    int RequestsToday, int DailyRequestQuota,
     IReadOnlyList<AiCapabilityUsageResponse> ByCapability);
 
 public sealed record AiCapabilityUsageResponse(string Capability, int Calls, int Retries, int InputTokens, int OutputTokens, decimal CostUsd);

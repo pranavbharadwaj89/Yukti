@@ -40,6 +40,20 @@ public sealed class AiPlanningEngineTests
         }
     }
 
+    /// <summary>A provider that never returns — every call throws, the same contract
+    /// <c>GeminiProvider</c>/<c>OpenAiProvider</c> already guarantee for a 429/503/timeout.</summary>
+    private sealed class FailingProvider : IAiProvider
+    {
+        public List<StructuredGenerationRequest> Requests { get; } = new();
+        public string Id => "failing-stub";
+
+        public Task<ProviderResponse> GenerateStructuredAsync(StructuredGenerationRequest request, CancellationToken ct)
+        {
+            Requests.Add(request);
+            throw new AiUnavailableException("Simulated provider outage.");
+        }
+    }
+
     private sealed class FixedPromptLoader : IPromptLoader
     {
         private readonly string _template;
@@ -74,6 +88,16 @@ public sealed class AiPlanningEngineTests
     {
         public Task<AiBudgetCheck> CheckAsync(TenantId tenantId, string provider, int estimatedInputTokens, int maxOutputTokens, CancellationToken ct) =>
             Task.FromResult(new AiBudgetCheck(Allowed: true, NearCap: false, SpentUsd: 0m, ProjectedUsd: 0m, CapUsd: 1000m));
+    }
+
+    /// <summary>DISC-14: lets a test dictate exactly which refusal shape the guard returns, to
+    /// prove the engine raises the *right* exception type for which constraint failed.</summary>
+    private sealed class FixedResultBudgetGuard : IAiBudgetGuard
+    {
+        private readonly AiBudgetCheck _result;
+        public FixedResultBudgetGuard(AiBudgetCheck result) => _result = result;
+        public Task<AiBudgetCheck> CheckAsync(TenantId tenantId, string provider, int estimatedInputTokens, int maxOutputTokens, CancellationToken ct) =>
+            Task.FromResult(_result);
     }
 
     private static ProviderResponse Response(string json, int inputTokens = 10, int outputTokens = 20) =>
@@ -362,6 +386,72 @@ public sealed class AiPlanningEngineTests
             CancellationToken.None));
 
         Assert.Empty(provider.Requests);
+    }
+
+    [Fact]
+    public async Task A_cost_cap_refusal_raises_AiBudgetExceededException_not_the_quota_one()
+    {
+        // DISC-14: QuotaExceeded false — this is the pre-existing §R6 dollar-cap refusal, unchanged.
+        var provider = new SequencedProvider();
+        var costs = new RecordingCostRecorder();
+        var guard = new FixedResultBudgetGuard(new AiBudgetCheck(
+            Allowed: false, NearCap: true, SpentUsd: 29m, ProjectedUsd: 2m, CapUsd: 30m, QuotaExceeded: false));
+        var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs, budgetGuard: guard);
+
+        await Assert.ThrowsAsync<AiBudgetExceededException>(() => engine.PlanAsync(
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysValid)),
+            CancellationToken.None));
+
+        Assert.Empty(provider.Requests);
+        Assert.Single(costs.Records); // the zero-cost budget-refusal row still gets written
+        Assert.True(costs.Records[0].BudgetRefused);
+    }
+
+    [Fact]
+    public async Task A_request_count_quota_refusal_raises_AiRequestQuotaExceededException_not_the_dollar_one()
+    {
+        // DISC-14: the real-world case — a free-tier key's daily request ceiling hit while cost is
+        // nowhere near the dollar cap; the engine must raise the quota-specific exception, not the
+        // generic budget one, so callers (and the owner reading the error) see the real cause.
+        var provider = new SequencedProvider();
+        var costs = new RecordingCostRecorder();
+        var guard = new FixedResultBudgetGuard(new AiBudgetCheck(
+            Allowed: false, NearCap: false, SpentUsd: 0.03m, ProjectedUsd: 0m, CapUsd: 30m,
+            QuotaExceeded: true, RequestsToday: 20, DailyRequestQuota: 20));
+        var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs, budgetGuard: guard);
+
+        var ex = await Assert.ThrowsAsync<AiRequestQuotaExceededException>(() => engine.PlanAsync(
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysValid)),
+            CancellationToken.None));
+
+        Assert.Contains("20 of 20", ex.Message);
+        Assert.Empty(provider.Requests);
+        Assert.Single(costs.Records);
+        Assert.True(costs.Records[0].BudgetRefused);
+    }
+
+    [Fact]
+    public async Task A_provider_failure_still_writes_a_cost_and_quota_record_before_the_exception_propagates()
+    {
+        // The real bug this guards against: a 429/503/timeout from the real provider used to
+        // vanish from both ledgers entirely (GenerateStructuredAsync throwing skipped the
+        // RecordAsync call below it) — discovered the hard way when the budget guard kept letting
+        // real calls through against an already-exhausted free-tier quota, because its own local
+        // count had never seen any of the failed attempts that actually happened.
+        var provider = new FailingProvider();
+        var costs = new RecordingCostRecorder();
+        var engine = BuildEngine(provider, new FixedPromptLoader("Instructions.\n{{CONTEXT}}"), costs);
+
+        await Assert.ThrowsAsync<AiUnavailableException>(() => engine.PlanAsync(
+            new AiPlanningRequest<TestOutput>("coder", "v1", "do the thing", "ctx", TenantId.New(), Sync(AlwaysValid)),
+            CancellationToken.None));
+
+        Assert.Single(provider.Requests); // the call genuinely reached the provider once
+        Assert.Single(costs.Records); // ...and that real attempt is on the ledger, not lost
+        Assert.False(costs.Records[0].Succeeded);
+        Assert.False(costs.Records[0].BudgetRefused); // distinct from a pre-emptive refusal — this one really tried
+        Assert.Equal(0, costs.Records[0].InputTokens); // unknown on a failed call — 0, never guessed
+        Assert.Equal(0, costs.Records[0].OutputTokens);
     }
 
     private sealed class FilePromptLoaderThatAlwaysMisses : IPromptLoader

@@ -97,6 +97,12 @@ public sealed class AiPlanningEngine : IAiPlanningEngine
                         Attempt: 0, Succeeded: false, InputTokens: 0, OutputTokens: 0, TimeSpan.Zero, DateTimeOffset.UtcNow,
                         BudgetRefused: true),
                     ct);
+                // DISC-14: a request-count quota breach (free-tier key) is a different constraint
+                // from the dollar cap, and gets its own, distinctly-worded exception.
+                if (budgetCheck.QuotaExceeded)
+                {
+                    throw new AiRequestQuotaExceededException(budgetCheck.RequestsToday, budgetCheck.DailyRequestQuota);
+                }
                 throw new AiBudgetExceededException(budgetCheck.SpentUsd, budgetCheck.ProjectedUsd, budgetCheck.CapUsd);
             }
             if (budgetCheck.NearCap)
@@ -106,9 +112,28 @@ public sealed class AiPlanningEngine : IAiPlanningEngine
                     request.TenantId, budgetCheck.SpentUsd, budgetCheck.CapUsd, request.Capability);
             }
 
-            var response = await _provider.GenerateStructuredAsync(
-                new StructuredGenerationRequest(request.Capability, currentPrompt, description, JsonSchema: "", options.MaxOutputTokens, request.Timeout),
-                ct);
+            ProviderResponse response;
+            try
+            {
+                response = await _provider.GenerateStructuredAsync(
+                    new StructuredGenerationRequest(request.Capability, currentPrompt, description, JsonSchema: "", options.MaxOutputTokens, request.Timeout),
+                    ct);
+            }
+            catch (AiUnavailableException)
+            {
+                // §R5/DISC-14: the request reached (or genuinely attempted to reach) the provider —
+                // a real HTTP round trip happened, win or lose, and must still be recorded, cost and
+                // quota alike. Found the hard way: without this, every 429/503/timeout vanished
+                // without a trace on either ledger, so the budget guard stayed blind to exactly the
+                // attempts it most needed to count, and kept letting calls through against an
+                // already-exhausted quota. Token counts are unknown on a failed call — recorded as
+                // 0, never a guess, same as every other "can't know, so don't invent" rule here.
+                await _costRecorder.RecordAsync(
+                    new AiCostRecordData(request.TenantId, request.Capability, _provider.Id, request.PromptVersion,
+                        attempt, Succeeded: false, InputTokens: 0, OutputTokens: 0, TimeSpan.Zero, DateTimeOffset.UtcNow),
+                    ct);
+                throw;
+            }
             var outcome = await request.Validate(response.Parsed, ct);
 
             await _costRecorder.RecordAsync(
