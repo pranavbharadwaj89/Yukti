@@ -473,10 +473,23 @@ have no old equivalent.
   competing for the identical quota). See new DISC-14 below — the dollar-based budget guard has no
   visibility into this request-count ceiling at all; it would happily "allow" a call that the
   provider itself then hard-refuses.
-  **Next:** re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force` after the
-  quota resets (~2026-10-21 06:00 UTC) or once the key is upgraded off the free tier; no code change
-  needed either way. Four real (failed) attempts are preserved under `evals/flow_generation/results/`
-  as an honest record, not deleted.
+  **2026-10-21 follow-up — still blocked, but real progress and a clearer picture:** the quota did
+  reset overnight (confirmed: no more 429s for several attempts), and real passes happened for the
+  first time all session — `p1`/`p2`/`p3` each passed on at least one run. But no single run has
+  reached 8/10 yet: Gemini itself is intermittently returning 503 "experiencing high demand" across
+  several consecutive attempts (a second, separate availability issue, distinct from the quota),
+  and today's 20/day quota was burned back down to exhausted by the combination of genuine retries
+  against that instability — confirmed again via a fresh 429 with its own ~17h retry window. While
+  chasing this, found and fixed a second real DISC-14-adjacent bug (see DISC-14's own entry above):
+  the engine was silently dropping every failed real attempt from both ledgers, which is *why* the
+  guard kept allowing calls through against an already-exhausted quota instead of refusing
+  immediately. That's fixed now (landed on DISC-14's branch/PR #41) — going forward, our local
+  tracking will accurately mirror real usage, including failures, so this exact waste pattern
+  shouldn't recur. Today's quota is confirmed exhausted again (~17h retry window as of ~13:45 UTC
+  2026-10-21). **Next:** re-run `dotnet run --project src/Yukti.Cli -- eval flow-generation --force`
+  after the next reset (~07:00 UTC daily, a consistent pattern across two resets now) — no code
+  change needed. Nine real attempts (mixed pass/fail) are preserved under
+  `evals/flow_generation/results/` as an honest record, not deleted.
 - [x] D5-T9 Cost records + budget guard: every provider call writes `ai_cost_records` (capability,
   provider, model, tokens, cost, prompt version, tenant); configured monthly cap, 80% warns, 100% returns
   503 "AI budget reached" while the rest of Yukti keeps working; `GET /api/v1/ai/usage` (admin role)
@@ -695,3 +708,15 @@ have no old equivalent.
   against the real, live-exhausted quota: the CLI eval now correctly refuses before any provider
   call with the quota-specific message, instead of wasting 3 more real requests against Gemini's
   own 429 the way it did before the fix.
+  **2026-10-21, a second real bug found closing out D5-T8:** `AiPlanningEngine.PlanAsync` never
+  wrapped `_provider.GenerateStructuredAsync` in a try/catch — a provider-level failure
+  (`AiUnavailableException`: 429, 503, timeout) propagated straight out of the loop, skipping
+  `_costRecorder.RecordAsync` entirely. Every failed real attempt vanished from *both* ledgers
+  without a trace, so the budget guard's own local quota count stayed blind to exactly the
+  attempts it most needed to see — confirmed live: the guard kept letting real calls through
+  against an already-exhausted quota (Gemini's own 429 message unchanged between attempts, proving
+  nothing had actually reset). Fixed by wrapping the call, recording a zero-token (unknown, never
+  guessed) cost+quota row on `AiUnavailableException`, then rethrowing. New test:
+  `A_provider_failure_still_writes_a_cost_and_quota_record_before_the_exception_propagates`. Full
+  suite 243/243, `dotnet format --verify-no-changes` clean. Landed on this same branch/PR rather
+  than a separate one — a direct refinement of this task's own guard logic, not a new concern.

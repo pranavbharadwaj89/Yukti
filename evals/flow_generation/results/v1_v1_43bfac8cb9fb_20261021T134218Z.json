@@ -1,0 +1,51 @@
+{
+  "AnalystPromptVersion": "v1",
+  "CoderPromptVersion": "v1",
+  "RegistryHash": "43bfac8cb9fb",
+  "RanAtUtc": "2026-10-21T13:42:18.4451645+00:00",
+  "PassedCount": 2,
+  "TotalCount": 5,
+  "GatePassed": false,
+  "Cases": [
+    {
+      "Id": "p1",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p2",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": "Gemini responded with 503 ServiceUnavailable."
+    },
+    {
+      "Id": "p3",
+      "Passed": true,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": null
+    },
+    {
+      "Id": "p4",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": true,
+      "AssertionsCorrect": true,
+      "Error": "Gemini responded with 503 ServiceUnavailable."
+    },
+    {
+      "Id": "p5",
+      "Passed": false,
+      "ActualRefused": false,
+      "ModuleCorrect": null,
+      "AssertionsCorrect": null,
+      "Error": "Gemini responded with 503 ServiceUnavailable."
+    }
+  ]
+}
