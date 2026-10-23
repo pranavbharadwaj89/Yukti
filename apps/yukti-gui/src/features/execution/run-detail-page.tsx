@@ -123,22 +123,25 @@ export function RunDetailPage() {
         <Card className="flex flex-col overflow-hidden p-4">
           <h2 className="mb-3 font-mono text-sm text-ink-dim">Execution console</h2>
           <div className="flex-1 overflow-y-auto rounded-md bg-bg p-3 font-mono text-xs">
-            {run.results.map((r) => (
-              <div key={r.id} className="mb-1">
-                <span className="text-ink-dim">[{new Date(run.startedAt).toLocaleTimeString()}]</span>{" "}
-                <span
-                  className={
-                    r.status === "Failed" ? "text-danger" : r.status === "Passed" ? "text-success" : "text-ink-dim"
-                  }
-                >
-                  {r.status.toUpperCase()}
-                </span>{" "}
-                <span className="text-ink">{r.stepName}</span>
-                {r.message && <span className="text-ink-dim"> — {r.message}</span>}
-                {r.error && <div className="pl-4 text-danger">{r.error}</div>}
-                {screenshotFileName(r.data) && <ScreenshotThumbnail runId={runId} fileName={screenshotFileName(r.data)!} />}
-              </div>
-            ))}
+            {run.results.map((r) => {
+              const screenshot = screenshotFileName(r.data);
+              return (
+                <div key={r.id} className="mb-1">
+                  <span className="text-ink-dim">[{new Date(run.startedAt).toLocaleTimeString()}]</span>{" "}
+                  <span
+                    className={
+                      r.status === "Failed" ? "text-danger" : r.status === "Passed" ? "text-success" : "text-ink-dim"
+                    }
+                  >
+                    {r.status.toUpperCase()}
+                  </span>{" "}
+                  <span className="text-ink">{r.stepName}</span>
+                  {r.message && <span className="text-ink-dim"> — {r.message}</span>}
+                  {r.error && <div className="pl-4 text-danger">{r.error}</div>}
+                  {screenshot && <ScreenshotThumbnail runId={runId} fileName={screenshot} />}
+                </div>
+              );
+            })}
             {!isTerminal && <div className="text-ink-dim">…</div>}
           </div>
         </Card>
