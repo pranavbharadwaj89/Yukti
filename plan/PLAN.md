@@ -598,8 +598,20 @@ have no old equivalent.
 - [x] D6-T3 Vault proof: secrets resolved from Vault at runtime, never logged; credential rotation audited
   ✔ ALREADY DONE (evidence): `dotnet test --filter "FullyQualifiedName~Vault"` → 4/4 passing in
   `VaultCredentialResolverTests.cs`, against a real local Vault dev server (built 2026-10-11)
-- [ ] D6-T4 Audit proof: publish, run trigger, role change each produce one immutable audit entry
+- [x] D6-T4 Audit proof: publish, run trigger, role change each produce one immutable audit entry
   ✔ `dotnet test --filter "FullyQualifiedName~Audit"`
+  **Closed 2026-10-24:** new `AuditTests.cs` — 4 tests proving the specific named operations end-to-end
+  through their real command handlers (`PublishFlowCommandHandler`, `TriggerFlowRunCommandHandler`,
+  `AssignRoleCommandHandler`), not a stand-in command. Each asserts exactly one entry lands in
+  `IAuditRepository`, with the correct `CommandType`/`Succeeded`/`TenantId`; a 4th proves a *failed*
+  role change still produces exactly one entry recording the failure, not zero and not two.
+  Immutability itself was already proven at two independent layers before this task — `IAuditRepository`
+  exposes no Update/Delete method at all (`Append` only), and `AuditEntryGrantsTests` proves the real
+  DB grant backs that up (`yukti_app` has SELECT+INSERT only) — this file closes the one missing piece:
+  proving "one entry per real operation," not just "the generic mechanism works" (already covered by
+  the pre-existing `AuditableCommandHandlerTests`, which uses a fake command).
+  ✔ Full suite: 279/279 (Cli 11 + Analyzers 17 + Infrastructure 149 + Orchestration 102), 0 skipped.
+  `dotnet format --verify-no-changes` clean.
 - [ ] D6-T5 Run history + report pages (pass/fail/skip/flaky, screenshots, errors)
   ✔ `npm test -- RunHistory Report`
 - [ ] D6-T6 CI gates a PR on `yukti run demo/uc1_flow.json`; `docker compose up` works from clean clone
