@@ -640,10 +640,12 @@ have no old equivalent.
   `IReadOnlyDictionary<string,object?>`, so `{{vars.step.field}}` chaining silently failed past this
   step). Never caught before because `DesktopUiModule` is Windows-only, requires a real unlocked
   display, and is exercised by no CI job. Fixed identically to the existing pattern.
-  ✔ Backend: `dotnet test` → 279/279 (updated `WebModuleTests.Screenshot_...` proves the sanitization
-  + per-run storage convention directly, including a path-traversal attempt). Frontend:
-  `npx vitest run run-detail-page reports-page` → 9/9 (2 new); full suite 249/249; `npm run
-  typecheck`/`lint`/`build` all clean.
+  ✔ Backend: `dotnet test` → 285/285 (updated `WebModuleTests.Screenshot_...` proves the sanitization
+  + per-run storage convention directly, including a path-traversal attempt; new
+  `ScreenshotStorageTests.cs`, 6 tests, added after Sarvaghna's own AI review caught a real edge case
+  — a trailing-slash/empty "path" collapsing to an empty file name — fixed in the same pass, not
+  deferred). Frontend: `npx vitest run run-detail-page reports-page` → 9/9 (2 new); full suite
+  249/249; `npm run typecheck`/`lint`/`build` all clean.
 - [ ] D6-T6 CI gates a PR on `yukti run demo/uc1_flow.json`; `docker compose up` works from clean clone
   ✔ workflow green; `/health` returns 200
 - **Exit check:** security features proven by tests, not assumed; CI gates on a Yukti flow.

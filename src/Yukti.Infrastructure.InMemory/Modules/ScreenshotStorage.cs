@@ -17,9 +17,14 @@ public static class ScreenshotStorage
 
     /// <summary>A flow author controls the raw value via the step's "path" param — this must never
     /// be able to escape the per-run directory (e.g. "../../secrets.txt"), so only the bare file
-    /// name survives.</summary>
-    public static string SafeFileName(string? requested, string defaultPrefix) =>
-        requested is null ? $"{defaultPrefix}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png" : Path.GetFileName(requested);
+    /// name survives. An empty string or a path ending in a directory separator (e.g. "shots/")
+    /// would otherwise make <c>Path.GetFileName</c> return "" — falling through to the generated
+    /// default instead of resolving to the per-run directory itself.</summary>
+    public static string SafeFileName(string? requested, string defaultPrefix)
+    {
+        var fileName = requested is null ? null : Path.GetFileName(requested);
+        return string.IsNullOrEmpty(fileName) ? $"{defaultPrefix}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png" : fileName;
+    }
 
     public static string DirectoryFor(FlowRunId runId) => Path.Combine(RootDirectory, runId.Value.ToString());
 

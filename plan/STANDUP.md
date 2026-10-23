@@ -1344,10 +1344,15 @@ Discovered:  `DesktopUiModule`'s `findImage`/`screenshot` actions still returned
              (`run-detail-page`, `reports-page`), same precedent Day 3/5 used for stale acceptance
              text, not silently reinterpreted.
 Scope guards: none
-Exit check:  on track. Backend `dotnet build -warnaserror` → 0/0; `dotnet test` → 279/279 (updated
-             `WebModuleTests` screenshot test now proves sanitization + the per-run storage
-             convention, including a path-traversal attempt). Frontend: `npm run typecheck` clean,
-             `npm run lint` clean, `npx vitest run` → 249/249 (was 243/243, +6 net), `npm run build`
-             succeeds. `dotnet format --verify-no-changes` clean.
+Exit check:  on track. Backend `dotnet build -warnaserror` → 0/0; `dotnet test` → 285/285 (updated
+             `WebModuleTests` screenshot test proves sanitization + the per-run storage convention,
+             including a path-traversal attempt; new `ScreenshotStorageTests.cs`, 6 tests). Sarvaghna's
+             own AI semantic review (quota back today) caught a real edge case in the first push of
+             this commit — an empty or trailing-slash "path" param collapsing `Path.GetFileName` to
+             "", which would have resolved `PrepareFullPath` to the directory itself instead of a
+             file — fixed in the same pass, with the 6 new tests proving it directly rather than
+             just patching silently. Frontend: `npm run typecheck` clean, `npm run lint` clean,
+             `npx vitest run` → 249/249 (was 243/243, +6 net), `npm run build` succeeds. `dotnet
+             format --verify-no-changes` clean.
 Next:        Push `feature/D6-T5-run-history-reports`, open PR, then D6-T6 (CI gate on a real flow
              run + `docker compose up` from clean clone) — the last Day 6 task.
