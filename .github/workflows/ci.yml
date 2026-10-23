@@ -494,3 +494,85 @@ jobs:
     - name: Show API log on failure
       if: failure()
       run: cat /tmp/yukti-api-e2e.log || true
+
+  # D6-T6: gates every PR on the real UC-1 flow (demo/uc1_flow.json) actually passing end-to-end
+  # through the real CLI -> FlowEngine -> WebModule/ApiModule/LogsModule chain against a real
+  # FixtureApp — the same flow D3-T4/T5 proved by hand (7/7, then 50/50 at 0% flake), now enforced
+  # on every push instead of trusted from a past session's local run. `yukti run` is explicitly
+  # "in-process — no API server, no Postgres" (Yukti.Cli/Program.cs), so this job needs neither.
+  uc1-flow-gate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Build the CLI and FixtureApp
+      run: |
+        dotnet build src/Yukti.Cli -c Release
+        dotnet build demo/fixtures/FixtureApp -c Release
+
+    - name: Install Playwright browsers
+      run: pwsh src/Yukti.Cli/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+
+    - name: Start FixtureApp
+      run: |
+        nohup dotnet demo/fixtures/FixtureApp/bin/Release/net8.0/FixtureApp.dll > fixtureapp.log 2>&1 &
+        for i in $(seq 1 30); do
+          if curl -sf -o /dev/null http://127.0.0.1:5082/login; then exit 0; fi
+          sleep 1
+        done
+        echo "FixtureApp never came up within 30s:"; cat fixtureapp.log; exit 1
+
+    - name: Run the UC-1 flow gate
+      run: dotnet src/Yukti.Cli/bin/Release/net8.0/Yukti.Cli.dll run demo/uc1_flow.json --junit uc1-results.xml
+
+    - name: Upload JUnit report on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: uc1-flow-junit
+        path: uc1-results.xml
+
+    - name: Show FixtureApp log on failure
+      if: failure()
+      run: cat fixtureapp.log || true
+
+  # D6-T6: `docker compose up` works from a clean clone — proven for real against the actual
+  # compose file and Dockerfile (building both images), not asserted from having read them. A
+  # fresh checkout has no .env, matching exactly what a new contributor's clean clone would hit.
+  docker-compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: docker compose up (build + start, clean clone — no .env)
+      run: docker compose up -d --build
+
+    - name: Wait for the api service to report healthy
+      run: |
+        for i in $(seq 1 60); do
+          status=$(docker inspect --format='{{json .State.Health.Status}}' yukti-api 2>/dev/null || echo '"starting"')
+          echo "api health: $status"
+          if [ "$status" = '"healthy"' ]; then exit 0; fi
+          if [ "$status" = '"unhealthy"' ]; then break; fi
+          sleep 2
+        done
+        echo "api never reported healthy:"; docker compose logs api; exit 1
+
+    - name: /health returns 200
+      run: curl -sf -o /dev/null -w '%{http_code}\n' http://localhost:8080/health
+
+    - name: Worker started cleanly behind api's healthcheck
+      run: docker compose logs worker
+
+    - name: Show logs on failure
+      if: failure()
+      run: docker compose logs
+
+    - name: Tear down
+      if: always()
+      run: docker compose down -v

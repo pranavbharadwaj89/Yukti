@@ -459,6 +459,18 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// D6-T6: `docker compose up` from a clean clone starts against a brand-new, unmigrated Postgres
+// volume — the startup seeding block below (roles/users/modules) already requires these tables to
+// exist, so this isn't new coupling, just making an existing implicit requirement automatic instead
+// of needing a separate `dotnet ef database update` step no compose file runs. Idempotent — CI's
+// own jobs that already apply migrations as a distinct step are unaffected (re-running an
+// up-to-date migration is a no-op).
+using (var migrationScope = app.Services.CreateScope())
+{
+    var migrationDb = migrationScope.ServiceProvider.GetRequiredService<YuktiDbContext>();
+    await migrationDb.Database.MigrateAsync();
+}
+
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
@@ -1357,6 +1369,12 @@ app.MapGet($"{apiV1}/ai/usage", async (
 .RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
 
 app.MapGet("/", () => Results.Ok(new { service = "Yukti.Api", status = "running" }));
+
+// D6-T6: docker-compose.yml's own healthcheck target, and what `docker compose up` from a clean
+// clone is actually proven against. Liveness only (not a deep dependency probe) — by the time this
+// process accepts any request at all, the migration above has already either succeeded or crashed
+// startup outright, so there is nothing further for this endpoint itself to check.
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 
 app.Run();
 
