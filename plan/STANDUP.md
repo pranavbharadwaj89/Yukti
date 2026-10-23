@@ -1184,3 +1184,99 @@ Exit check:  on track, pending CI confirmation of the new Postgres service in `b
 Next:        Push `feature/D6-T1-rls-proof`, open PR, confirm CI green (especially the new service
              block), then D6-T2 — RBAC proof (authorized-success + unauthorized-403 per write
              command).
+
+## 2026-10-21 ~21:10 IST — Day 6 (cont.)
+Done:        D6-T1 merged (PR #42) — owner merged directly; all 6 CI checks passed, including
+             `build-and-test` on its first real run with the new Postgres service (confirmed, not
+             assumed). Local `main` fast-forwarded to the merge commit.
+             D6-T2 RBAC proof. Scoped first via a research pass: every write command handler in the
+             codebase (16 total, found by reading the `AuditableCommandHandler` call sites directly,
+             not guessed) and how `IPermissionChecker`/`ForbiddenException` map to the API's real
+             403 response. No dedicated RBAC test file existed at all — confirmed independently of
+             `GAP-MATRIX.md`'s own prior finding, same conclusion. Built `AuthorizationTests.cs`: 14
+             authorized-success/unauthorized-403 pairs (28 tests) covering `AssignRole`,
+             `UpdateRolePermissions`, `CreateFlow`, `AddFlowStep`, `PublishFlow`, `TriggerFlowRun`,
+             `CancelFlowRun`, `RegisterModule`, and all 5 `ApiCollection`/`ApiRequest` commands.
+Discovered:  1. `RegisterUserCommand` has no permission check by design (open self-registration,
+             no caller identity exists yet) — excluded with an explicit in-file note rather than
+             silently skipped. `GenerateFlowCommand`'s own pair already exists in
+             `GenerateFlowCommandHandlerTests.cs` (D5-T7) — not duplicated.
+             2. No in-memory implementation of `IApiCollectionRepository` exists anywhere in the
+             codebase (only the real EF one) — added a minimal test-only stub in the new file,
+             not a production `InMemoryApiCollectionRepository` nothing else needs yet.
+             3. A real test-authoring mistake caught by the first run, not a product bug: 10 of 28
+             tests failed with "not found"/`NullReferenceException` because `InMemory*Repository
+             .Save` only stages a write — nothing lands in the backing store until
+             `IUnitOfWork.Commit()` runs (the same FR-OPS-03 mechanic `AuditableCommandHandler`
+             itself depends on). Setup fixtures built directly via a repository, bypassing the
+             handler under test, need an explicit commit first; fixed by adding one after every such
+             setup `.Save()` call.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275 (was 247/247, +28 new),
+             0 skipped. `dotnet format --verify-no-changes` clean.
+Next:        Push `feature/D6-T2-rbac-proof`, open PR. Then D6-T4 (audit proof) — D6-T3 (Vault) is
+             already closed from earlier in the week.
+
+## 2026-10-21 ~21:40 IST — Day 6 (cont.)
+Done:        Fixed a real, order-dependent flake in `AuditEntryGrantsTests.cs` that CI's
+             `build-and-test` surfaced on PR #43's own run — the first time this file has ever run
+             for real against Postgres in CI (D6-T1 added the Postgres service that makes it run at
+             all). `Direct_UPDATE_against_audit_entries_fails_with_a_permissions_error` got Postgres
+             error `22P02` (invalid uuid cast) instead of the expected `42501`. Root-caused by reading
+             the actual Postgres container log (`ERROR: invalid input syntax for type uuid: ""`,
+             `STATEMENT: UPDATE audit_entries SET "Succeeded" = false WHERE "Id" = $1`) rather than
+             guessing from the xUnit assertion diff alone, and confirmed the same backend PID (164)
+             ran a `TenantIsolationTests` INSERT moments later — proving the two files share Npgsql's
+             connection pool (same `ConnectionStrings:YuktiRuntime`, same process). `yukti_app`'s
+             grants are correct (confirmed by re-reading both `AddAuditEntryGrants` and
+             `AddYuktiAppRuntimeRole` migrations directly: SELECT+INSERT only on `audit_entries`,
+             never UPDATE/DELETE) — the bug is that this test never establishes any tenant context
+             before touching `audit_entries`, unlike every other RLS-aware live-DB test in this
+             suite. `audit_entries`'s own RLS policy is permissive (`"TenantId" IS NULL OR ...`), and
+             yukti_app's SELECT grant lets the UPDATE's WHERE-clause row scan reach that policy's
+             `current_setting(...)::uuid` cast — so whatever stale/absent session-level GUC value a
+             reused pooled connection happens to carry decides whether the cast even succeeds, before
+             the real, intended 42501 (missing UPDATE privilege) is ever reached. Fixed by calling
+             `EfTenantSessionInitializer.EstablishTenantContext` with a fresh `TenantId` before the
+             UPDATE/DELETE in both tests — any valid tenant makes the cast succeed and the row
+             visible (the policy's `TenantId IS NULL` branch is already unconditionally true for this
+             row regardless), making the GRANT-level 42501 the only possible outcome. Not a RLS or
+             grants bug — the security behavior itself was always correct; only this test's own setup
+             was nondeterministic.
+Discovered:  Re-ran the two files together 5x locally after the fix with no failures (was previously
+             exposed to this ordering dependency on every run, just hadn't lost the race until CI's
+             first real execution). Worth remembering for any future live-DB test added to this
+             suite: establish tenant context explicitly, never rely on a connection's ambient state.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275, 0 skipped (5 repeated
+             local runs of the two real-DB files together, all green). `dotnet format
+             --verify-no-changes` clean.
+Next:        Push the fix to `feature/D6-T2-rbac-proof` (same PR #43 — this is the CI gate it hit,
+             not a separate concern), confirm CI green, then D6-T4 (audit proof).
+
+## 2026-10-21 ~22:05 IST — Day 6 (cont.)
+Done:        AuditEntryGrantsTests fix confirmed working — `build-and-test` passed on the re-run,
+             both audit tests green. A second, unrelated failure then surfaced on the same PR's
+             `ai-off` job: `Yukti.Cli.Tests.EvalFlowGenerationTests.
+             An_unchanged_version_and_registry_reuses_the_stored_result_without_force` — `Expected:
+             2, Actual: 1` on the file count after a `--force` re-run. Confirmed this is genuinely
+             unrelated to D6-T2 (nothing in this branch touches `Yukti.Cli`/`Eval` code) and is a
+             real, pre-existing bug, not a flake to shrug off: `FlowGenerationEvaluator.SaveResult`
+             names each stored result `{analystVersion}_{coderVersion}_{registryHash}_
+             {RanAtUtc:yyyyMMddTHHmmssZ}.json` — **second**-granularity only. The test's three
+             back-to-back `CliProcess.Run` calls (all fixture-backed, zero network calls) can land
+             the first run and the forced third run in the same wall-clock second on a fast CI
+             runner, producing an identical filename and silently overwriting the first result
+             instead of adding a second one. Fixed by widening the timestamp format to millisecond
+             precision (`yyyyMMddTHHmmssfffZ`) — still fixed-width/zero-padded, so
+             `FindReusableResult`'s lexicographic "latest by filename" ordering is unaffected.
+Discovered:  Re-ran the affected test 5x locally after the fix, all green (previously exposed to
+             this same-second collision on every run, just hadn't landed in it before). A genuine
+             latent bug in D5-T8's own eval-result storage, caught only because this unrelated PR's
+             CI run happened to hit the race — not something D6-T2 introduced.
+Scope guards: none — this is a minimal, targeted fix to the exact collision the test exposed, not a
+             redesign of the eval storage scheme.
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275, 0 skipped.
+             `dotnet format --verify-no-changes` clean.
+Next:        Push to `feature/D6-T2-rbac-proof`, confirm all 6 CI checks green, merge, then D6-T4
+             (audit proof).

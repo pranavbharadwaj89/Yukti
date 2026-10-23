@@ -205,7 +205,13 @@ public static class FlowGenerationEvaluator
     {
         var dir = ResultsDirectory(repoRoot);
         Directory.CreateDirectory(dir);
-        var fileName = $"{result.AnalystPromptVersion}_{result.CoderPromptVersion}_{result.RegistryHash}_{result.RanAtUtc:yyyyMMddTHHmmssZ}.json";
+        // Millisecond precision — second-granularity collided when a forced re-run (CliProcess.Run,
+        // zero network calls) landed in the same wall-clock second as the run it was meant to
+        // supersede, silently overwriting it instead of adding a second stored result (caught by
+        // EvalFlowGenerationTests.An_unchanged_version_and_registry_reuses_the_stored_result_without_force
+        // on a fast CI runner). Still fixed-width and zero-padded, so FindReusableResult's
+        // lexicographic "latest by filename" ordering is unaffected.
+        var fileName = $"{result.AnalystPromptVersion}_{result.CoderPromptVersion}_{result.RegistryHash}_{result.RanAtUtc:yyyyMMddTHHmmssfffZ}.json";
         var path = Path.Combine(dir, fileName);
         File.WriteAllText(path, JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
         return path;
