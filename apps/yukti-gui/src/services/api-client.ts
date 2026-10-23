@@ -179,6 +179,21 @@ export const runsApi = {
   cancel: (runId: string) => request<void>(`/api/v1/runs/${runId}/cancel`, { method: "POST" }),
 };
 
+// D6-T5: FR-STRUCT-05 still applies to binary responses — this is the one place that fetches a
+// screenshot, so nothing else needs to touch fetch() or the auth token to show one. A plain
+// <img src="..."> can't attach the Authorization header the endpoint requires, so this fetches the
+// bytes itself and hands back an object URL for the caller to render and revoke.
+export const screenshotsApi = {
+  async fetchObjectUrl(runId: string, fileName: string): Promise<string> {
+    const token = useAuthStore.getState().accessToken;
+    const res = await fetch(`${BASE_URL}/api/v1/runs/${runId}/screenshots/${encodeURIComponent(fileName)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new ApiError(res.status, res.statusText, undefined, "Could not load the screenshot.");
+    return URL.createObjectURL(await res.blob());
+  },
+};
+
 // D5-T7: up-front AI on/off signal (D5-T2's switch), so the generation panel can be hidden with
 // an explanation instead of being discovered broken on submit.
 export const aiApi = {

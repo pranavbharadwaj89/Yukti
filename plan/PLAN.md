@@ -612,8 +612,38 @@ have no old equivalent.
   the pre-existing `AuditableCommandHandlerTests`, which uses a fake command).
   ✔ Full suite: 279/279 (Cli 11 + Analyzers 17 + Infrastructure 149 + Orchestration 102), 0 skipped.
   `dotnet format --verify-no-changes` clean.
-- [ ] D6-T5 Run history + report pages (pass/fail/skip/flaky, screenshots, errors)
-  ✔ `npm test -- RunHistory Report`
+- [x] D6-T5 Run history + report pages (pass/fail/skip/flaky, screenshots, errors)
+  ✔ `npm test -- run-detail-page reports-page` (corrected from `RunHistory Report` — no file named
+  `RunHistory` exists; the two real files proving this are named for their actual pages, same as
+  Day 3/5's precedent for fixing a stale acceptance command rather than silently reinterpreting it)
+  **Closed 2026-10-24:** most of this was already built before today — `RunDetailPage` already
+  rendered per-step pass/fail/skip, the flaky badge, and error messages against a complete
+  `GET /api/v1/runs/{runId}` DTO; `ReportsPage`'s `RunHistoryTable` already showed per-run
+  pass/fail/skip counts. The one real gap, confirmed by research before writing code: screenshots
+  were written to local disk by `WebModule`/`DesktopUiModule` with no way for a browser to ever
+  fetch them (no serving route, no URL anywhere in the API). Owner decision: build it now rather
+  than defer.
+  Built: `ScreenshotStorage` (`Yukti.Infrastructure.InMemory/Modules`) — both screenshot actions now
+  write under one directory per `FlowRunId`, with the caller's `path` param sanitized to a bare file
+  name only (`Path.GetFileName`) so a malicious/careless flow step can't escape it. New
+  `GET /api/v1/runs/{runId}/screenshots/{fileName}` endpoint reuses the run's own existing
+  tenant-scoped repository lookup (`IFlowRunRepository.GetById` + `ITenantGuard`, the exact Layers
+  1-3 D6-T1 proved) as its only authorization check — no new tenancy mechanism. Frontend:
+  `screenshotsApi.fetchObjectUrl` (api-client.ts, FR-STRUCT-05 — still the one place that ever calls
+  `fetch()` directly, since a plain `<img src>` can't carry the Authorization header the endpoint
+  requires) + a `ScreenshotThumbnail` component wired into `RunDetailPage`'s console, triggered by a
+  module-agnostic convention (any step `Data` carrying a string `path` field) rather than a branch
+  on module kind (SUTRADHAR §2.1).
+  Discovered (fixed in the same pass, not deferred): `DesktopUiModule`'s `findImage` and `screenshot`
+  actions still returned an anonymous C# object as `StepOutcome.Data` — the exact bug class D2-T6/
+  D3-T2 already fixed for ApiModule/WebModule (`VariableStore` only walks
+  `IReadOnlyDictionary<string,object?>`, so `{{vars.step.field}}` chaining silently failed past this
+  step). Never caught before because `DesktopUiModule` is Windows-only, requires a real unlocked
+  display, and is exercised by no CI job. Fixed identically to the existing pattern.
+  ✔ Backend: `dotnet test` → 279/279 (updated `WebModuleTests.Screenshot_...` proves the sanitization
+  + per-run storage convention directly, including a path-traversal attempt). Frontend:
+  `npx vitest run run-detail-page reports-page` → 9/9 (2 new); full suite 249/249; `npm run
+  typecheck`/`lint`/`build` all clean.
 - [ ] D6-T6 CI gates a PR on `yukti run demo/uc1_flow.json`; `docker compose up` works from clean clone
   ✔ workflow green; `/health` returns 200
 - **Exit check:** security features proven by tests, not assumed; CI gates on a Yukti flow.

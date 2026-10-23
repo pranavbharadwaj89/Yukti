@@ -230,10 +230,14 @@ public sealed class WebModule : IAutomationModule
                     }
                 case "screenshot":
                     {
-                        var path = parameters.GetValueOrDefault("path") as string ?? $"screenshot-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png";
+                        // D6-T5: written under ScreenshotStorage's own per-run directory, not
+                        // wherever the caller's "path" happened to point — so Yukti.Api's
+                        // screenshot-serving endpoint can find it again by (runId, fileName) alone.
+                        var fileName = ScreenshotStorage.SafeFileName(parameters.GetValueOrDefault("path") as string, "screenshot");
                         var fullPage = parameters.GetValueOrDefault("fullPage") as bool? ?? false;
-                        await page.ScreenshotAsync(new PageScreenshotOptions { Path = path, FullPage = fullPage });
-                        return StepOutcome.Passed($"Screenshot saved to {path}", new Dictionary<string, object?> { ["path"] = path });
+                        var fullPath = ScreenshotStorage.PrepareFullPath(ctx.RunId, fileName);
+                        await page.ScreenshotAsync(new PageScreenshotOptions { Path = fullPath, FullPage = fullPage });
+                        return StepOutcome.Passed($"Screenshot saved to {fileName}", new Dictionary<string, object?> { ["path"] = fileName });
                     }
                 case "waitForSelector":
                     {

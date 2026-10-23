@@ -1,9 +1,49 @@
+import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useLiveRunProgress } from "@/hooks";
-import { runsApi, ApiError } from "@/services/api-client";
+import { runsApi, screenshotsApi, ApiError } from "@/services/api-client";
 import { Button, Card, Spinner, StatusPill } from "@/components/ui/primitives";
 import { useToastStore } from "@/store/toast-store";
+
+// D6-T5: a module-agnostic convention, not a branch on module kind (SUTRADHAR §2.1) — any step's
+// Data carrying a string "path" is treated as a screenshot reference, whether it came from
+// web.screenshot or ui.screenshot (DesktopUiModule). Neither this page nor the API special-cases
+// either module by name.
+function screenshotFileName(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const path = (data as Record<string, unknown>).path;
+  return typeof path === "string" ? path : null;
+}
+
+function ScreenshotThumbnail({ runId, fileName }: { runId: string; fileName: string }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    screenshotsApi
+      .fetchObjectUrl(runId, fileName)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        createdUrl = url;
+        setObjectUrl(url);
+      })
+      .catch(() => {
+        /* best-effort — a step's own pass/fail/error already carries the signal that matters */
+      });
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [runId, fileName]);
+
+  if (!objectUrl) return null;
+  return <img src={objectUrl} alt={`Screenshot: ${fileName}`} className="mt-2 max-h-48 rounded-md border border-border" />;
+}
 
 // FR-FEAT-03/FR-CL-05: Execution Monitor composing live + historical run
 // view with a scrolling Execution Console. FR-RT-02's catch-up-before-
@@ -96,6 +136,7 @@ export function RunDetailPage() {
                 <span className="text-ink">{r.stepName}</span>
                 {r.message && <span className="text-ink-dim"> — {r.message}</span>}
                 {r.error && <div className="pl-4 text-danger">{r.error}</div>}
+                {screenshotFileName(r.data) && <ScreenshotThumbnail runId={runId} fileName={screenshotFileName(r.data)!} />}
               </div>
             ))}
             {!isTerminal && <div className="text-ink-dim">…</div>}

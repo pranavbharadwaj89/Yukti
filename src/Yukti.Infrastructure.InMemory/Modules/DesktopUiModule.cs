@@ -113,16 +113,23 @@ public sealed class DesktopUiModule : IAutomationModule
                         using var reference = new Bitmap(imagePath);
                         using var screen = CaptureScreen();
                         var match = ImageMatcher.Find(screen, reference, DefaultMatchConfidence);
+                        // D2-T6/D3-T2 fixed this exact bug class elsewhere (ApiModule, WebModule.screenshot):
+                        // an anonymous object isn't an IReadOnlyDictionary<string,object?>, so VariableStore's
+                        // {{vars.step.field}} chaining silently fails to resolve past this step. Never caught
+                        // here before now because DesktopUiModule.Run isn't exercised by any CI job (Windows-
+                        // only, requires an unlocked real display) — found while adding screenshot serving (D6-T5).
                         return Task.FromResult(match is { } m
-                            ? StepOutcome.Passed($"Found image at ({m.X}, {m.Y})", new { x = m.X, y = m.Y, confidence = m.Confidence })
+                            ? StepOutcome.Passed($"Found image at ({m.X}, {m.Y})",
+                                new Dictionary<string, object?> { ["x"] = m.X, ["y"] = m.Y, ["confidence"] = m.Confidence })
                             : StepOutcome.Failed($"Image {imagePath} not found on screen (confidence {DefaultMatchConfidence})"));
                     }
                 case "screenshot":
                     {
-                        var path = parameters.GetValueOrDefault("path") as string ?? $"ui-screenshot-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png";
+                        var fileName = ScreenshotStorage.SafeFileName(parameters.GetValueOrDefault("path") as string, "ui-screenshot");
+                        var fullPath = ScreenshotStorage.PrepareFullPath(ctx.RunId, fileName);
                         using var screen = CaptureScreen();
-                        screen.Save(path, ImageFormat.Png);
-                        return Task.FromResult(StepOutcome.Passed($"Screenshot saved to {path}", new { path }));
+                        screen.Save(fullPath, ImageFormat.Png);
+                        return Task.FromResult(StepOutcome.Passed($"Screenshot saved to {fileName}", new Dictionary<string, object?> { ["path"] = fileName }));
                     }
                 default:
                     return Task.FromResult(StepOutcome.Failed($"Unknown ui action \"{action}\"."));
