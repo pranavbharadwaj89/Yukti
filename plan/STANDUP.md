@@ -1280,3 +1280,32 @@ Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 275/275, 
              `dotnet format --verify-no-changes` clean.
 Next:        Push to `feature/D6-T2-rbac-proof`, confirm all 6 CI checks green, merge, then D6-T4
              (audit proof).
+
+## 2026-10-24 ~10:15 IST — Day 6 (cont.)
+Done:        PR #43 (D6-T2 + the two CI-flake fixes) merged — confirmed, local `main` synced.
+             Owner said "I need to complete V1 ASAP" — moving through remaining Day 6/7 tasks with
+             minimal ceremony, verifying every step for real rather than skipping ahead.
+             D6-T4 Audit proof. New `AuditTests.cs` (4 tests): publish, run trigger, and role change
+             each proven end-to-end through their real command handlers to produce exactly one audit
+             entry (not a stand-in command, unlike the pre-existing generic
+             `AuditableCommandHandlerTests`). A 4th test proves a failed role change still produces
+             exactly one entry recording the failure. Immutability itself was already covered by two
+             independent, pre-existing layers (`IAuditRepository` exposes no Update/Delete;
+             `AuditEntryGrantsTests` proves the DB grant) — this closes the one missing piece.
+Discovered:  The local portable Postgres (`D:\Yukti\runtime`) had crashed overnight (Windows
+             exception 0xC000026B in its log, ~02:21 IST — almost certainly the machine sleeping
+             between sessions) and never restarted — every live-DB test failed with connection-
+             refused on the first full-suite run this session. Not a regression: confirmed via
+             `Test-NetConnection localhost:5432` (false) before touching any code, restarted Postgres
+             (`pg_ctl start`), confirmed reachable, then re-ran clean. A second, smaller batch of
+             connection failures on the very next run was just cold-start contention (first
+             connections after a fresh restart) — a third run was fully clean. Flagging only because
+             it's a real local-environment gap: this portable Postgres isn't set up to survive a
+             sleep/reboot automatically, so any session start should check
+             `Test-NetConnection localhost:5432` before trusting a "both tests failed" result.
+Scope guards: none
+Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 279/279 (was 275/275, +4 new),
+             0 skipped (re-confirmed twice after the Postgres restart). `dotnet format
+             --verify-no-changes` clean.
+Next:        Push `feature/D6-T4-audit-proof`, open PR, merge, then D6-T5 (run history + report
+             pages — frontend) and D6-T6 (CI gate + docker compose).
