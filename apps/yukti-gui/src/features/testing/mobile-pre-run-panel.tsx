@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Card, Input } from "@/components/ui/primitives";
 
 // MobileModule.Setup (src/Yukti.Infrastructure.InMemory/Modules/MobileModule.cs)
@@ -39,6 +40,12 @@ export function MobilePreRunPanel({
   config: MobileDeviceConfig;
   onChange: (config: MobileDeviceConfig) => void;
 }) {
+  const platformNameId = useId();
+  const deviceNameId = useId();
+  const automationNameId = useId();
+  const appiumUrlId = useId();
+  const appId = useId();
+
   return (
     <Card className="flex flex-col gap-3 p-4">
       <h2 className="text-body-sm font-medium text-ink">Device config</h2>
@@ -47,36 +54,53 @@ export function MobilePreRunPanel({
       </p>
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-body-sm text-ink-dim">Platform name*</label>
+          <label htmlFor={platformNameId} className="text-body-sm text-ink-dim">
+            Platform name*
+          </label>
           <Input
+            id={platformNameId}
             placeholder="Android or iOS"
             value={config.platformName}
             onChange={(e) => onChange({ ...config, platformName: e.target.value })}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-body-sm text-ink-dim">Device name*</label>
-          <Input value={config.deviceName} onChange={(e) => onChange({ ...config, deviceName: e.target.value })} />
+          <label htmlFor={deviceNameId} className="text-body-sm text-ink-dim">
+            Device name*
+          </label>
+          <Input
+            id={deviceNameId}
+            value={config.deviceName}
+            onChange={(e) => onChange({ ...config, deviceName: e.target.value })}
+          />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-body-sm text-ink-dim">Automation name*</label>
+          <label htmlFor={automationNameId} className="text-body-sm text-ink-dim">
+            Automation name*
+          </label>
           <Input
+            id={automationNameId}
             placeholder="UiAutomator2 or XCUITest"
             value={config.automationName}
             onChange={(e) => onChange({ ...config, automationName: e.target.value })}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-body-sm text-ink-dim">Appium URL</label>
+          <label htmlFor={appiumUrlId} className="text-body-sm text-ink-dim">
+            Appium URL
+          </label>
           <Input
+            id={appiumUrlId}
             placeholder="http://localhost:4723"
             value={config.appiumUrl}
             onChange={(e) => onChange({ ...config, appiumUrl: e.target.value })}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-body-sm text-ink-dim">App</label>
-          <Input value={config.app} onChange={(e) => onChange({ ...config, app: e.target.value })} />
+          <label htmlFor={appId} className="text-body-sm text-ink-dim">
+            App
+          </label>
+          <Input id={appId} value={config.app} onChange={(e) => onChange({ ...config, app: e.target.value })} />
         </div>
       </div>
     </Card>
