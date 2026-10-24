@@ -74,6 +74,14 @@ public sealed class CliIntegrationTests : IDisposable
         Assert.Equal(1, result.ExitCode);
         var doc = XDocument.Load(junitPath);
         Assert.Single(doc.Descendants("failure"));
+
+        // DISC-2: the "assert" param is a List<object> parsed straight out of the
+        // flow JSON — before the fix this rendered as the C# type name
+        // ("System.Collections.Generic.List`1[System.Object]") instead of JSON.
+        var failureText = doc.Descendants("failure").Single().Value;
+        Assert.Contains("assert=[{", failureText);
+        Assert.DoesNotContain("System.Collections", failureText);
+        Assert.DoesNotContain("`1[", failureText);
     }
 
     [Fact]

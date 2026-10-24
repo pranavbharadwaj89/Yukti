@@ -56,7 +56,7 @@ public static class JUnitReportWriter
             switch (result.Status)
             {
                 case StepStatus.Failed:
-                    var paramsExcerpt = string.Join(", ", ParamRedaction.Redact(step.Params).Select(kv => $"{kv.Key}={kv.Value}"));
+                    var paramsExcerpt = string.Join(", ", ParamRedaction.Redact(step.Params).Select(kv => $"{kv.Key}={FormatParamValue(kv.Value)}"));
                     testcase.Add(new XElement("failure",
                         new XAttribute("message", result.Error ?? "Step failed."),
                         new XAttribute("type", $"{step.Module.Value}.{step.Action}"),
@@ -93,6 +93,17 @@ public static class JUnitReportWriter
 
         return new XDocument(new XElement("testsuites", testsuite));
     }
+
+    private static string FormatParamValue(object? value) =>
+        value switch
+        {
+            null => "null",
+            // A plain string param stays unquoted for readability; anything with
+            // real structure (lists, dicts, nested objects from JSON-parsed flow
+            // params) renders as JSON instead of C#'s type-name ToString().
+            string s => s,
+            _ => JsonSerializer.Serialize(value),
+        };
 
     private static string Excerpt(object? data)
     {
