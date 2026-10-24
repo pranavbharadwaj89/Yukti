@@ -77,11 +77,16 @@ const statusStyles: Record<string, string> = {
   Flaky: "bg-success-soft text-success border border-accent",
 };
 
-export function StatusPill({ status }: { status: string }) {
+export function StatusPill({ status, testId }: { status: string; testId?: string }) {
   const style = statusStyles[status] ?? "bg-surface-2 text-ink-dim";
   const label = status === "Flaky" ? `${status}*` : status;
   return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-mono font-medium ${style}`}>{label}</span>
+    <span
+      data-testid={testId}
+      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-mono font-medium ${style}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -119,7 +124,7 @@ export function Dialog({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-xl outline-none"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-xl outline-none"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

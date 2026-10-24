@@ -142,10 +142,19 @@ export function FlowDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <StatusPill status={flow.status} />
-          <Button variant="secondary" onClick={() => publishMutation.mutate()} disabled={flow.status !== "Draft" || publishMutation.isPending}>
+          <Button
+            variant="secondary"
+            onClick={() => publishMutation.mutate()}
+            disabled={flow.status !== "Draft" || publishMutation.isPending}
+            data-testid="publish-button"
+          >
             Publish
           </Button>
-          <Button onClick={() => triggerRunMutation.mutate()} disabled={flow.status !== "Published" || triggerRunMutation.isPending}>
+          <Button
+            onClick={() => triggerRunMutation.mutate()}
+            disabled={flow.status !== "Published" || triggerRunMutation.isPending}
+            data-testid="run-button"
+          >
             Run
           </Button>
         </div>
@@ -172,7 +181,7 @@ export function FlowDetailPage() {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-mono text-sm text-ink-dim">Steps ({flow.steps.length})</h2>
           {flow.status === "Draft" && (
-            <Button variant="secondary" onClick={() => setAddStepOpen(true)}>
+            <Button variant="secondary" onClick={() => setAddStepOpen(true)} data-testid="add-step-trigger">
               Add step
             </Button>
           )}
@@ -220,7 +229,13 @@ export function FlowDetailPage() {
             addStepMutation.mutate();
           }}
         >
-          <Input placeholder="Step name" value={stepName} onChange={(e) => setStepName(e.target.value)} required />
+          <Input
+            placeholder="Step name"
+            value={stepName}
+            onChange={(e) => setStepName(e.target.value)}
+            required
+            data-testid="step-name-input"
+          />
           <Input placeholder="Save as (optional)" value={saveAs} onChange={(e) => setSaveAs(e.target.value)} />
           <Select
             value={moduleKind}
@@ -231,6 +246,7 @@ export function FlowDetailPage() {
               setAction("");
               setFieldValues({});
             }}
+            testId="module-select"
           />
           <Select
             value={action}
@@ -244,6 +260,7 @@ export function FlowDetailPage() {
               setAction(a);
               setFieldValues({});
             }}
+            testId="action-select"
           />
           <div className="col-span-2">
             {selectedActionSchema && (
@@ -258,7 +275,7 @@ export function FlowDetailPage() {
             )}
           </div>
           <div className="col-span-2 flex justify-end">
-            <Button type="submit" disabled={addStepMutation.isPending}>
+            <Button type="submit" disabled={addStepMutation.isPending} data-testid="add-step-submit">
               Add step
             </Button>
           </div>

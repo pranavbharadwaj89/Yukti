@@ -91,7 +91,7 @@ export function RunDetailPage() {
               Live updates unavailable — refreshing periodically
             </span>
           )}
-          <StatusPill status={run.status} />
+          <StatusPill status={run.status} testId="run-status" />
           {!isTerminal && (
             <Button variant="danger" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
               Cancel
