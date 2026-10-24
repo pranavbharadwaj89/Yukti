@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useLiveRunProgress } from "./index";
 import { runsApi } from "@/services/api-client";
-import { ensureRunProgressConnected, getRunProgressConnection } from "@/services/signalr";
+import { ensureRunProgressConnected, getRunProgressConnection, subscribeToRunProgressLifecycle } from "@/services/signalr";
 import type { FlowRunResponse } from "@/services/types";
 
 vi.mock("@/services/api-client", () => ({
@@ -10,16 +10,13 @@ vi.mock("@/services/api-client", () => ({
 }));
 
 // A minimal fake matching the real @microsoft/signalr HubConnection shape
-// this hook actually calls — real enough to drive the hook's logic, with
-// test-only trigger* methods standing in for events a real server/network
-// would raise. The real client has no off-counterpart for
-// onreconnecting/onreconnected/onclose (confirmed against its .d.ts), so
-// neither does this fake — matching that real constraint is the point.
+// this hook calls directly — on/off/invoke. Reconnecting/reconnected/close
+// no longer go through the connection at all (DISC-6): the real client has
+// no off() for those three, so hooks/index.ts now goes through
+// subscribeToRunProgressLifecycle instead, which this file fakes below with
+// a real removable Set, matching signalr.ts's own pattern.
 function createFakeConnection() {
   const handlers: Record<string, Array<() => void>> = { StepCompleted: [], FlowRunCompleted: [] };
-  const reconnecting: Array<() => void> = [];
-  const reconnected: Array<() => void> = [];
-  const closed: Array<() => void> = [];
   return {
     on: vi.fn((event: string, cb: () => void) => {
       (handlers[event] ??= []).push(cb);
@@ -27,23 +24,25 @@ function createFakeConnection() {
     off: vi.fn((event: string, cb: () => void) => {
       handlers[event] = (handlers[event] ?? []).filter((h) => h !== cb);
     }),
-    onreconnecting: vi.fn((cb: () => void) => reconnecting.push(cb)),
-    onreconnected: vi.fn((cb: () => void) => reconnected.push(cb)),
-    onclose: vi.fn((cb: () => void) => closed.push(cb)),
     invoke: vi.fn().mockResolvedValue(undefined),
-    triggerReconnecting: () => reconnecting.forEach((h) => h()),
-    triggerReconnected: () => reconnected.forEach((h) => h()),
-    triggerClose: () => closed.forEach((h) => h()),
   };
 }
 
 type FakeConnection = ReturnType<typeof createFakeConnection>;
 let fakeConnection: FakeConnection;
 
+type LifecycleListener = { onReconnecting?: () => void; onReconnected?: () => void; onClose?: () => void };
+let lifecycleListeners: Set<LifecycleListener>;
+
 vi.mock("@/services/signalr", () => ({
   getRunProgressConnection: vi.fn(),
   ensureRunProgressConnected: vi.fn(),
+  subscribeToRunProgressLifecycle: vi.fn(),
 }));
+
+const triggerReconnecting = () => lifecycleListeners.forEach((l) => l.onReconnecting?.());
+const triggerReconnected = () => lifecycleListeners.forEach((l) => l.onReconnected?.());
+const triggerClose = () => lifecycleListeners.forEach((l) => l.onClose?.());
 
 const run: FlowRunResponse = {
   id: "run-1",
@@ -58,8 +57,13 @@ describe("useLiveRunProgress — D4-T4 connection state", () => {
   beforeEach(() => {
     vi.mocked(runsApi.get).mockResolvedValue(run);
     fakeConnection = createFakeConnection();
+    lifecycleListeners = new Set();
     vi.mocked(getRunProgressConnection).mockReturnValue(fakeConnection as never);
     vi.mocked(ensureRunProgressConnected).mockResolvedValue(fakeConnection as never);
+    vi.mocked(subscribeToRunProgressLifecycle).mockImplementation((listener: LifecycleListener) => {
+      lifecycleListeners.add(listener);
+      return () => lifecycleListeners.delete(listener);
+    });
   });
 
   afterEach(() => {
@@ -77,11 +81,11 @@ describe("useLiveRunProgress — D4-T4 connection state", () => {
     await waitFor(() => expect(result.current.run).not.toBeNull());
     vi.mocked(runsApi.get).mockClear();
 
-    act(() => fakeConnection.triggerReconnecting());
+    act(() => triggerReconnecting());
     expect(result.current.connectionState).toBe("reconnecting");
     expect(result.current.error).toBeNull(); // never shown as a run failure
 
-    act(() => fakeConnection.triggerReconnected());
+    act(() => triggerReconnected());
     expect(result.current.connectionState).toBe("connected");
     await waitFor(() => expect(runsApi.get).toHaveBeenCalledWith("run-1")); // FR-RT-02: re-syncs on reconnect
   });
@@ -92,7 +96,7 @@ describe("useLiveRunProgress — D4-T4 connection state", () => {
     await waitFor(() => expect(result.current.run).not.toBeNull());
     vi.mocked(runsApi.get).mockClear();
 
-    act(() => fakeConnection.triggerClose());
+    act(() => triggerClose());
     expect(result.current.connectionState).toBe("polling");
 
     await act(async () => {
@@ -120,24 +124,25 @@ describe("useLiveRunProgress — D4-T4 connection state", () => {
     expect(runsApi.get).toHaveBeenCalledTimes(1);
   });
 
-  it("a stale onclose/onreconnecting/onreconnected firing after unmount does nothing — no surviving interval, no state update", async () => {
-    // SARVAGHNA caught this in review: since the real SignalR client has no
-    // off() for these three, a stale handler stays registered on the
-    // shared connection forever. Before the cancelled-guard fix, a stale
-    // onclose firing after unmount called startPolling(), which created a
-    // brand-new setInterval this already-torn-down closure could never
-    // clear again — an unbounded background poll for a page the user left.
+  it("unsubscribes its lifecycle listener on unmount, so no stale handler can leak across mounts (DISC-6)", async () => {
+    // Before this fix, onreconnecting/onreconnected/onclose were registered
+    // directly on the shared connection, which has no off() for them — every
+    // mount left one more unremovable handler behind forever. Now cleanup
+    // actually calls the unsubscribe this hook got back, which is provable
+    // here because the fake's listener Set size must drop back to 0.
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { result, unmount } = renderHook(() => useLiveRunProgress("run-1"));
     await waitFor(() => expect(result.current.run).not.toBeNull());
+    expect(lifecycleListeners.size).toBe(1);
 
     unmount();
-    vi.mocked(runsApi.get).mockClear();
+    expect(lifecycleListeners.size).toBe(0);
 
+    vi.mocked(runsApi.get).mockClear();
     act(() => {
-      fakeConnection.triggerClose();
-      fakeConnection.triggerReconnecting();
-      fakeConnection.triggerReconnected();
+      triggerClose();
+      triggerReconnecting();
+      triggerReconnected();
     });
 
     await act(async () => {
@@ -151,10 +156,10 @@ describe("useLiveRunProgress — D4-T4 connection state", () => {
     const { result } = renderHook(() => useLiveRunProgress("run-1"));
     await waitFor(() => expect(result.current.run).not.toBeNull());
 
-    act(() => fakeConnection.triggerClose());
+    act(() => triggerClose());
     expect(result.current.connectionState).toBe("polling");
 
-    act(() => fakeConnection.triggerReconnected());
+    act(() => triggerReconnected());
     expect(result.current.connectionState).toBe("connected");
 
     vi.mocked(runsApi.get).mockClear();

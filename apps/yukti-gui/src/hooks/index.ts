@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth-store";
 import { useProjectStore } from "@/store/project-store";
-import { ensureRunProgressConnected, getRunProgressConnection } from "@/services/signalr";
+import { ensureRunProgressConnected, getRunProgressConnection, subscribeToRunProgressLifecycle } from "@/services/signalr";
 import { runsApi, environmentsApi } from "@/services/api-client";
 import type { FlowRunResponse } from "@/services/types";
 
@@ -72,35 +72,21 @@ export function useLiveRunProgress(runId: string | undefined) {
       void catchUp();
     };
     const onRunCompleted = () => void catchUp();
-    // SARVAGHNA caught a real bug in review here: since onreconnecting/
-    // onreconnected/onclose can't be unregistered (DISC-6), a stale handler
-    // firing after this effect's own cleanup ran must do nothing at all —
-    // not just skip the state update (catchUp already does that), but
-    // never call startPolling(), which would spin up a brand-new
-    // setInterval that this already-unmounted closure's own stopPolling()
-    // can never clear again.
-    const onReconnecting = () => {
-      if (!cancelled) setConnectionState("reconnecting");
-    };
+    // DISC-6: these three go through subscribeToRunProgressLifecycle, not
+    // connection.onreconnecting/onreconnected/onclose directly — that gives
+    // this effect's cleanup a real unsubscribe, so a stale handler can no
+    // longer fire after unmount at all (see signalr.ts).
+    const onReconnecting = () => setConnectionState("reconnecting");
     const onReconnected = () => {
-      if (cancelled) return;
       stopPolling(); // shouldn't be polling at this point, but never leave two update paths running
       setConnectionState("connected");
       void catchUp(); // FR-RT-02: reconnect always re-syncs first
     };
-    const onClose = () => {
-      if (!cancelled) startPolling();
-    };
+    const onClose = () => startPolling();
 
     connection.on("StepCompleted", onStepCompleted);
     connection.on("FlowRunCompleted", onRunCompleted);
-    // SignalR's public API has no off-counterpart for these three — every
-    // mount adds one more handler to the shared connection, each guarded
-    // by its own `cancelled` below so a stale one is inert, not wrong, but
-    // it is a real accumulating leak. See PLAN.md DISCOVERED.
-    connection.onreconnecting(onReconnecting);
-    connection.onreconnected(onReconnected);
-    connection.onclose(onClose);
+    const unsubscribeLifecycle = subscribeToRunProgressLifecycle({ onReconnecting, onReconnected, onClose });
 
     // Catch-up is unconditional and comes first — a client that saw
     // JoinRun fail should still show the run's current state via REST.
@@ -124,6 +110,7 @@ export function useLiveRunProgress(runId: string | undefined) {
       stopPolling();
       connection.off("StepCompleted", onStepCompleted);
       connection.off("FlowRunCompleted", onRunCompleted);
+      unsubscribeLifecycle();
     };
   }, [runId]);
 
