@@ -901,6 +901,26 @@ runs.MapGet("/{runId:guid}", async (Guid runId, HttpContext context, IFlowRunRep
     return Results.Ok(FlowRunResponse.From(run));
 });
 
+// D6-T5: screenshots are written to local disk by WebModule/DesktopUiModule (ScreenshotStorage,
+// Yukti.Infrastructure.InMemory), keyed by (runId, fileName). The ONLY authorization check needed
+// here is reusing the run's own tenant-scoped lookup (FR-TENANT-01 Layers 1-3, the same ones
+// D6-T1's TenantIsolationTests proves) — a run a caller's tenant can't load, it can't see a
+// screenshot for either. fileName is re-sanitized here too (not just at write time), since it
+// arrives from the URL and could otherwise attempt path traversal independently of what any module
+// ever wrote.
+runs.MapGet("/{runId:guid}/screenshots/{fileName}", async (Guid runId, string fileName, HttpContext context, IFlowRunRepository repo, ITenantGuard tenantGuard, CancellationToken ct) =>
+{
+    var run = await repo.GetById(new FlowRunId(runId), ct);
+    if (run is null) return ProblemResults.NotFound(context, runNotFound);
+    tenantGuard.EnsureAccessible(run.TenantId); // FR-TENANT-01 Layer 3
+
+    var safeFileName = Path.GetFileName(fileName);
+    var path = ScreenshotStorage.FullPath(run.Id, safeFileName);
+    if (!File.Exists(path)) return ProblemResults.NotFound(context, "Screenshot not found.");
+
+    return Results.File(path, "image/png");
+});
+
 runs.MapPost("/{runId:guid}/cancel", async (Guid runId, HttpContext context, ClaimsPrincipal principal, CancelFlowRunCommandHandler handler, CancellationToken ct) =>
 {
     try

@@ -1309,3 +1309,50 @@ Exit check:  on track. `dotnet build -warnaserror` → 0/0. Full suite 279/279 (
              --verify-no-changes` clean.
 Next:        Push `feature/D6-T4-audit-proof`, open PR, merge, then D6-T5 (run history + report
              pages — frontend) and D6-T6 (CI gate + docker compose).
+
+## 2026-10-24 ~10:50 IST — Day 6 (cont.)
+Done:        PR #44 (D6-T4) opened, all 6 CI checks green, awaiting owner merge (same "Merge Without
+             Review" classifier block as before — asked, not routed around).
+             D6-T5 run history + report pages. Research pass first (subagent): most of this was
+             already built — `RunDetailPage` already renders per-step pass/fail/skip/flaky/error
+             against a complete `GET /api/v1/runs/{runId}` DTO; `ReportsPage`'s `RunHistoryTable`
+             already shows per-run pass/fail/skip counts. The one real gap: screenshots are written
+             to local disk with no serving mechanism at all — no static route, no URL in any DTO.
+             Asked the owner directly (a real scope/time decision, not guessable) whether to build
+             real screenshot serving now or defer it — answer: build it now.
+             Built: `ScreenshotStorage` (new, `Yukti.Infrastructure.InMemory/Modules`) — one
+             directory per `FlowRunId`, caller-supplied `path` sanitized to a bare file name
+             (`Path.GetFileName`) so a flow step can't write outside it. `WebModule`/
+             `DesktopUiModule`'s `screenshot` actions now write there instead of wherever the raw
+             "path" param pointed. New `GET /api/v1/runs/{runId}/screenshots/{fileName}` endpoint —
+             deliberately reuses the run's own existing tenant-scoped lookup
+             (`IFlowRunRepository.GetById` + `ITenantGuard`) as its only authorization check, the
+             same Layers 1-3 D6-T1 already proved, rather than building a new tenancy mechanism for
+             screenshots specifically. Frontend: `screenshotsApi.fetchObjectUrl` (api-client.ts —
+             still the one place calling `fetch()` directly per FR-STRUCT-05, since a plain
+             `<img src>` can't carry the Authorization header this endpoint needs) +
+             `ScreenshotThumbnail`, wired into `RunDetailPage` via a module-agnostic convention (any
+             step `Data` with a string `path` field) — no branch on module kind.
+Discovered:  `DesktopUiModule`'s `findImage`/`screenshot` actions still returned an anonymous C#
+             object as `StepOutcome.Data` — the exact bug class D2-T6/D3-T2 already fixed for
+             ApiModule/WebModule (anonymous objects aren't `IReadOnlyDictionary<string,object?>`,
+             so `{{vars.step.field}}` chaining silently fails past this step). Never caught before:
+             `DesktopUiModule` is Windows-only, needs a real unlocked display, and no CI job
+             exercises it. Fixed identically to the established pattern, in the same pass.
+             Acceptance command `npm test -- RunHistory Report` never matched real files (no
+             `RunHistory`-named file exists) — corrected in PLAN.md to the two real files
+             (`run-detail-page`, `reports-page`), same precedent Day 3/5 used for stale acceptance
+             text, not silently reinterpreted.
+Scope guards: none
+Exit check:  on track. Backend `dotnet build -warnaserror` → 0/0; `dotnet test` → 285/285 (updated
+             `WebModuleTests` screenshot test proves sanitization + the per-run storage convention,
+             including a path-traversal attempt; new `ScreenshotStorageTests.cs`, 6 tests). Sarvaghna's
+             own AI semantic review (quota back today) caught a real edge case in the first push of
+             this commit — an empty or trailing-slash "path" param collapsing `Path.GetFileName` to
+             "", which would have resolved `PrepareFullPath` to the directory itself instead of a
+             file — fixed in the same pass, with the 6 new tests proving it directly rather than
+             just patching silently. Frontend: `npm run typecheck` clean, `npm run lint` clean,
+             `npx vitest run` → 249/249 (was 243/243, +6 net), `npm run build` succeeds. `dotnet
+             format --verify-no-changes` clean.
+Next:        Push `feature/D6-T5-run-history-reports`, open PR, then D6-T6 (CI gate on a real flow
+             run + `docker compose up` from clean clone) — the last Day 6 task.

@@ -127,24 +127,31 @@ public sealed class WebModuleTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Screenshot_is_stored_with_the_step_result()
+    public async Task Screenshot_is_stored_under_its_own_run_directory_with_a_sanitized_file_name()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"webmodule-screenshot-{Guid.NewGuid():N}.png");
         var engine = BuildEngine(out _);
+        string? writtenPath = null;
         try
         {
+            // D6-T5: a caller-supplied "path" with directory segments is no longer honored verbatim
+            // (ScreenshotStorage.SafeFileName strips it) — the real write always lands under
+            // ScreenshotStorage's own per-run directory, findable by (runId, fileName) alone, which
+            // is what Yukti.Api's screenshot-serving endpoint relies on.
             var completed = await RunSteps(engine,
                 ("Go to login", "navigate", P(("url", $"{BaseUrl}/login"))),
-                ("Capture", "screenshot", P(("path", path))));
+                ("Capture", "screenshot", P(("path", "../../escape-attempt.png"))));
 
             Assert.Equal(StepStatus.Passed, completed.Results[1].Status);
             var data = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(completed.Results[1].Data);
-            Assert.Equal(path, data["path"]);
-            Assert.True(File.Exists(path));
+            var fileName = Assert.IsType<string>(data["path"]);
+            Assert.Equal("escape-attempt.png", fileName);
+
+            writtenPath = ScreenshotStorage.FullPath(completed.Id, fileName);
+            Assert.True(File.Exists(writtenPath));
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (writtenPath is not null && File.Exists(writtenPath)) File.Delete(writtenPath);
         }
     }
 
