@@ -39,11 +39,17 @@ RUN dotnet publish src/Yukti.Worker/Yukti.Worker.csproj -c Release -o /out/worke
 # Runtime Image
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
+# D6-T6: curl backs docker-compose.yml's api healthcheck (/health) — the base aspnet image doesn't
+# include it. worker's own image shares this stage too, which is harmless (worker never runs curl).
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/api ./api
 COPY --from=build /out/worker ./worker
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 ENV Deployment__SelfHosted=true
 
-ENTRYPOINT ["dotnet", "./api/Yukti.Api.dll"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["./api/Yukti.Api.dll"]

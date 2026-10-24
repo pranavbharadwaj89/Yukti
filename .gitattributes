@@ -1,0 +1,5 @@
+# D6-T6: docker-entrypoint.sh runs inside a Linux container via its #!/bin/sh shebang — a Windows
+# checkout with core.autocrlf=true would otherwise convert it to CRLF, which breaks shebang parsing
+# ("/bin/sh^M: bad interpreter"), exactly the "docker compose up works from clean clone" scenario
+# this task is about. Forced to LF regardless of the cloning machine's own git config.
+*.sh text eol=lf

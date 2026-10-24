@@ -1356,3 +1356,49 @@ Exit check:  on track. Backend `dotnet build -warnaserror` → 0/0; `dotnet test
              format --verify-no-changes` clean.
 Next:        Push `feature/D6-T5-run-history-reports`, open PR, then D6-T6 (CI gate on a real flow
              run + `docker compose up` from clean clone) — the last Day 6 task.
+
+## 2026-10-24 ~11:30 IST — Day 6 close (D6-T6)
+Done:        PR #45 (D6-T5) picked up one real CI finding mid-flight: `api-types-drift` correctly
+             failed because the new screenshot endpoint changed `swagger.json` and the committed
+             generated types were never regenerated — fixed by actually starting the API locally
+             (hit the documented `DOTNET_ROLL_FORWARD=LatestMajor` apphost quirk again, same as
+             past sessions) and running `npm run generate:api` for real, not hand-editing the
+             generated file. All 6 checks green after.
+             D6-T6, the last Day 6 task. Confirmed by reading the actual files, not assuming: no CI
+             job ever ran the CLI against `demo/uc1_flow.json`; no `/health` endpoint existed
+             anywhere; no auto-migration on API startup; `docker-compose.yml`'s
+             `${YUKTI_DB_CONNECTION}` had no default, so `docker compose up` from an actual clean
+             clone (no `.env`) couldn't have worked without undocumented manual setup — this task's
+             own acceptance bar was genuinely unmet, not just unproven.
+             Built: new `uc1-flow-gate` CI job (builds the CLI + FixtureApp, starts FixtureApp
+             standalone, runs `yukti run demo/uc1_flow.json --junit ...` — explicitly in-process,
+             no API/Postgres needed per the command's own description). New `docker-compose-smoke`
+             CI job (`docker compose up -d --build` from a clean checkout, polls the api service's
+             healthcheck, curls `/health` for a real 200, tears down). To make both honest: added
+             `/health` + automatic `Database.MigrateAsync()` on API startup (the existing seeding
+             block already implicitly required migrated tables), a `curl`-backed healthcheck on the
+             `api` compose service, `worker` now waits on `api`'s healthcheck too (not just
+             postgres/redis) so it can't race ahead of migrations on a truly clean volume, and a
+             default for `${YUKTI_DB_CONNECTION}` (reusing the same dev-only credentials already
+             inline in the compose file) so a clean clone needs zero manual setup.
+Discovered:  This machine has no Docker installed — `docker-compose-smoke` could not be proven
+             locally at all, same situation D6-T1 was in for its own new Postgres CI service; the
+             first real CI run is the actual proof. Mitigated as much as possible first: validated
+             `docker-compose.yml`'s YAML with a real parser (`pip install pyyaml` worked this time,
+             unlike D6-T1's attempt), and proved `uc1-flow-gate`'s own logic completely locally
+             (FixtureApp + CLI, 7/7 passed, exit 0, matching D3-T4/T5's original result exactly)
+             before trusting it in CI.
+Scope guards: none — Vault/RLS/RBAC/audit/marketplace/infra-manifests stay frozen; `docker-
+             compose.yml`/`Dockerfile` aren't on that list (they're new CI/deployment plumbing this
+             task itself calls for, not an existing frozen feature).
+Exit check:  **Day 6 fully closed** — D6-T1 through D6-T6 all done, all with real evidence, not
+             assumed. `dotnet build -warnaserror` → 0/0. `dotnet test` → 285/285, 0 skipped.
+             `dotnet format --verify-no-changes` clean. `docker-compose.yml` YAML-parser-validated.
+             `uc1-flow-gate`'s steps proven locally end-to-end. `docker-compose-smoke` itself
+             pending its first real CI run — will confirm once PR is up, per D6-T1's own precedent
+             for exactly this situation.
+Next:        Push `feature/D6-T6-ci-flow-gate`, open PR, confirm both new jobs actually pass in CI
+             (especially `docker-compose-smoke`, the one piece untestable locally). Day 7 after:
+             D7-T1 close BLOCKED/carried tasks, D7-T2 Yukti tests itself, D7-T3 time-to-first-flow
+             trial, D7-T4 README/quickstart/demo script, D7-T5 cloud routine decision, D7-T6 P1
+             stretch, D7-T7 tag v0.1.0.

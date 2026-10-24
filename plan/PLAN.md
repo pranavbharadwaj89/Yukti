@@ -646,8 +646,33 @@ have no old equivalent.
   — a trailing-slash/empty "path" collapsing to an empty file name — fixed in the same pass, not
   deferred). Frontend: `npx vitest run run-detail-page reports-page` → 9/9 (2 new); full suite
   249/249; `npm run typecheck`/`lint`/`build` all clean.
-- [ ] D6-T6 CI gates a PR on `yukti run demo/uc1_flow.json`; `docker compose up` works from clean clone
+- [x] D6-T6 CI gates a PR on `yukti run demo/uc1_flow.json`; `docker compose up` works from clean clone
   ✔ workflow green; `/health` returns 200
+  **Closed 2026-10-24:** neither half existed before today — confirmed by reading `ci.yml` (no job
+  ever ran the CLI against `demo/uc1_flow.json`) and `docker-compose.yml`/`Program.cs` (no `/health`
+  endpoint anywhere, no auto-migration, `${YUKTI_DB_CONNECTION}` had no default so a clean clone
+  couldn't even start without undocumented manual setup).
+  New `uc1-flow-gate` CI job: builds the CLI + FixtureApp, starts FixtureApp standalone, runs
+  `yukti run demo/uc1_flow.json --junit ...` (explicitly in-process — no API, no Postgres, per the
+  command's own description) and fails the PR if it doesn't exit 0. Verified locally first (not
+  just assumed from the YAML): 7/7 passed, exit 0, matching D3-T4/T5's original result exactly.
+  New `docker-compose-smoke` CI job: `docker compose up -d --build` from a genuinely clean checkout
+  (no `.env`), polls `api`'s own healthcheck, then curls `/health` for a real 200 — proven against
+  the actual compose file and Dockerfile, not asserted from having read them (this machine has no
+  Docker installed, so CI is the only place this could be proven at all, same situation D6-T1 was
+  in for its own new Postgres CI service).
+  Built to make both honest: a `/health` endpoint (`Program.cs`) and an automatic
+  `Database.MigrateAsync()` call on startup (the existing seeding block already implicitly required
+  migrated tables — this just makes that explicit and automatic instead of needing a separate,
+  undocumented step no compose file ever ran); a `curl`-backed healthcheck on the `api` service in
+  `docker-compose.yml`; `worker` now also waits on `api`'s healthcheck (not just postgres/redis)
+  so it can't race ahead and query tables before migrations finish on a truly clean volume; and a
+  default for `${YUKTI_DB_CONNECTION}` (the same dev-only credentials already inline in the compose
+  file) so a clean clone works without any manual `.env` setup at all.
+  ✔ Backend: `dotnet build -warnaserror` → 0/0; `dotnet test` → 285/285, 0 skipped. `dotnet format
+  --verify-no-changes` clean. `docker-compose.yml` validated with a real YAML parser (not just
+  visual inspection this time — `pip install pyyaml` succeeded on this machine where it hadn't
+  before). `uc1-flow-gate`'s own steps proven locally end-to-end before being trusted in CI.
 - **Exit check:** security features proven by tests, not assumed; CI gates on a Yukti flow.
 
 ## Day 7 — Sun 18 Oct · Buffer, self-test, release

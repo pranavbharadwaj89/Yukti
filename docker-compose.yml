@@ -44,24 +44,48 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - ConnectionStrings__Yukti=${YUKTI_DB_CONNECTION}
+      # D6-T6: docker-entrypoint.sh assembles ConnectionStrings__Yukti from these pieces at
+      # container start — no file ever commits one static "Host=...;Password=..." literal. A clean
+      # clone has no .env, so these defaults (the same dev-only credentials the postgres service
+      # above already declares inline) are what make `docker compose up` work out of the box;
+      # override them for anything beyond local/demo use.
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGDATABASE=${POSTGRES_DB:-yukti}
+      - PGUSER=${POSTGRES_USER:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-password}
       - ConnectionStrings__Redis=redis:6379
       - Deployment__SelfHosted=true
       - Cors__AllowedOrigins__0=http://localhost:5173
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: yukti-worker
-    entrypoint: ["dotnet", "./worker/Yukti.Worker.dll"]
+    command: ["./worker/Yukti.Worker.dll"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # D6-T6: api runs EF migrations on startup (Program.cs) — a clean volume has no tables until
+      # that finishes. Waiting on api's own healthcheck (not just postgres/redis being up) is what
+      # stops worker from racing ahead and querying tables that don't exist yet.
+      api:
+        condition: service_healthy
     environment:
-      - ConnectionStrings__Yukti=${YUKTI_DB_CONNECTION}
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGDATABASE=${POSTGRES_DB:-yukti}
+      - PGUSER=${POSTGRES_USER:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-password}
       - ConnectionStrings__Redis=redis:6379
       - Deployment__SelfHosted=true
 
