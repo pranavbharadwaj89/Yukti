@@ -1485,3 +1485,36 @@ Next:        D7-T3 (time-to-first-flow trial with a teammate) and D7-T5 (cloud r
              both need the owner directly — can't be done solo. D7-T4 (README/quickstart/demo
              script/ADR-0001) and D7-T6 (P1 stretch: reviewer failure triage) are next up, doable
              solo.
+
+## 2026-10-24 ~19:10 IST — Day 7, D7-T4/T5 close; D7-T3/T6 deferred by owner
+Done:        D7-T4 closed, PR #55. README.md rewritten end to end for the real v0.1 state (it
+             previously described Day 1's sandbox prototype — in-memory repos, no NuGet access
+             — none of which is still true); added a Docker quickstart, a local quickstart, the
+             three demo flows as the demo script (api_chain.json, uc1_flow.json, and D7-T2's new
+             self_test.json), and a project-structure map matching the real src/apps/tests/demo/
+             plan layout. plan/adr/0001-stay-on-dotnet.md formalizes the decision CLAUDE.md
+             already referenced by name ("ADR-0001: stay on .NET") but that was never actually
+             written down.
+             D7-T5 decided: **retire** the autonomous cloud routine. Checked its real state via
+             the RemoteTrigger API rather than assuming — `trig_01768W9Jm3uZvZhcbHktj8Ky` ("Yukti
+             Autonomous Build Loop") is already `enabled: false` (paused earlier per CLAUDE.md
+             §6's requirement while this plan runs). Retiring it means leaving it disabled
+             permanently; it can't be deleted via the API, only by the owner directly at
+             claude.ai/code/routines if they want it gone outright.
+Discovered:  none new.
+Scope guards: none.
+Exit check:  **on track.** Owner explicitly deferred two items rather than asking me to fake or
+             skip past them silently:
+             - D7-T3 (time-to-first-flow trial with a teammate) needs an actual human — can't be
+               simulated. Owner will run it themself (or find a teammate) and report the result
+               back.
+             - D7-T6 (P1 stretch: Reviewer failure triage) has no further detail anywhere in
+               PLAN.md for what it actually means. Owner asked to skip for now and will clarify
+               scope later — explicitly the first thing this plan's own slip policy says to cut,
+               so this is not a gap against the real v0.1 release.
+             Every real P0 acceptance item (Days 1-6) is ticked with evidence; D5-T0 stays
+             correctly unchecked (it's conditional on Day 4's exit check failing, which it
+             didn't).
+Next:        D7-T7 — tag v0.1.0 and write the retro, pending the owner's explicit go-ahead
+             (tagging a release is a visible, one-way signal, not something to do without
+             asking first).

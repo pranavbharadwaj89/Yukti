@@ -694,9 +694,27 @@ have no old equivalent.
   nav link instead, a client-side route change); `Dialog` had no max-height/overflow, so a tall
   schema-driven form pushed its submit button out of reach (fixed with `max-h-[90vh] overflow-y-auto`).
 - [ ] D7-T3 Time-to-first-flow trial with a teammate (< 30 min), result in STANDUP
-- [ ] D7-T4 README, quickstart, demo script; ADR-0001 (stay on .NET) committed
-- [ ] D7-T5 Decide the cloud routine's future (retire, or resume in branch+PR mode per SUTRADHAR.md §6)
+  **2026-10-24:** needs an actual human trying the product — can't be simulated. Owner will run
+  this themself (or find a teammate) and report the result back. Deferred, not skipped.
+- [x] D7-T4 README, quickstart, demo script; ADR-0001 (stay on .NET) committed
+  **Closed 2026-10-24, PR #55:** README.md rewritten end to end — it previously described the
+  Day-1 sandbox prototype state (in-memory repos, no NuGet access), none of which was still
+  true. Now documents the real v0.1 stack, a Docker quickstart and a local quickstart, the
+  three demo flows (including D7-T2's `self_test.json`) as the demo script, and a project-
+  structure map matching the real layout. `plan/adr/0001-stay-on-dotnet.md` formalizes the
+  decision CLAUDE.md already referenced by name but that was never actually written down.
+- [x] D7-T5 Decide the cloud routine's future (retire, or resume in branch+PR mode per SUTRADHAR.md §6)
+  **Decided 2026-10-24 — retire.** All of this week's work went through feature branches + PRs
+  with real CI gates; nothing points to resuming the autonomous push-to-main routine. Confirmed
+  via the RemoteTrigger API that `trig_01768W9Jm3uZvZhcbHktj8Ky` ("Yukti Autonomous Build Loop")
+  is already `enabled: false` (paused earlier per CLAUDE.md §6's requirement while this plan
+  runs) — retiring it means leaving it disabled permanently, not re-enabling it. The routine
+  itself can't be deleted via the API; the owner can delete it for good at
+  https://claude.ai/code/routines if they want it gone outright rather than just disabled.
 - [ ] D7-T6 P1 stretch: Reviewer failure triage
+  **2026-10-24:** no further detail exists anywhere in PLAN.md for what this actually refers to.
+  Owner asked to skip for now and will clarify scope later — explicitly the first thing this
+  plan's slip policy says to cut, so this is not a gap against the real v0.1 release.
 - [ ] D7-T7 Tag `v0.1.0`; retro in STANDUP
 - **Exit check:** every P0 box ticked or ALREADY DONE with evidence; `v0.1.0` tagged.
 
