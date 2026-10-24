@@ -1,0 +1,25 @@
+{
+  "name": "Yukti self-test: author and run a flow via the real UI",
+  "description": "D7-T2: drives the real Yukti frontend (apps/yukti-gui's dev server) through the exact login -> create flow -> add step -> publish -> run sequence a human would use, then confirms the resulting run shows Passed. The flow it authors calls Yukti.Api's own /health endpoint — Yukti testing itself, end to end, through its own Web module. Needs: Yukti.Api running on http://localhost:5000 (with the bootstrap admin admin@yukti.local / ChangeMe123! seeded, which happens automatically on API startup), and `npm run dev` for apps/yukti-gui running on http://localhost:5173.",
+  "steps": [
+    { "name": "Open login page", "module": "web", "action": "navigate", "params": { "url": "http://localhost:5173/login" } },
+    { "name": "Enter admin email", "module": "web", "action": "fill", "params": { "selector": "[data-testid=login-email]", "value": "admin@yukti.local" } },
+    { "name": "Enter admin password", "module": "web", "action": "fill", "params": { "selector": "[data-testid=login-password]", "value": "ChangeMe123!" } },
+    { "name": "Submit login", "module": "web", "action": "click", "params": { "selector": "[data-testid=login-submit]" } },
+    { "name": "Open flows list", "module": "web", "action": "click", "params": { "selector": "[data-testid=nav-flows]" } },
+    { "name": "Open create-flow dialog", "module": "web", "action": "click", "params": { "selector": "[data-testid=new-flow-button]" } },
+    { "name": "Name the self-test flow", "module": "web", "action": "fill", "params": { "selector": "[data-testid=flow-name-input]", "value": "Self-test: API health check" } },
+    { "name": "Create the flow", "module": "web", "action": "click", "params": { "selector": "[data-testid=create-flow-submit]" } },
+    { "name": "Open add-step dialog", "module": "web", "action": "click", "params": { "selector": "[data-testid=add-step-trigger]" } },
+    { "name": "Name the step", "module": "web", "action": "fill", "params": { "selector": "[data-testid=step-name-input]", "value": "Call the API's own health endpoint" } },
+    { "name": "Open module picker", "module": "web", "action": "click", "params": { "selector": "[data-testid=module-select]" } },
+    { "name": "Choose the API module", "module": "web", "action": "click", "params": { "selector": "[data-testid=module-select-option-api]" } },
+    { "name": "Open action picker", "module": "web", "action": "click", "params": { "selector": "[data-testid=action-select]" } },
+    { "name": "Choose the request action", "module": "web", "action": "click", "params": { "selector": "[data-testid=action-select-option-request]" } },
+    { "name": "Enter the health-check URL", "module": "web", "action": "fill", "params": { "selector": "[aria-label=url]", "value": "http://localhost:5000/health" } },
+    { "name": "Add the step", "module": "web", "action": "click", "params": { "selector": "[data-testid=add-step-submit]" } },
+    { "name": "Publish the flow", "module": "web", "action": "click", "params": { "selector": "[data-testid=publish-button]" } },
+    { "name": "Run the flow", "module": "web", "action": "click", "params": { "selector": "[data-testid=run-button]" } },
+    { "name": "Confirm the run passed", "module": "web", "action": "assertText", "params": { "selector": "[data-testid=run-status]", "expected": "Passed" } }
+  ]
+}

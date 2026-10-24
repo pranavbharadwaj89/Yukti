@@ -102,6 +102,7 @@ export function Select<T extends string = string>({
   placeholder = "Select…",
   disabled,
   ariaLabel,
+  testId,
 }: {
   id?: string;
   value: T | "";
@@ -110,6 +111,10 @@ export function Select<T extends string = string>({
   placeholder?: string;
   disabled?: boolean;
   ariaLabel?: string;
+  /** Stable automation hook for this trigger and its options (`${testId}-option-${value}`) —
+   * this is a custom combobox, not a native `<select>`, so a plain CSS/Playwright selector
+   * needs something to target once the listbox is open. */
+  testId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
@@ -211,6 +216,7 @@ export function Select<T extends string = string>({
         aria-haspopup="listbox"
         aria-label={ariaLabel}
         aria-expanded={open}
+        data-testid={testId}
         className="flex h-9 w-full items-center justify-between rounded-md border border-border bg-surface px-3 text-body text-ink disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className={selected ? "text-ink" : "text-ink-dim"}>{selected?.label ?? placeholder}</span>
@@ -232,6 +238,7 @@ export function Select<T extends string = string>({
               role="option"
               aria-selected={opt.value === value}
               aria-disabled={opt.disabled}
+              data-testid={testId ? `${testId}-option-${opt.value}` : undefined}
               onMouseEnter={() => setHighlighted(i)}
               onClick={() => commit(i)}
               className={`flex cursor-pointer items-center gap-2 px-3 py-2.5 text-body transition-colors ${

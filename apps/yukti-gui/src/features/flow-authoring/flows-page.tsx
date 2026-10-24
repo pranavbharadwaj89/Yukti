@@ -59,7 +59,9 @@ export function FlowsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-h1 text-ink">Flows</h1>
-        <Button onClick={() => setCreateOpen(true)}>New flow</Button>
+        <Button onClick={() => setCreateOpen(true)} data-testid="new-flow-button">
+          New flow
+        </Button>
       </div>
 
       <AiGenerationPanel />
@@ -115,13 +117,20 @@ function CreateFlowDialog({ open, onClose }: { open: boolean; onClose: () => voi
           createMutation.mutate();
         }}
       >
-        <Input placeholder="Flow name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+        <Input
+          placeholder="Flow name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          autoFocus
+          data-testid="flow-name-input"
+        />
         <Input placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
+          <Button type="submit" disabled={createMutation.isPending} data-testid="create-flow-submit">
             Create
           </Button>
         </div>

@@ -61,6 +61,7 @@ export function AppShell() {
               <Link
                 to={item.to}
                 aria-current={pathname === item.to ? "page" : undefined}
+                data-testid={`nav-${item.to === "/" ? "dashboard" : item.to.slice(1)}`}
                 className={`block rounded-md px-3 py-2 text-sm ${
                   pathname === item.to ? "bg-accent-soft text-accent" : "text-ink-dim hover:bg-surface-2 hover:text-ink"
                 }`}

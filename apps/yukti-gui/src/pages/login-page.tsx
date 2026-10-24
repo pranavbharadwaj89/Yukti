@@ -42,10 +42,24 @@ export function LoginPage() {
           {mode === "register" && (
             <Input placeholder="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
           )}
-          <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <Input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            data-testid="login-email"
+          />
+          <Input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            data-testid="login-password"
+          />
           {error && <div className="text-sm text-danger">{error}</div>}
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy} data-testid="login-submit">
             {mode === "login" ? "Sign in" : "Create account"}
           </Button>
           <button
