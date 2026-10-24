@@ -1451,3 +1451,37 @@ Next:        D7-T2 (Yukti tests itself via a Web flow authored+run in the Yukti 
              exactly this: a toast's accessible name can collide with a button's). D7-T3 (teammate
              trial) and D7-T5 (cloud routine's fate) both need the owner directly — can't be done
              solo.
+
+## 2026-10-24 ~18:45 IST — Day 7, D7-T2 close
+Done:        D7-T2 closed, PR #53. Built `demo/self_test.json` and proved it for real: started
+             Yukti.Api locally against the dev Postgres/Redis, started apps/yukti-gui's Vite dev
+             server, ran the flow through the actual CLI (`dotnet Yukti.Cli.dll run
+             demo/self_test.json`) — 19/19 steps passed, final status Passed. The flow drives the
+             real frontend (not a fixture app) through login -> create flow -> add step (API
+             module, request action, hits Yukti.Api's own /health) -> publish -> run -> confirm
+             Passed, using the Web module's own click/fill/navigate actions — genuine dogfooding
+             through the full real stack.
+             The real frontend had zero stable automation selectors anywhere (confirmed by grep),
+             unlike the FixtureApp UC-1 targets. Added a small, consistent set of data-testid
+             attributes (login, flows list, flow detail's add-step dialog, primary nav links) and
+             a `testId` prop on the shared `Select` combobox (custom listbox, not a native
+             <select> — SelectOptionAsync can't drive it) and on StatusPill (to target the run's
+             overall status, distinct from per-step status pills).
+Discovered:  Two real bugs found by actually running the flow, not theoretical — both fixed in the
+             same PR:
+             (1) A hard `navigate` to /flows right after login is a real browser reload, which
+             wipes the in-memory-only access token by design (auth-store.ts) and bounces back to
+             /login. Fixed by clicking the sidebar's Flows nav link instead (client-side route
+             change, preserves the session).
+             (2) Dialog had no max-height/overflow — a tall schema-driven form (the API module's
+             request action has 8 params) pushed its submit button below the viewport with no
+             scrollable ancestor to bring it into view. Fixed with max-h-[90vh] overflow-y-auto —
+             a real usability gap for any sufficiently long dialog, not specific to this flow.
+Scope guards: none.
+Exit check:  **on track.** `dotnet build -warnaserror` -> 0/0, `dotnet format --verify-no-changes`
+             clean (no backend code changed). `npm run typecheck`/`npm run lint` clean. `npm test`
+             -> 253/253.
+Next:        D7-T3 (time-to-first-flow trial with a teammate) and D7-T5 (cloud routine's future)
+             both need the owner directly — can't be done solo. D7-T4 (README/quickstart/demo
+             script/ADR-0001) and D7-T6 (P1 stretch: reviewer failure triage) are next up, doable
+             solo.
