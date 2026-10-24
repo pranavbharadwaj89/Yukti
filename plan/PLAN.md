@@ -676,7 +676,13 @@ have no old equivalent.
 - **Exit check:** security features proven by tests, not assumed; CI gates on a Yukti flow.
 
 ## Day 7 — Sun 18 Oct · Buffer, self-test, release
-- [ ] D7-T1 Close all BLOCKED / carried tasks
+- [x] D7-T1 Close all BLOCKED / carried tasks
+  **2026-10-24:** DISC-2, DISC-3, DISC-4, DISC-6 fixed and merged (PRs #48, #51, #49, #50). DISC-11
+  partially fixed (PR #47, 10/14 vulnerabilities) — the remaining 4 need an owner ADR decision on a
+  major dependency bump, flagged above, not applied. DISC-1, DISC-9, DISC-TOKEN-1 re-triaged and
+  confirmed as deliberately deferred (not bugs / scheduling calls, not v0.1-blocking). DISC-12
+  (flaky test) re-logged, not re-fixed — hasn't recurred in this session's test runs. No actual
+  `BLOCKED` task markers remained outside the DISCOVERED backlog.
 - [ ] D7-T2 Yukti tests itself: Web flow that authors and runs a flow in the Yukti UI
   ✔ CLI run of `demo/self_test.json` → Passed
 - [ ] D7-T3 Time-to-first-flow trial with a teammate (< 30 min), result in STANDUP
@@ -694,18 +700,30 @@ have no old equivalent.
   window to the current run without per-run state in the module (FR-PLUGIN-07 forbids instance state,
   so the module can't record it itself). Needs `Flow.Publish` to treat `run.*` as an available binding.
   Found during D3-T3/T4; UC-1 is correct today because it scopes by a per-run order id.
-- [ ] DISC-2 CLI JUnit failure body prints nested params via `ToString()`
+  **Triaged 2026-10-24 (D7-T1): deferred, not a bug.** Nothing today depends on `run.*` bindings; UC-1
+  stays correct without them. Real v0.2-scope feature work (new `Flow.Publish` binding kind), not a
+  fix — left open, not something to build as a side effect of D7-T1.
+- [x] DISC-2 CLI JUnit failure body prints nested params via `ToString()`
   (`rules=System.Collections.Generic.List`1[System.Object]`). Render them as JSON. Found in D3-T4;
   deferred because D3-T4 forbids CLI code changes.
-- [ ] DISC-3 No `Yukti.Api` minimal-API endpoint declares `.Produces<T>()`, so Swagger has zero response
+  **Closed 2026-10-24 (D7-T1), PR #48:** `JUnitReportWriter.FormatParamValue` JSON-serializes any
+  non-string param value; plain strings stay unquoted. Proven against the real `assert` array param
+  already present in `CliIntegrationTests`.
+- [x] DISC-3 No `Yukti.Api` minimal-API endpoint declares `.Produces<T>()`, so Swagger has zero response
   schemas (every endpoint is a bare `200: OK`) — `openapi-typescript` can only generate real types for
   request bodies. Response types in `apps/yukti-gui/src/services/types.ts` stay hand-written until this
   is done. Found during D4-T1; scoped out of it deliberately (it's ~20 endpoints in `Program.cs`, purely
   additive metadata, no behavior change, but a separate task from "wire the frontend to generated types").
-- [ ] DISC-4 `MobilePreRunPanel`'s form fields (`testing/mobile-pre-run-panel.tsx`) use a `<label>` that
+  **Closed 2026-10-24 (D7-T1), PR #51:** every endpoint now declares its real success type (adding a
+  few small named records, e.g. `CreatedFlowResponse`, for what used to be an anonymous `Results.Created`
+  body); `apps/yukti-gui/src/api/generated/schema.ts` regenerated against a live run so `api-types-drift`
+  stayed green. Wiring the frontend to consume the generated types is still a separate, unstarted task.
+- [x] DISC-4 `MobilePreRunPanel`'s form fields (`testing/mobile-pre-run-panel.tsx`) use a `<label>` that
   isn't associated with its `<input>` (no `htmlFor`/`id`, not nested) — fails `getByLabelText`, invisible
   to a screen reader. Pre-existing (moved verbatim out of `module-test-form.tsx` during D4-T2, not
   introduced by it); belongs with the Day 4 WCAG/axe pass, not fixed here to stay in scope.
+  **Closed 2026-10-24 (D7-T1), PR #49:** every field wired with `useId()`, matching the existing
+  `form-controls.tsx` pattern.
 - [x] DISC-5 No Playwright e2e harness exists in this repo (`playwright.config.ts` is present but no
   `test:e2e` script, no `e2e/` directory). D4-T4 and D4-T6/D4-T7 (UC-1 in the browser) both call for one —
   it's a real, separate undertaking (real backend+frontend+DB running together, fixtures, trace/screenshot
@@ -717,13 +735,18 @@ have no old equivalent.
   runnable where Postgres/Redis are available (CI today — this machine has no Docker). D4-T4's
   live-run reconnect is still proven only at the component level; an e2e spec for it can now be
   added on this harness, but wasn't part of D5-T7.
-- [ ] DISC-6 `@microsoft/signalr`'s `HubConnection.onreconnecting`/`onreconnected`/`onclose` have no `off`
+- [x] DISC-6 `@microsoft/signalr`'s `HubConnection.onreconnecting`/`onreconnected`/`onclose` have no `off`
   counterpart at all (confirmed against the installed package's own `.d.ts`) — every mount of
   `useLiveRunProgress` adds one more handler to the shared connection that's never removed. Each one is
   individually inert after its own unmount (guarded by its own `cancelled` closure), so this isn't a
   correctness bug today, but it's a real accumulating leak if a user navigates between run pages often in
   one session. Pre-existing for `onreconnected` before D4-T4; D4-T4 added two more of the same shape rather
   than redesigning connection lifecycle management as a side effect of the reconnect-indicator task.
+  **Closed 2026-10-24 (D7-T1), PR #50:** `signalr.ts` now wires the three real SignalR callbacks exactly
+  once and fans each out to a removable `Set` via `subscribeToRunProgressLifecycle(listener) ->
+  unsubscribe`; `useLiveRunProgress`'s cleanup calls that instead of registering on the connection
+  directly, so a mount's listener is actually removed, not just made inert. Proven in `signalr.test.ts`
+  against the real production wiring.
 - [x] DISC-7 AI vendor mismatch (first flagged Day 1, `plan/GAP-MATRIX.md` line 78, "blocks Day 5
   start") — resolved 2026-10-14, twice in one day. CLAUDE.md §4 and the old Day 5 PLAN.md skeleton
   named Anthropic; the real code is a working OpenAI-only integration with no abstraction; the new Day 5
@@ -788,6 +811,12 @@ have no old equivalent.
   (`eslint-plugin-boundaries`/`@boundaries/elements`, `handlebars`, `seroval`), high (`braces`,
   `micromatch`, `nanoid`, `undici`, …). Pre-existing — none from D5-T7's `@playwright/test`. Fixing
   means dependency upgrades, which need an ADR + owner approval (CLAUDE.md §4).
+  **Partially closed 2026-10-24 (D7-T1), PR #47:** plain `npm audit fix` (non-force) resolved 10/14,
+  all within already-declared `package.json` ranges (`package.json` itself untouched). **Still open,
+  needs owner decision:** the remaining 4 (moderate `@vitest/mocker`/`vitest`, critical
+  `dompurify`/`monaco-editor`) only resolve by crossing a major-version boundary on a direct
+  dependency (`vitest` 4.x→5.x; a `monaco-editor` bump) — exactly CLAUDE.md §4's ADR-and-approval
+  case, so not applied here.
 - [ ] DISC-12 `audit-page.test.tsx > renders every audit entry from the list endpoint` failed once in a
   full-suite Vitest run (2026-10-18), then passed 3/3 in isolation and on a full re-run. Pre-existing,
   untouched by D5-T7 — likely a `findBy` timeout under full-suite load. Flaky, not fixed; logged so it
