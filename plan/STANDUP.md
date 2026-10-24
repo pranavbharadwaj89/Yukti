@@ -1402,3 +1402,52 @@ Next:        Push `feature/D6-T6-ci-flow-gate`, open PR, confirm both new jobs a
              D7-T1 close BLOCKED/carried tasks, D7-T2 Yukti tests itself, D7-T3 time-to-first-flow
              trial, D7-T4 README/quickstart/demo script, D7-T5 cloud routine decision, D7-T6 P1
              stretch, D7-T7 tag v0.1.0.
+
+## 2026-10-24 ~18:20 IST — Day 7, D7-T1 close
+Done:        D7-T1 closed. Found PRs #45/#46 (Day 6's CI gate work) were fully built and green but
+             never merged — merged both, pulled main, confirmed clean local build first (the "why
+             are we lagging" gap was real work that happened outside this conversation's visible
+             context, not actually behind).
+             DISC-11 (npm audit): `npm audit fix` (non-force) resolved 10/14 vulnerabilities, all
+             within already-declared package.json ranges (package.json itself untouched, only the
+             lockfile). PR #47, merged. Remaining 4 (vitest 4.x->5.x major bump; monaco-editor/
+             dompurify) need an owner ADR decision per CLAUDE.md §4 — not applied, flagged in
+             PLAN.md.
+             DISC-2 (CLI JUnit param rendering): `FormatParamValue` now JSON-serializes non-string
+             param values instead of calling ToString() on them. PR #48, merged.
+             DISC-4 (MobilePreRunPanel labels): wired every field with useId(), matching the
+             existing form-controls.tsx pattern. PR #49, merged.
+             DISC-6 (SignalR handler leak): real fix, not just the existing `cancelled`-guard
+             workaround — signalr.ts now wires onreconnecting/onreconnected/onclose exactly once
+             and fans out to a removable Set via subscribeToRunProgressLifecycle(), so a hook's
+             cleanup actually unsubscribes instead of leaving an inert-but-permanent handler on the
+             shared connection. PR #50, merged.
+             DISC-3 (Swagger response schemas): every Yukti.Api endpoint now declares .Produces<T>();
+             a handful of anonymous-object responses got small named records instead (same JSON
+             shape). Regenerated apps/yukti-gui/src/api/generated/schema.ts against a live local run
+             of the updated API so api-types-drift stayed green. PR #51, merged.
+Discovered:  Local dev environment gap (not a code bug): `tests/Yukti.Infrastructure.Tests`'
+             TenantIsolationTests failed 3/3 locally — root cause was this machine's user-secrets
+             only had ConnectionStrings:Yukti (the Postgres superuser "postgres" role, which
+             bypasses RLS by Postgres's own design: rolbypassrls=true), never
+             ConnectionStrings:YuktiRuntime (the non-superuser yukti_app role CI's build-and-test
+             job sets up). Confirmed via a direct pg_policies/pg_roles query — RLS policies
+             themselves are correctly configured (rowsecurity+force both true, correct tenant_id
+             qual). Fixed locally by adding the missing YuktiRuntime user-secret (yukti_app /
+             the migration's documented placeholder password) to both Yukti.Api and
+             Yukti.Infrastructure.Tests — not a code change, so nothing to PR; full suite is
+             285/285 after.
+Scope guards: none.
+Exit check:  **on track.** D7-T1 fully closed with real PRs merged and CI-verified, not assumed.
+             `dotnet build -warnaserror` -> 0/0. `dotnet test` -> 285/285, 0 skipped. `dotnet format
+             --verify-no-changes` clean. Frontend: `npm run typecheck`/`npm run lint` clean,
+             `npm test` -> 251/251.
+Next:        D7-T2 (Yukti tests itself via a Web flow authored+run in the Yukti UI) — the real
+             frontend has zero `data-testid`/stable automation selectors anywhere (confirmed by
+             grep), unlike the FixtureApp UC-1 targets; the existing Playwright e2e suite instead
+             uses role/label queries Playwright itself supports but the WebModule's plain
+             `Locator(selector)` would need as `[aria-label=...]`/`:has-text()`-style CSS, which is
+             workable but needs care to avoid ambiguous matches (the e2e spec's own comment flags
+             exactly this: a toast's accessible name can collide with a button's). D7-T3 (teammate
+             trial) and D7-T5 (cloud routine's fate) both need the owner directly — can't be done
+             solo.
