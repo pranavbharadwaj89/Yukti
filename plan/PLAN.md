@@ -683,8 +683,16 @@ have no old equivalent.
   confirmed as deliberately deferred (not bugs / scheduling calls, not v0.1-blocking). DISC-12
   (flaky test) re-logged, not re-fixed — hasn't recurred in this session's test runs. No actual
   `BLOCKED` task markers remained outside the DISCOVERED backlog.
-- [ ] D7-T2 Yukti tests itself: Web flow that authors and runs a flow in the Yukti UI
+- [x] D7-T2 Yukti tests itself: Web flow that authors and runs a flow in the Yukti UI
   ✔ CLI run of `demo/self_test.json` → Passed
+  **2026-10-24, PR #53:** real end-to-end run against the real `apps/yukti-gui` frontend (not a
+  fixture app) — login, create flow, add step (API module, `request` action, hits Yukti.Api's own
+  `/health`), publish, run, confirm the run shows Passed. 19/19 steps passed. Added a small, consistent
+  set of `data-testid` hooks (the real frontend had none anywhere) plus a `testId` prop on the shared
+  `Select` combobox and `StatusPill`. Found and fixed two real bugs surfaced by actually running the
+  flow: a hard `navigate` after login wipes the in-memory access token (fixed by clicking the sidebar
+  nav link instead, a client-side route change); `Dialog` had no max-height/overflow, so a tall
+  schema-driven form pushed its submit button out of reach (fixed with `max-h-[90vh] overflow-y-auto`).
 - [ ] D7-T3 Time-to-first-flow trial with a teammate (< 30 min), result in STANDUP
 - [ ] D7-T4 README, quickstart, demo script; ADR-0001 (stay on .NET) committed
 - [ ] D7-T5 Decide the cloud routine's future (retire, or resume in branch+PR mode per SUTRADHAR.md §6)
