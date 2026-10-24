@@ -31,7 +31,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["GenerateAssertionsResult"];
+                    };
                 };
             };
         };
@@ -68,7 +70,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["HealSelectorResult"];
+                    };
                 };
             };
         };
@@ -105,7 +109,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["SuggestFlowResult"];
+                    };
                 };
             };
         };
@@ -136,7 +142,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AiStatusResponse"];
+                    };
                 };
             };
         };
@@ -169,7 +177,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AiUsageResponse"];
+                    };
                 };
             };
         };
@@ -202,7 +212,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ApiCollectionResponse"][];
+                    };
                 };
             };
         };
@@ -220,12 +232,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Created */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CreatedApiCollectionResponse"];
+                    };
                 };
             };
         };
@@ -258,8 +272,8 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -279,8 +293,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -317,12 +331,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Created */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CreatedApiRequestResponse"];
+                    };
                 };
             };
         };
@@ -356,8 +372,8 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -378,8 +394,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -413,7 +429,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AuditEntryResponse"][];
+                    };
                 };
             };
         };
@@ -448,7 +466,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AuditEntryDetailResponse"];
+                    };
                 };
             };
         };
@@ -482,12 +502,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Created */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CreatedUserResponse"];
+                    };
                 };
             };
         };
@@ -524,7 +546,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["TokenResponse"];
+                    };
                 };
             };
         };
@@ -561,7 +585,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["TokenResponse"];
+                    };
                 };
             };
         };
@@ -600,7 +626,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["RolePermissionsUpdatedResponse"];
+                    };
                 };
             };
         };
@@ -631,8 +659,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -667,7 +695,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FlowSummaryReadModel"][];
+                    };
                 };
             };
         };
@@ -685,12 +715,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Created */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CreatedFlowResponse"];
+                    };
                 };
             };
         };
@@ -727,7 +759,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["GenerateFlowResponse"];
+                    };
                 };
             };
         };
@@ -760,7 +794,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FlowResponse"];
+                    };
                 };
             };
         };
@@ -796,8 +832,8 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -836,7 +872,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["PublishResponse"];
+                    };
                 };
             };
         };
@@ -875,7 +913,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FlowRunResponse"];
+                    };
                 };
             };
         };
@@ -906,7 +946,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ModuleResponse"][];
+                    };
                 };
             };
         };
@@ -939,7 +981,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ProjectResponse"][];
+                    };
                 };
             };
         };
@@ -957,12 +1001,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Created */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CreatedProjectResponse"];
+                    };
                 };
             };
         };
@@ -995,8 +1041,8 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1016,8 +1062,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1053,7 +1099,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["TestEnvironmentResponse"][];
+                    };
                 };
             };
         };
@@ -1073,12 +1121,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Created */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CreatedTestEnvironmentResponse"];
+                    };
                 };
             };
         };
@@ -1112,8 +1162,8 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1134,8 +1184,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1169,7 +1219,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FlowReportSummaryResponse"][];
+                    };
                 };
             };
         };
@@ -1204,7 +1256,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FlowRunReportResponse"][];
+                    };
                 };
             };
         };
@@ -1239,7 +1293,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FlowRunResponse"];
+                    };
                 };
             };
         };
@@ -1307,8 +1363,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1340,6 +1396,15 @@ export interface paths {
             responses: {
                 /** @description OK */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TrendAggregateReadModel"];
+                    };
+                };
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1379,12 +1444,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Created */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CreatedTriggerResponse"];
+                    };
                 };
             };
         };
@@ -1415,7 +1482,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["TriggerResponse"][];
+                    };
                 };
             };
         };
@@ -1446,8 +1515,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1481,8 +1550,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1517,12 +1586,14 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Accepted */
+                202: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["WebhookTriggeredResponse"];
+                    };
                 };
             };
         };
@@ -1553,7 +1624,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["RootStatusResponse"];
+                    };
                 };
             };
         };
@@ -1586,7 +1659,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["HealthResponse"];
+                    };
                 };
             };
         };
@@ -1602,6 +1677,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActionParamResponse: {
+            name?: string | null;
+            type?: string | null;
+            required?: boolean;
+            defaultValue?: unknown;
+            description?: string | null;
+        };
+        ActionSchemaResponse: {
+            actionName?: string | null;
+            description?: string | null;
+            parameters?: components["schemas"]["ActionParamResponse"][] | null;
+        };
         AddApiRequestRequest: {
             name?: string | null;
             method?: string | null;
@@ -1624,6 +1711,102 @@ export interface components {
             } | null;
             saveAs?: string | null;
             when?: string | null;
+        };
+        AiAttributionResponse: {
+            capability?: string | null;
+            /** Format: double */
+            confidence?: number;
+            modelIdentifier?: string | null;
+            promptVersion?: string | null;
+        };
+        AiCapabilityUsageResponse: {
+            capability?: string | null;
+            /** Format: int32 */
+            calls?: number;
+            /** Format: int32 */
+            retries?: number;
+            /** Format: int32 */
+            inputTokens?: number;
+            /** Format: int32 */
+            outputTokens?: number;
+            /** Format: double */
+            costUsd?: number;
+        };
+        AiStatusResponse: {
+            enabled?: boolean;
+        };
+        AiUsageResponse: {
+            /** Format: double */
+            totalCostUsd?: number;
+            /** Format: double */
+            capUsd?: number;
+            /** Format: double */
+            percentOfCap?: number;
+            warning?: boolean;
+            /** Format: int32 */
+            totalInputTokens?: number;
+            /** Format: int32 */
+            totalOutputTokens?: number;
+            /** Format: int32 */
+            budgetRefusals?: number;
+            /** Format: double */
+            retryShare?: number;
+            /** Format: int32 */
+            requestsToday?: number;
+            /** Format: int32 */
+            dailyRequestQuota?: number;
+            byCapability?: components["schemas"]["AiCapabilityUsageResponse"][] | null;
+        };
+        ApiCollectionResponse: {
+            /** Format: uuid */
+            id?: string;
+            name?: string | null;
+            description?: string | null;
+            requests?: components["schemas"]["ApiRequestResponse"][] | null;
+            /** Format: uuid */
+            projectId?: string | null;
+        };
+        ApiRequestResponse: {
+            /** Format: uuid */
+            id?: string;
+            name?: string | null;
+            method?: string | null;
+            url?: string | null;
+            headers?: {
+                [key: string]: unknown;
+            } | null;
+            queryParams?: {
+                [key: string]: unknown;
+            } | null;
+            body?: unknown;
+            assertions?: unknown;
+            /** Format: int32 */
+            order?: number;
+        };
+        AuditEntryDetailResponse: {
+            /** Format: uuid */
+            id?: string;
+            commandType?: string | null;
+            /** Format: uuid */
+            tenantId?: string | null;
+            succeeded?: boolean;
+            failureReason?: string | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            occurredAt?: string;
+        };
+        AuditEntryResponse: {
+            /** Format: uuid */
+            id?: string;
+            commandType?: string | null;
+            /** Format: uuid */
+            tenantId?: string | null;
+            succeeded?: boolean;
+            failureReason?: string | null;
+            /** Format: date-time */
+            occurredAt?: string;
         };
         CreateApiCollectionRequest: {
             name?: string | null;
@@ -1653,6 +1836,123 @@ export interface components {
             webhookSecret?: string | null;
             watchPath?: string | null;
         };
+        CreatedApiCollectionResponse: {
+            /** Format: uuid */
+            collectionId?: string;
+        };
+        CreatedApiRequestResponse: {
+            /** Format: uuid */
+            requestId?: string;
+        };
+        CreatedFlowResponse: {
+            /** Format: uuid */
+            flowId?: string;
+        };
+        CreatedProjectResponse: {
+            /** Format: uuid */
+            projectId?: string;
+        };
+        CreatedTestEnvironmentResponse: {
+            /** Format: uuid */
+            environmentId?: string;
+        };
+        CreatedTriggerResponse: {
+            /** Format: uuid */
+            triggerId?: string;
+        };
+        CreatedUserResponse: {
+            /** Format: uuid */
+            userId?: string;
+        };
+        FlowId: {
+            /** Format: uuid */
+            value?: string;
+        };
+        FlowReportSummaryResponse: {
+            /** Format: uuid */
+            flowId?: string;
+            flowName?: string | null;
+            /** Format: int32 */
+            totalRuns?: number;
+            /** Format: int32 */
+            passedRuns?: number;
+            /** Format: int32 */
+            failedRuns?: number;
+            /** Format: date-time */
+            lastRunAt?: string;
+            lastRunStatus?: string | null;
+        };
+        FlowResponse: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            familyId?: string;
+            /** Format: int32 */
+            version?: number;
+            name?: string | null;
+            description?: string | null;
+            status?: string | null;
+            continueOnFailure?: boolean;
+            steps?: components["schemas"]["FlowStepResponse"][] | null;
+        };
+        FlowRunReportResponse: {
+            /** Format: uuid */
+            flowRunId?: string;
+            finalStatus?: string | null;
+            /** Format: int32 */
+            passedCount?: number;
+            /** Format: int32 */
+            failedCount?: number;
+            /** Format: int32 */
+            skippedCount?: number;
+            /** Format: double */
+            totalDurationMs?: number;
+            /** Format: date-time */
+            occurredAt?: string;
+            /** Format: date-time */
+            projectedAt?: string;
+        };
+        FlowRunResponse: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            flowId?: string;
+            status?: string | null;
+            trigger?: string | null;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string | null;
+            results?: components["schemas"]["StepResultResponse"][] | null;
+        };
+        /**
+         * Format: int32
+         * @enum {integer}
+         */
+        FlowStatus: 0 | 1 | 2;
+        FlowStepResponse: {
+            /** Format: uuid */
+            id?: string;
+            name?: string | null;
+            module?: string | null;
+            action?: string | null;
+            params?: {
+                [key: string]: unknown;
+            } | null;
+            saveAs?: string | null;
+            when?: string | null;
+            /** Format: int32 */
+            order?: number;
+            aiAttribution?: components["schemas"]["AiAttributionResponse"];
+        };
+        FlowSummaryReadModel: {
+            flowId?: components["schemas"]["FlowId"];
+            name?: string | null;
+            status?: components["schemas"]["FlowStatus"];
+            /** Format: int32 */
+            version?: number;
+            projectId?: components["schemas"]["ProjectId"];
+        };
         GenerateAssertionsRequest: {
             method?: string | null;
             url?: string | null;
@@ -1663,8 +1963,33 @@ export interface components {
                 [key: string]: string;
             } | null;
         };
+        GenerateAssertionsResult: {
+            assertions?: components["schemas"]["GeneratedAssertion"][] | null;
+            modelUsed?: string | null;
+            /** Format: double */
+            confidence?: number;
+            reasoning?: string | null;
+        };
         GenerateFlowRequest: {
             description?: string | null;
+        };
+        GenerateFlowResponse: {
+            status?: string | null;
+            /** Format: uuid */
+            flowId?: string | null;
+            capability?: string | null;
+            /** Format: double */
+            confidence?: number | null;
+            modelIdentifier?: string | null;
+            ambiguities?: string[] | null;
+        };
+        GeneratedAssertion: {
+            type?: string | null;
+            expression?: string | null;
+            expectedValue?: string | null;
+            description?: string | null;
+            /** Format: double */
+            confidence?: number;
         };
         HealSelectorRequest: {
             failedSelector?: string | null;
@@ -1673,9 +1998,47 @@ export interface components {
             errorMessage?: string | null;
             pageUrl?: string | null;
         };
+        HealSelectorResult: {
+            originalSelector?: string | null;
+            healedSelector?: string | null;
+            strategy?: string | null;
+            /** Format: double */
+            confidence?: number;
+            explanation?: string | null;
+            modelUsed?: string | null;
+        };
+        HealthResponse: {
+            status?: string | null;
+        };
         LoginRequest: {
             email?: string | null;
             password?: string | null;
+        };
+        ModuleResponse: {
+            kind?: string | null;
+            displayName?: string | null;
+            trust?: string | null;
+            contractVersion?: string | null;
+            actions?: components["schemas"]["ActionSchemaResponse"][] | null;
+        };
+        ProjectId: {
+            /** Format: uuid */
+            value?: string;
+        };
+        ProjectResponse: {
+            /** Format: uuid */
+            id?: string;
+            name?: string | null;
+            description?: string | null;
+        };
+        PublishErrorResponse: {
+            field?: string | null;
+            code?: string | null;
+            message?: string | null;
+        };
+        PublishResponse: {
+            succeeded?: boolean;
+            errors?: components["schemas"]["PublishErrorResponse"][] | null;
         };
         RefreshRequest: {
             refreshToken?: string | null;
@@ -1693,10 +2056,103 @@ export interface components {
             name?: string | null;
             description?: string | null;
         };
+        RetryAttemptResponse: {
+            /** Format: int32 */
+            attemptNumber?: number;
+            status?: string | null;
+            /** Format: double */
+            durationMs?: number;
+            error?: string | null;
+        };
+        RolePermissionsUpdatedResponse: {
+            /** Format: uuid */
+            roleId?: string;
+            /** Format: int32 */
+            version?: number;
+        };
+        RootStatusResponse: {
+            service?: string | null;
+            status?: string | null;
+        };
+        StepResultResponse: {
+            /** Format: uuid */
+            id?: string;
+            stepName?: string | null;
+            module?: string | null;
+            action?: string | null;
+            status?: string | null;
+            /** Format: double */
+            durationMs?: number;
+            message?: string | null;
+            error?: string | null;
+            data?: unknown;
+            isFlaky?: boolean;
+            retryHistory?: components["schemas"]["RetryAttemptResponse"][] | null;
+        };
         SuggestFlowRequest: {
             naturalLanguageDescription?: string | null;
             targetBaseUrl?: string | null;
             preferredModules?: string[] | null;
+        };
+        SuggestFlowResult: {
+            flowName?: string | null;
+            description?: string | null;
+            steps?: components["schemas"]["SuggestedFlowStep"][] | null;
+            /** Format: double */
+            confidence?: number;
+            modelUsed?: string | null;
+        };
+        SuggestedFlowStep: {
+            module?: string | null;
+            action?: string | null;
+            parameters?: {
+                [key: string]: unknown;
+            } | null;
+            description?: string | null;
+        };
+        TenantId: {
+            /** Format: uuid */
+            value?: string;
+        };
+        TestEnvironmentResponse: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            projectId?: string;
+            name?: string | null;
+            variables?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        TokenResponse: {
+            accessToken?: string | null;
+            /** Format: date-time */
+            expiresAt?: string;
+            refreshToken?: string | null;
+        };
+        TrendAggregateReadModel: {
+            tenantId: components["schemas"]["TenantId"];
+            /** Format: int32 */
+            totalRunsLast24h: number;
+            /** Format: double */
+            passRateLast24h: number;
+            /** Format: double */
+            flakeRateLast24h: number;
+            /** Format: date-time */
+            lastUpdatedAt: string;
+        };
+        TriggerResponse: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            flowId?: string;
+            kind?: string | null;
+            isEnabled?: boolean;
+            /** Format: date-time */
+            lastFiredAt?: string | null;
+            cronExpression?: string | null;
+            webhookPath?: string | null;
+            watchPath?: string | null;
         };
         TriggerRunRequest: {
             variableOverrides?: {
@@ -1724,6 +2180,11 @@ export interface components {
             variables?: {
                 [key: string]: unknown;
             } | null;
+        };
+        WebhookTriggeredResponse: {
+            /** Format: uuid */
+            runId?: string;
+            status?: string | null;
         };
     };
     responses: never;

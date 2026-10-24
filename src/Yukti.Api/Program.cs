@@ -701,8 +701,8 @@ auth.MapPost("/register", async (RegisterRequest req, RegisterUserCommandHandler
 {
     var userId = await handler.Handle(
         new RegisterUserCommand(req.Email, req.Password, req.DisplayName, TenantId.New(), authorRoleId), ct);
-    return Results.Created($"{apiV1}/auth/users/{userId.Value}", new { userId = userId.Value });
-});
+    return Results.Created($"{apiV1}/auth/users/{userId.Value}", new CreatedUserResponse(userId.Value));
+}).Produces<CreatedUserResponse>(StatusCodes.Status201Created);
 
 auth.MapPost("/login", async (
     LoginRequest req, HttpContext context, IAuthBypassUserLookup authBypass, IRoleRepository roleRepo,
@@ -722,7 +722,7 @@ auth.MapPost("/login", async (
     var access = jwt.IssueAccessToken(user, roleList);
     var refresh = await refreshTokens.Issue(user.Id, ct);
     return Results.Ok(new TokenResponse(access.Value, access.ExpiresAt, refresh));
-});
+}).Produces<TokenResponse>();
 
 auth.MapPost("/refresh", async (
     RefreshRequest req, HttpContext context, IRefreshTokenStore refreshTokens, IAuthBypassUserLookup authBypass, IRoleRepository roleRepo,
@@ -752,7 +752,7 @@ auth.MapPost("/refresh", async (
     var access = jwt.IssueAccessToken(user, roleList);
     var newRefresh = await refreshTokens.Issue(user.Id, ct); // rotation: old token already consumed above
     return Results.Ok(new TokenResponse(access.Value, access.ExpiresAt, newRefresh));
-});
+}).Produces<TokenResponse>();
 
 // Admin-only: exercises FR-AUTHZ-04 directly — bumping a role's Version
 // here means every user holding that role is re-evaluated against the new
@@ -764,8 +764,8 @@ app.MapPost($"{apiV1}/roles/{{roleId:guid}}/permissions", async (
     var permissions = req.Permissions.Select(p => Enum.Parse<Permission>(p, ignoreCase: true)).ToHashSet();
     var newVersion = await handler.Handle(
         new UpdateRolePermissionsCommand(new RoleId(roleId), permissions, principal.GetUserId()), ct);
-    return Results.Ok(new { roleId, version = newVersion });
-}).RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Auth");
+    return Results.Ok(new RolePermissionsUpdatedResponse(roleId, newVersion));
+}).RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Auth").Produces<RolePermissionsUpdatedResponse>();
 
 // Was a real gap: AssignRoleCommand existed in Application with no way to
 // reach it over HTTP — an Administrator had no way to grant another user a
@@ -775,7 +775,7 @@ app.MapPost($"{apiV1}/users/{{userId:guid}}/roles/{{roleId:guid}}", async (
 {
     await handler.Handle(new AssignRoleCommand(new UserId(userId), new RoleId(roleId), principal.GetUserId()), ct);
     return Results.NoContent();
-}).RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Auth");
+}).RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Auth").Produces(StatusCodes.Status204NoContent);
 
 // ---- Flow / Run / Module endpoints — all require authentication now ----
 var flows = app.MapGroup($"{apiV1}/flows").WithTags("Flows").RequireAuthorization().RequireRateLimiting("PerTenant");
@@ -785,8 +785,8 @@ flows.MapPost("/", async (CreateFlowRequest req, ClaimsPrincipal principal, Crea
     var flowId = await handler.Handle(new CreateFlowCommand(
         req.Name, req.Description, principal.GetTenantId(), principal.GetUserId(),
         req.ProjectId is { } pid ? new ProjectId(pid) : null), ct);
-    return Results.Created($"{apiV1}/flows/{flowId.Value}", new { flowId = flowId.Value });
-});
+    return Results.Created($"{apiV1}/flows/{flowId.Value}", new CreatedFlowResponse(flowId.Value));
+}).Produces<CreatedFlowResponse>(StatusCodes.Status201Created);
 
 // D5-T7: English -> Analyst -> Coder -> a persisted Draft (never published). A separate route
 // from the pre-existing `/ai/flows/suggest`, which is the legacy IAiAssistantService (direct
@@ -805,13 +805,14 @@ flows.MapPost("/generate", async (GenerateFlowRequest req, ClaimsPrincipal princ
             "ambiguous", null, null, null, null, a.Ambiguities)),
         _ => throw new InvalidOperationException("Unknown GenerateFlowResult."),
     };
-});
+}).Produces<GenerateFlowResponse>();
 
 // FR-CQRS-01: reads the same flows table any write above just landed in —
 // no separate synced copy, so "read your own writes" holds with zero lag
 // by construction, not by a freshness guarantee bolted on afterward.
 flows.MapGet("/", async (ClaimsPrincipal principal, IFlowSummaryQuery query, CancellationToken ct) =>
-    Results.Ok(await query.ListByTenant(principal.GetTenantId(), ct)));
+    Results.Ok(await query.ListByTenant(principal.GetTenantId(), ct)))
+.Produces<IReadOnlyList<FlowSummaryReadModel>>();
 
 flows.MapGet("/{flowId:guid}", async (Guid flowId, HttpContext context, IFlowRepository repo, ITenantGuard tenantGuard, CancellationToken ct) =>
 {
@@ -819,7 +820,7 @@ flows.MapGet("/{flowId:guid}", async (Guid flowId, HttpContext context, IFlowRep
     if (flow is null) return ProblemResults.NotFound(context, flowNotFound);
     tenantGuard.EnsureAccessible(flow.TenantId); // FR-TENANT-01 Layer 3
     return Results.Ok(FlowResponse.From(flow));
-});
+}).Produces<FlowResponse>();
 
 flows.MapPost("/{flowId:guid}/steps", async (Guid flowId, AddStepRequest req, HttpContext context, ClaimsPrincipal principal, AddFlowStepCommandHandler handler, CancellationToken ct) =>
 {
@@ -834,7 +835,7 @@ flows.MapPost("/{flowId:guid}/steps", async (Guid flowId, AddStepRequest req, Ht
     {
         return ProblemResults.NotFound(context, flowNotFound);
     }
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 flows.MapPost("/{flowId:guid}/publish", async (Guid flowId, HttpContext context, ClaimsPrincipal principal, PublishFlowCommandHandler handler, CancellationToken ct) =>
 {
@@ -852,7 +853,7 @@ flows.MapPost("/{flowId:guid}/publish", async (Guid flowId, HttpContext context,
     {
         return ProblemResults.NotFound(context, flowNotFound);
     }
-});
+}).Produces<PublishResponse>();
 
 // Trigger + execute synchronously. There is no background job/queue
 // infrastructure in this repo yet (that's Volume 1 Part V / Volume 4
@@ -901,7 +902,7 @@ flows.MapPost("/{flowId:guid}/runs", async (
         await idempotency.Record(tenantId, idempotencyKey, runId, ct);
 
     return Results.Ok(FlowRunResponse.From(completed));
-});
+}).Produces<FlowRunResponse>();
 
 var runs = app.MapGroup($"{apiV1}/runs").WithTags("Runs").RequireAuthorization().RequireRateLimiting("PerTenant");
 
@@ -911,7 +912,7 @@ runs.MapGet("/{runId:guid}", async (Guid runId, HttpContext context, IFlowRunRep
     if (run is null) return ProblemResults.NotFound(context, runNotFound);
     tenantGuard.EnsureAccessible(run.TenantId); // FR-TENANT-01 Layer 3
     return Results.Ok(FlowRunResponse.From(run));
-});
+}).Produces<FlowRunResponse>();
 
 // D6-T5: screenshots are written to local disk by WebModule/DesktopUiModule (ScreenshotStorage,
 // Yukti.Infrastructure.InMemory), keyed by (runId, fileName). The ONLY authorization check needed
@@ -931,7 +932,7 @@ runs.MapGet("/{runId:guid}/screenshots/{fileName}", async (Guid runId, string fi
     if (!File.Exists(path)) return ProblemResults.NotFound(context, "Screenshot not found.");
 
     return Results.File(path, "image/png");
-});
+}).Produces(StatusCodes.Status200OK, contentType: "image/png");
 
 runs.MapPost("/{runId:guid}/cancel", async (Guid runId, HttpContext context, ClaimsPrincipal principal, CancelFlowRunCommandHandler handler, CancellationToken ct) =>
 {
@@ -944,7 +945,7 @@ runs.MapPost("/{runId:guid}/cancel", async (Guid runId, HttpContext context, Cla
     {
         return ProblemResults.NotFound(context, runNotFound);
     }
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 // ---- API Studio: saved Collections/Requests (Explorer) — CRUD only, no
 // execution endpoint here. "Send" on a saved request still goes through
@@ -959,11 +960,12 @@ apiCollections.MapPost("/", async (CreateApiCollectionRequest req, ClaimsPrincip
     var collectionId = await handler.Handle(new CreateApiCollectionCommand(
         req.Name, req.Description, principal.GetTenantId(), principal.GetUserId(),
         req.ProjectId is { } cpid ? new ProjectId(cpid) : null), ct);
-    return Results.Created($"{apiV1}/api-collections/{collectionId.Value}", new { collectionId = collectionId.Value });
-});
+    return Results.Created($"{apiV1}/api-collections/{collectionId.Value}", new CreatedApiCollectionResponse(collectionId.Value));
+}).Produces<CreatedApiCollectionResponse>(StatusCodes.Status201Created);
 
 apiCollections.MapGet("/", async (ClaimsPrincipal principal, IApiCollectionSummaryQuery query, CancellationToken ct) =>
-    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(ApiCollectionResponse.From)));
+    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(ApiCollectionResponse.From)))
+.Produces<IEnumerable<ApiCollectionResponse>>();
 
 apiCollections.MapPut("/{collectionId:guid}", async (Guid collectionId, RenameApiCollectionRequest req, HttpContext context, ClaimsPrincipal principal, RenameApiCollectionCommandHandler handler, CancellationToken ct) =>
 {
@@ -976,7 +978,7 @@ apiCollections.MapPut("/{collectionId:guid}", async (Guid collectionId, RenameAp
     {
         return ProblemResults.NotFound(context, apiCollectionNotFound);
     }
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 apiCollections.MapDelete("/{collectionId:guid}", async (Guid collectionId, HttpContext context, ClaimsPrincipal principal, DeleteApiCollectionCommandHandler handler, CancellationToken ct) =>
 {
@@ -989,7 +991,7 @@ apiCollections.MapDelete("/{collectionId:guid}", async (Guid collectionId, HttpC
     {
         return ProblemResults.NotFound(context, apiCollectionNotFound);
     }
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 apiCollections.MapPost("/{collectionId:guid}/requests", async (Guid collectionId, AddApiRequestRequest req, HttpContext context, ClaimsPrincipal principal, AddApiRequestCommandHandler handler, CancellationToken ct) =>
 {
@@ -999,13 +1001,13 @@ apiCollections.MapPost("/{collectionId:guid}/requests", async (Guid collectionId
             new ApiCollectionId(collectionId), req.Name, req.Method, req.Url,
             req.Headers ?? new Dictionary<string, object?>(), req.QueryParams ?? new Dictionary<string, object?>(),
             req.Body, req.Assertions, principal.GetUserId()), ct);
-        return Results.Created($"{apiV1}/api-collections/{collectionId}/requests/{requestId.Value}", new { requestId = requestId.Value });
+        return Results.Created($"{apiV1}/api-collections/{collectionId}/requests/{requestId.Value}", new CreatedApiRequestResponse(requestId.Value));
     }
     catch (InvalidOperationException)
     {
         return ProblemResults.NotFound(context, apiCollectionNotFound);
     }
-});
+}).Produces<CreatedApiRequestResponse>(StatusCodes.Status201Created);
 
 apiCollections.MapPut("/{collectionId:guid}/requests/{requestId:guid}", async (Guid collectionId, Guid requestId, UpdateApiRequestRequest req, HttpContext context, ClaimsPrincipal principal, UpdateApiRequestCommandHandler handler, CancellationToken ct) =>
 {
@@ -1021,7 +1023,7 @@ apiCollections.MapPut("/{collectionId:guid}/requests/{requestId:guid}", async (G
     {
         return ProblemResults.NotFound(context, apiCollectionNotFound);
     }
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 apiCollections.MapDelete("/{collectionId:guid}/requests/{requestId:guid}", async (Guid collectionId, Guid requestId, HttpContext context, ClaimsPrincipal principal, DeleteApiRequestCommandHandler handler, CancellationToken ct) =>
 {
@@ -1034,7 +1036,7 @@ apiCollections.MapDelete("/{collectionId:guid}/requests/{requestId:guid}", async
     {
         return ProblemResults.NotFound(context, apiCollectionNotFound);
     }
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 // ---- Projects + TestEnvironments — deliberately direct repository CRUD
 // rather than the full AuditableCommandHandler ceremony every other
@@ -1052,11 +1054,12 @@ projects.MapPost("/", async (CreateProjectRequest req, ClaimsPrincipal principal
     await using var uow = uowFactory.Create();
     await repo.Save(project, ct);
     await uow.Commit(ct);
-    return Results.Created($"{apiV1}/projects/{project.Id.Value}", new { projectId = project.Id.Value });
-});
+    return Results.Created($"{apiV1}/projects/{project.Id.Value}", new CreatedProjectResponse(project.Id.Value));
+}).Produces<CreatedProjectResponse>(StatusCodes.Status201Created);
 
 projects.MapGet("/", async (ClaimsPrincipal principal, IProjectSummaryQuery query, CancellationToken ct) =>
-    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(ProjectResponse.From)));
+    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(ProjectResponse.From)))
+.Produces<IEnumerable<ProjectResponse>>();
 
 projects.MapPut("/{projectId:guid}", async (Guid projectId, RenameProjectRequest req, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, IProjectRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
 {
@@ -1069,7 +1072,7 @@ projects.MapPut("/{projectId:guid}", async (Guid projectId, RenameProjectRequest
     await repo.Save(project, ct);
     await uow.Commit(ct);
     return Results.NoContent();
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 projects.MapDelete("/{projectId:guid}", async (Guid projectId, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, IProjectRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
 {
@@ -1081,7 +1084,7 @@ projects.MapDelete("/{projectId:guid}", async (Guid projectId, HttpContext conte
     await repo.Delete(project, ct);
     await uow.Commit(ct);
     return Results.NoContent();
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 projects.MapPost("/{projectId:guid}/environments", async (Guid projectId, CreateTestEnvironmentRequest req, ClaimsPrincipal principal, IPermissionChecker permissions, ITestEnvironmentRepository repo, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
 {
@@ -1091,11 +1094,12 @@ projects.MapPost("/{projectId:guid}/environments", async (Guid projectId, Create
     await using var uow = uowFactory.Create();
     await repo.Save(environment, ct);
     await uow.Commit(ct);
-    return Results.Created($"{apiV1}/projects/{projectId}/environments/{environment.Id.Value}", new { environmentId = environment.Id.Value });
-});
+    return Results.Created($"{apiV1}/projects/{projectId}/environments/{environment.Id.Value}", new CreatedTestEnvironmentResponse(environment.Id.Value));
+}).Produces<CreatedTestEnvironmentResponse>(StatusCodes.Status201Created);
 
 projects.MapGet("/{projectId:guid}/environments", async (Guid projectId, ITestEnvironmentSummaryQuery query, CancellationToken ct) =>
-    Results.Ok((await query.ListByProject(new ProjectId(projectId), ct)).Select(TestEnvironmentResponse.From)));
+    Results.Ok((await query.ListByProject(new ProjectId(projectId), ct)).Select(TestEnvironmentResponse.From)))
+.Produces<IEnumerable<TestEnvironmentResponse>>();
 
 projects.MapPut("/{projectId:guid}/environments/{environmentId:guid}", async (Guid projectId, Guid environmentId, UpdateTestEnvironmentRequest req, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, ITestEnvironmentRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
 {
@@ -1108,7 +1112,7 @@ projects.MapPut("/{projectId:guid}/environments/{environmentId:guid}", async (Gu
     await repo.Save(environment, ct);
     await uow.Commit(ct);
     return Results.NoContent();
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 projects.MapDelete("/{projectId:guid}/environments/{environmentId:guid}", async (Guid projectId, Guid environmentId, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, ITestEnvironmentRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
 {
@@ -1120,7 +1124,7 @@ projects.MapDelete("/{projectId:guid}/environments/{environmentId:guid}", async 
     await repo.Delete(environment, ct);
     await uow.Commit(ct);
     return Results.NoContent();
-});
+}).Produces(StatusCodes.Status204NoContent);
 
 // ---- Scheduler: TriggerDefinition CRUD (create/list/enable/disable — no
 // Delete, ITriggerRepository doesn't expose one; Disable is the real,
@@ -1151,13 +1155,13 @@ app.MapPost($"{apiV1}/flows/{{flowId:guid}}/triggers", async (Guid flowId, Creat
     await using var uow = uowFactory.Create();
     await repo.Save(trigger, ct);
     await uow.Commit(ct);
-    return Results.Created($"{apiV1}/triggers/{trigger.Id.Value}", new { triggerId = trigger.Id.Value });
+    return Results.Created($"{apiV1}/triggers/{trigger.Id.Value}", new CreatedTriggerResponse(trigger.Id.Value));
 })
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers").Produces<CreatedTriggerResponse>(StatusCodes.Status201Created);
 
 app.MapGet($"{apiV1}/triggers", async (ClaimsPrincipal principal, ITriggerSummaryQuery query, CancellationToken ct) =>
     Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(TriggerResponse.From)))
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers").Produces<IEnumerable<TriggerResponse>>();
 
 app.MapPut($"{apiV1}/triggers/{{triggerId:guid}}/enable", async (Guid triggerId, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, ITriggerRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
 {
@@ -1171,7 +1175,7 @@ app.MapPut($"{apiV1}/triggers/{{triggerId:guid}}/enable", async (Guid triggerId,
     await uow.Commit(ct);
     return Results.NoContent();
 })
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers").Produces(StatusCodes.Status204NoContent);
 
 app.MapPut($"{apiV1}/triggers/{{triggerId:guid}}/disable", async (Guid triggerId, HttpContext context, ClaimsPrincipal principal, IPermissionChecker permissions, ITriggerRepository repo, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, CancellationToken ct) =>
 {
@@ -1185,7 +1189,7 @@ app.MapPut($"{apiV1}/triggers/{{triggerId:guid}}/disable", async (Guid triggerId
     await uow.Commit(ct);
     return Results.NoContent();
 })
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Triggers").Produces(StatusCodes.Status204NoContent);
 
 // ---- Webhook receiver: FR-SCHED-04 incoming webhook execution ----
 // Listens on /webhooks/{webhookPath} for external systems (GitHub, Stripe, custom CI)
@@ -1246,9 +1250,9 @@ app.MapPost("/webhooks/{webhookPath}", async (string webhookPath, HttpContext co
     await using var uow = uowFactory.Create();
     await uow.Commit(ct);
 
-    return Results.Accepted($"{apiV1}/flows/{trigger.FlowId.Value}/runs/{runId.Value}", new { runId = runId.Value, status = "Triggered" });
+    return Results.Accepted($"{apiV1}/flows/{trigger.FlowId.Value}/runs/{runId.Value}", new WebhookTriggeredResponse(runId.Value, "Triggered"));
 })
-.AllowAnonymous().WithTags("Webhooks");
+.AllowAnonymous().WithTags("Webhooks").Produces<WebhookTriggeredResponse>(StatusCodes.Status202Accepted);
 
 // ---- Audit: read-only, list-only (matches the backend's append-only, no-
 // query-until-now design). No dedicated AuditView permission exists in the
@@ -1260,7 +1264,7 @@ app.MapGet($"{apiV1}/audit-entries", async (ClaimsPrincipal principal, IPermissi
     await permissions.EnsurePermission(principal.GetUserId(), Permission.ReportView, ct);
     return Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(AuditEntryResponse.From));
 })
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Audit");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Audit").Produces<IEnumerable<AuditEntryResponse>>();
 
 // Detail fetch: the one place Metadata (IAuditSummaryQuery's own doc
 // comment) is exposed, one entry at a time, same permission as the list.
@@ -1270,7 +1274,7 @@ app.MapGet($"{apiV1}/audit-entries/{{id:guid}}", async (Guid id, ClaimsPrincipal
     var entry = await query.GetById(new AuditEntryId(id), principal.GetTenantId(), ct);
     return entry is null ? Results.NotFound("Audit entry not found.") : Results.Ok(AuditEntryDetailResponse.From(entry));
 })
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Audit");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("Audit").Produces<AuditEntryDetailResponse>();
 
 // FR-ORCH-7: introspection surface a flow-authoring GUI renders from
 // directly — zero hardcoded per-module knowledge on the client side.
@@ -1288,7 +1292,7 @@ app.MapGet($"{apiV1}/modules", async (IModuleRegistry registry, IModuleRegistrat
             module.GetSupportedActions().Select(ActionSchemaResponse.From).ToList()));
     }
     return Results.Ok(responses);
-}).WithTags("Modules").RequireAuthorization().RequireRateLimiting("PerTenant");
+}).WithTags("Modules").RequireAuthorization().RequireRateLimiting("PerTenant").Produces<List<ModuleResponse>>();
 
 // FR-CQRS-03: staleness (LastUpdatedAt) is part of the payload, not
 // something callers have to separately infer.
@@ -1297,7 +1301,9 @@ app.MapGet($"{apiV1}/trends", async (ClaimsPrincipal principal, YuktiDbContext d
     var trend = await db.Set<Yukti.Infrastructure.ReadModels.TrendAggregateReadModel>()
         .FirstOrDefaultAsync(t => t.TenantId == principal.GetTenantId(), ct);
     return trend is null ? Results.NoContent() : Results.Ok(trend);
-}).WithTags("Trends").RequireAuthorization().RequireRateLimiting("PerTenant");
+}).WithTags("Trends").RequireAuthorization().RequireRateLimiting("PerTenant")
+.Produces<Yukti.Infrastructure.ReadModels.TrendAggregateReadModel>()
+.Produces(StatusCodes.Status204NoContent);
 
 // Reports page per-flow drill-down: same FlowReportReadModel rows the
 // tenant-wide /trends aggregate is built from, grouped by flow instead of
@@ -1308,14 +1314,14 @@ app.MapGet($"{apiV1}/flow-reports", async (ClaimsPrincipal principal, IPermissio
 {
     await permissions.EnsurePermission(principal.GetUserId(), Permission.ReportView, ct);
     return Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(FlowReportSummaryResponse.From));
-}).WithTags("Reports").RequireAuthorization().RequireRateLimiting("PerTenant");
+}).WithTags("Reports").RequireAuthorization().RequireRateLimiting("PerTenant").Produces<IEnumerable<FlowReportSummaryResponse>>();
 
 app.MapGet($"{apiV1}/flow-reports/{{flowId:guid}}/runs", async (Guid flowId, ClaimsPrincipal principal, IPermissionChecker permissions, IFlowReportSummaryQuery query, CancellationToken ct) =>
 {
     await permissions.EnsurePermission(principal.GetUserId(), Permission.ReportView, ct);
     var runs = await query.ListRunsByFlow(new FlowId(flowId), principal.GetTenantId(), ct);
     return Results.Ok(runs.Select(FlowRunReportResponse.From));
-}).WithTags("Reports").RequireAuthorization().RequireRateLimiting("PerTenant");
+}).WithTags("Reports").RequireAuthorization().RequireRateLimiting("PerTenant").Produces<IEnumerable<FlowRunReportResponse>>();
 
 // FR-RT-01/02: clients call JoinRun(flowRunId) after connecting, then
 // GET /api/v1/runs/{runId} once for full current state (the catch-up
@@ -1326,19 +1332,19 @@ app.MapHub<RunProgressHub>("/hubs/run-progress").RequireAuthorization();
 // ---- AI Capability Endpoints (Volume 3: Authoring & Maintenance Acceleration) ----
 app.MapPost($"{apiV1}/ai/assertions/generate", async (GenerateAssertionsRequest req, IAiAssistantService ai, CancellationToken ct) =>
     Results.Ok(await ai.GenerateAssertionsAsync(req, ct)))
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI").Produces<GenerateAssertionsResult>();
 
 app.MapPost($"{apiV1}/ai/selectors/heal", async (HealSelectorRequest req, IAiAssistantService ai, CancellationToken ct) =>
     Results.Ok(await ai.HealSelectorAsync(req, ct)))
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI").Produces<HealSelectorResult>();
 
 app.MapPost($"{apiV1}/ai/flows/suggest", async (SuggestFlowRequest req, IAiAssistantService ai, CancellationToken ct) =>
     Results.Ok(await ai.SuggestFlowAsync(req, ct)))
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI").Produces<SuggestFlowResult>();
 
 // D5-T7: reports the same `Ai:Enabled` switch D5-T2 reads at startup — never calls a provider.
 app.MapGet($"{apiV1}/ai/status", () => Results.Ok(new AiStatusResponse(aiEnabled)))
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI").Produces<AiStatusResponse>();
 
 // D5-T9/§R10: admin-only — spend data is sensitive the same way audit entries are, and
 // Permission.UserManage is the one permission only the baseline Administrator role holds (the
@@ -1366,15 +1372,15 @@ app.MapGet($"{apiV1}/ai/usage", async (
         RequestsToday: requestsToday, DailyRequestQuota: budget.DailyRequestQuota,
         ByCapability: usage.ByCapability.Select(c => new AiCapabilityUsageResponse(c.Capability, c.Calls, c.Retries, c.InputTokens, c.OutputTokens, c.CostUsd)).ToList()));
 })
-.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI");
+.RequireAuthorization().RequireRateLimiting("PerTenant").WithTags("AI").Produces<AiUsageResponse>();
 
-app.MapGet("/", () => Results.Ok(new { service = "Yukti.Api", status = "running" }));
+app.MapGet("/", () => Results.Ok(new RootStatusResponse("Yukti.Api", "running"))).Produces<RootStatusResponse>();
 
 // D6-T6: docker-compose.yml's own healthcheck target, and what `docker compose up` from a clean
 // clone is actually proven against. Liveness only (not a deep dependency probe) — by the time this
 // process accepts any request at all, the migration above has already either succeeded or crashed
 // startup outright, so there is nothing further for this endpoint itself to check.
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+app.MapGet("/health", () => Results.Ok(new HealthResponse("healthy"))).Produces<HealthResponse>();
 
 app.Run();
 

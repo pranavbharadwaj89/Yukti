@@ -212,3 +212,21 @@ public sealed record RefreshRequest(string RefreshToken);
 public sealed record UpdateRolePermissionsRequest(IReadOnlyList<string> Permissions);
 
 public sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAt, string RefreshToken);
+
+// DISC-3: named response records for what used to be anonymous-typed
+// `Results.Created(uri, new { ... })` bodies. Swagger/openapi-typescript
+// can't generate a real response type for an anonymous object — these give
+// it one, with the same property names (and therefore the same JSON shape
+// under the default camelCase policy) as what they replace.
+
+public sealed record CreatedUserResponse(Guid UserId);
+public sealed record RolePermissionsUpdatedResponse(Guid RoleId, int Version);
+public sealed record CreatedFlowResponse(Guid FlowId);
+public sealed record CreatedApiCollectionResponse(Guid CollectionId);
+public sealed record CreatedApiRequestResponse(Guid RequestId);
+public sealed record CreatedProjectResponse(Guid ProjectId);
+public sealed record CreatedTestEnvironmentResponse(Guid EnvironmentId);
+public sealed record CreatedTriggerResponse(Guid TriggerId);
+public sealed record WebhookTriggeredResponse(Guid RunId, string Status);
+public sealed record RootStatusResponse(string Service, string Status);
+public sealed record HealthResponse(string Status);
