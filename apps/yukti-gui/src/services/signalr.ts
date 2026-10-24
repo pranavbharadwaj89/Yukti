@@ -47,5 +47,41 @@ export function getRunProgressConnection(): signalR.HubConnection {
     })
     .withAutomaticReconnect()
     .build();
+  wireLifecycleDispatch(connection);
   return connection;
+}
+
+export interface RunProgressLifecycleListener {
+  onReconnecting?: () => void;
+  onReconnected?: () => void;
+  onClose?: () => void;
+}
+
+const lifecycleListeners = new Set<RunProgressLifecycleListener>();
+let lifecycleWired = false;
+
+// DISC-6: the real @microsoft/signalr client has no off() for
+// onreconnecting/onreconnected/onclose, so a caller (e.g.
+// useLiveRunProgress) registering directly on the shared connection would
+// leak one more unremovable handler per mount for the lifetime of the page.
+// Registering the three real callbacks here exactly once, for the
+// connection's lifetime, and fanning each event out to this removable Set
+// gives callers a real unsubscribe.
+function wireLifecycleDispatch(conn: signalR.HubConnection): void {
+  if (lifecycleWired) return;
+  lifecycleWired = true;
+  conn.onreconnecting(() => {
+    for (const listener of lifecycleListeners) listener.onReconnecting?.();
+  });
+  conn.onreconnected(() => {
+    for (const listener of lifecycleListeners) listener.onReconnected?.();
+  });
+  conn.onclose(() => {
+    for (const listener of lifecycleListeners) listener.onClose?.();
+  });
+}
+
+export function subscribeToRunProgressLifecycle(listener: RunProgressLifecycleListener): () => void {
+  lifecycleListeners.add(listener);
+  return () => lifecycleListeners.delete(listener);
 }
