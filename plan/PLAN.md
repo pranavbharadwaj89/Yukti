@@ -1279,3 +1279,50 @@ work here, don't assume they still hold.
   `ICredentialResolver` consumer in `src/` — nothing calls `ResolveAsync` yet). Explicitly deferred
   to v0.2 by the owner (2026-10-25 close-out order): "new security-sensitive code," not something
   to build the same night as the redaction proof it depends on. Priority: **high**, v0.2.
+- [x] DISC-17 `docker compose up` — the actual documented quickstart path, and therefore every
+  seeded demo flow a new user/teammate ever runs — connected to Postgres as the **superuser**
+  (`PGUSER:-postgres`), never as `yukti_app`/`yukti_worker` (the restricted, non-owner roles
+  D6-T1/D6-T4 built and mutation-tested the RLS tenant-isolation and audit-immutability DB-grant
+  protections against). Postgres superusers unconditionally bypass RLS (this week's own ADR-0006)
+  and bypass GRANT/REVOKE restrictions entirely — meaning those protections, however rigorously
+  proven by `dotnet test`, were never actually exercised by the real running stack, only by a
+  developer who happens to have manually configured `ConnectionStrings:YuktiRuntime` locally
+  (exactly what D6-T1 asked for, and the only reason this was ever noticed). Found 2026-10-25
+  while setting up D7-T3's trial environment — the first time anyone had run the real API locally
+  against the restricted role since D6-T7 added automatic migration-on-startup.
+  **Closed 2026-10-25, owner decision: fix now, not log-and-defer.**
+  `src/Yukti.Api/Program.cs`: split the migration connection from the runtime connection — D6-T7's
+  auto-`Database.MigrateAsync()` was wired to the DI-registered `YuktiDbContext` (the RUNTIME
+  connection), which crashes outright (`42501`, permission denied for
+  `__EFMigrationsHistory`) the moment the split role is actually configured, since `yukti_app`
+  deliberately has no DDL rights — this is *why* nobody had caught the bigger issue: running the
+  real app against the restricted role didn't silently work with weaker security, it crashed, so
+  nobody had tried. Migrations now always resolve `ConnectionStrings:Yukti` (the owner connection)
+  independently via a dedicated, short-lived `YuktiDbContext`, never falling back to the runtime
+  one. `docker-entrypoint.sh`: now also assembles `ConnectionStrings__YuktiRuntime`/
+  `__YuktiWorker` from the same `PG*` pieces (fixed `yukti_app`/`yukti_worker` usernames, the
+  migrations' own documented placeholder password — safe for the identical reason the existing
+  `ConnectionStrings__Yukti` assembly is: a fresh, torn-down-after container every run), instead
+  of leaving both unset and silently falling back to the superuser connection.
+  ✔ `dotnet build -warnaserror` → 0/0. `dotnet format --verify-no-changes` → clean. `dotnet test`
+  → 314/314, 0 skipped (no regressions). `sh -n docker-entrypoint.sh` → valid syntax.
+  **Two further real findings surfaced proving this locally, fixed/flagged honestly, not
+  papered over:** (1) the startup seed's RLS-bypass admin lookup
+  (`bypassConnectionString = GetConnectionString("YuktiWorker") ?? connectionString`) silently
+  fell back to the RLS-restricted runtime connection when `ConnectionStrings:YuktiWorker` wasn't
+  configured — not a quiet downgrade, an outright crash on second-and-later boot
+  (`23505`, duplicate key on `users.Email`: the bypass lookup couldn't see the already-seeded
+  admin through RLS, concluded it didn't exist, then collided on the real unique constraint
+  inserting it again). Fixed locally by configuring `ConnectionStrings:YuktiWorker` in
+  user-secrets; `docker-entrypoint.sh`'s fix above means a fresh compose container never hits
+  this, since it was never unset there to begin with once this PR lands. (2) This machine's own
+  local `yukti_worker` Postgres role doesn't actually have `BYPASSRLS` set, despite the
+  `AddYuktiWorkerRole` migration's source declaring it — the role predates that attribute being
+  added to the migration, and `CREATE USER IF NOT EXISTS` never retroactively fixes an
+  already-existing role. This is local database drift, not a code or docker-compose bug (a
+  genuinely fresh container's first-ever migration run creates the role correctly). Owner to run
+  `ALTER ROLE yukti_worker BYPASSRLS;` against local Postgres directly — deliberately not done
+  by Sutradhar: granting RLS-bypass to a role is a privilege-escalation action, correctly refused
+  by this session's own safety classifier even though it only restores already-reviewed,
+  migration-declared intent. Not required for this PR's own fix (that's docker-compose/the real
+  deployed path); only blocks re-running the real API locally, non-Docker, against the split role.

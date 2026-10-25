@@ -218,6 +218,17 @@ var connectionString = builder.Configuration.GetConnectionString("YuktiRuntime")
     ?? builder.Configuration.GetConnectionString("Yukti")
     ?? throw new InvalidOperationException(
         "Missing ConnectionStrings:YuktiRuntime/Yukti. Set one via `dotnet user-secrets set \"ConnectionStrings:Yukti\" \"...\"` for local development.");
+
+// D6-T7's own automatic Database.MigrateAsync() call below was wired to the DI-registered
+// YuktiDbContext above — i.e. the RUNTIME connection, "yukti_app" wherever the split role is
+// configured. yukti_app deliberately has no DDL/ALTER TABLE/RLS-policy-creation privileges (the
+// whole point of FR-AUDIT-03, two comments up), so auto-migration crashes (42501, permission
+// denied for __EFMigrationsHistory) the moment anyone actually runs this with the split role
+// configured — found 2026-10-25 running the API locally against the real yukti_app connection,
+// the first time anyone had done so since D6-T7 added this call. Migrations always need the
+// owner connection, resolved independently of the runtime one, never falling back to it silently.
+var migrationConnectionString = builder.Configuration.GetConnectionString("Yukti")
+    ?? connectionString;
 builder.Services.AddYuktiInfrastructure(connectionString);
 
 // FR-TENANT-01/FR-DB-02 fallout: login/self-registration/startup seeding
@@ -473,9 +484,15 @@ var app = builder.Build();
 // of needing a separate `dotnet ef database update` step no compose file runs. Idempotent — CI's
 // own jobs that already apply migrations as a distinct step are unaffected (re-running an
 // up-to-date migration is a no-op).
-using (var migrationScope = app.Services.CreateScope())
+//
+// Deliberately NOT the DI-registered YuktiDbContext (bound to the RUNTIME connection) — DDL/
+// migration needs owner privileges yukti_app doesn't have, and never will by design. A dedicated,
+// short-lived context against migrationConnectionString, used for nothing else.
 {
-    var migrationDb = migrationScope.ServiceProvider.GetRequiredService<YuktiDbContext>();
+    var migrationOptions = new DbContextOptionsBuilder<YuktiDbContext>()
+        .UseNpgsql(migrationConnectionString)
+        .Options;
+    using var migrationDb = new YuktiDbContext(migrationOptions);
     await migrationDb.Database.MigrateAsync();
 }
 
