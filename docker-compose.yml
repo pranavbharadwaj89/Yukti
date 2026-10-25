@@ -44,6 +44,12 @@ services:
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: yukti-dev-root-token
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      # Real finding from this exact PR's own first CI run: `vault status` (the healthcheck
+      # below) defaults to https://127.0.0.1:8200 when VAULT_ADDR is unset — but dev mode only
+      # ever serves plain HTTP. Every healthcheck attempt failed on a TLS handshake against a
+      # server that was never listening for TLS at all, not because Vault itself was unhealthy
+      # (its own logs showed it starting and unsealing correctly the whole time).
+      VAULT_ADDR: http://127.0.0.1:8200
     ports:
       - "8200:8200"
     healthcheck:

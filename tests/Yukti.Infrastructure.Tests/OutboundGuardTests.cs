@@ -202,12 +202,19 @@ public sealed class OutboundGuardTests
         // addresses for one host (a dual-stack "localhost", in the real bug) must let ApiModule
         // try the next one when the first can't actually be connected to — not surface a bare
         // connection-refused and give up, which is what a single-address return used to do.
+        //
+        // Uses ::1 vs 127.0.0.1 specifically — not a secondary loopback alias like 127.0.0.2 —
+        // because the first version of this test used 127.0.0.2 and failed on this exact PR's own
+        // Linux CI run: that address range isn't guaranteed to behave the same way (fast,
+        // deterministic "connection refused") across every OS/sandbox. ::1 and 127.0.0.1 are both
+        // always-configured, standard loopback interfaces everywhere, and this pairing is the
+        // literal real bug (IPv6 loopback resolving before IPv4), not a stand-in for it.
         using var server = new SelfClosingLocalServer();
         var port = new Uri(server.Url).Port;
 
         // FixedAddressesGuard ignores the host it's given — the URL's hostname is a throwaway
         // label, the guard's two fixed addresses are what ApiModule actually tries.
-        var guard = new FixedAddressesGuard(IPAddress.Parse("127.0.0.2"), IPAddress.Loopback); // .2 refuses; .1 (loopback) is the real server
+        var guard = new FixedAddressesGuard(IPAddress.IPv6Loopback, IPAddress.Loopback); // ::1 refuses (nothing listens there); 127.0.0.1 is the real server
         var module = new ApiModule(guard);
         var outcome = await module.Run("request",
             new Dictionary<string, object?> { ["url"] = $"http://placeholder:{port}/", ["expectedStatus"] = 200 },
