@@ -72,15 +72,29 @@ public sealed class ApiModule : IAutomationModule
                 Exception? lastFailure = null;
                 foreach (var address in addresses)
                 {
-                    var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    // Real bug this exact PR's own CI surfaced: constructing the Socket used to sit
+                    // outside this try, so a candidate whose address family isn't supported at all on
+                    // the host (e.g. InterNetworkV6 with IPv6 disabled at the kernel level, as on some
+                    // CI runners) threw out of the whole callback on socket construction, before ever
+                    // reaching ConnectAsync — never giving the next candidate a chance. Both failure
+                    // modes (can't even open a socket of this family, or opened it but refused) are
+                    // exactly the same "this candidate doesn't work, try the next one" case.
                     try
                     {
-                        await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), ct);
-                        return new NetworkStream(socket, ownsSocket: true);
+                        var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                        try
+                        {
+                            await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), ct);
+                            return new NetworkStream(socket, ownsSocket: true);
+                        }
+                        catch
+                        {
+                            socket.Dispose();
+                            throw;
+                        }
                     }
                     catch (Exception ex)
                     {
-                        socket.Dispose();
                         lastFailure = ex;
                     }
                 }
