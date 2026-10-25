@@ -210,14 +210,20 @@ public sealed class OutboundGuardTests
         // always-configured, standard loopback interfaces everywhere, and this pairing is the
         // literal real bug (IPv6 loopback resolving before IPv4), not a stand-in for it.
         using var server = new SelfClosingLocalServer();
-        var port = new Uri(server.Url).Port;
 
-        // FixedAddressesGuard ignores the host it's given — the URL's hostname is a throwaway
-        // label, the guard's two fixed addresses are what ApiModule actually tries.
+        // FixedAddressesGuard ignores the host it's given for connecting — ApiModule's
+        // ConnectCallback tries the guard's two fixed addresses, never DNS. But the URL's host
+        // still becomes the literal HTTP Host header sent to the server, and Linux's managed
+        // HttpListener (unlike Windows' http.sys) refuses a request whose Host header doesn't
+        // match the registered prefix's authority — this test failed on that mismatch on Linux
+        // CI even after the real ConnectCallback bug below was fixed. Using server.Url's own
+        // host (127.0.0.1, the same literal every other HttpListener-backed test here already
+        // uses) keeps the Host header valid everywhere while the guard still decides, underneath,
+        // which address the socket actually connects to.
         var guard = new FixedAddressesGuard(IPAddress.IPv6Loopback, IPAddress.Loopback); // ::1 refuses (nothing listens there); 127.0.0.1 is the real server
         var module = new ApiModule(guard);
         var outcome = await module.Run("request",
-            new Dictionary<string, object?> { ["url"] = $"http://placeholder:{port}/", ["expectedStatus"] = 200 },
+            new Dictionary<string, object?> { ["url"] = server.Url, ["expectedStatus"] = 200 },
             FakeContext(), default);
 
         Assert.Equal(StepStatus.Passed, outcome.Status);
