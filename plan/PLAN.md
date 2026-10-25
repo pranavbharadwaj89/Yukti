@@ -1019,8 +1019,54 @@ work here, don't assume they still hold.
   **2026-10-24:** no further detail exists anywhere in PLAN.md for what this actually refers to.
   Owner asked to skip for now and will clarify scope later — explicitly the first thing this
   plan's slip policy says to cut, so this is not a gap against the real v0.1 release.
-- [ ] D7-T7 Tag `v0.1.0`; retro in STANDUP
+- [x] D7-T7 Tag `v0.1.0`; retro in STANDUP
+  ✔ `git tag -v v0.1.0` → points at `fdbdd20` (PR #57's merge commit, `main`), pushed to origin
+  **Closed 2026-10-25.** Re-verified true state before tagging, not assumed from PR #57's own CI:
+  `main` fast-forwarded to `fdbdd20` locally, re-ran `dotnet build -warnaserror` (0/0) and
+  `dotnet test` on `main` itself. First full run showed 5 `Yukti.Infrastructure.Tests` failures,
+  all the same `Npgsql`/`LoadBackendTypes` connection-bootstrap error, no two from the same test
+  class — re-ran that project alone immediately after: 0 failures. Matches this machine's own
+  documented precedent (D6-T7's close-out: "two transient, contention-caused failures from
+  overlapping background processes... reproduced as clean on isolated re-run") — connection-pool
+  contention from this machine's other running processes, not a regression from the merge. Full
+  suite on `main`: 314/314 (Cli 11 + Analyzers 17 + Orchestration 110 + Infrastructure 176, 0
+  skipped). Frontend on `main`: `npm run lint` clean (pre-existing warnings only, no errors);
+  `npm test` → 252/253, the one failure being DISC-12's already-logged pre-existing flake
+  (`audit-page.test.tsx`'s list test, full-suite-load timeout) — re-ran in isolation: 5/5 passed,
+  confirmed not a regression before tagging.
+  Retro:
+  - **What shipped:** all P0-1..P0-8 proved (module contract, flow engine, API/Web/Logs modules +
+    UC-1 unified report, CLI, frontend API-testing UI + live SignalR runs, AI flow generation via
+    Sarvagna/Gemini, AI-off parity), plus the frozen enterprise features (Vault, RLS, RBAC, audit,
+    SSRF egress guard) each re-verified with a real test *and* a mutation check, not just a green
+    assertion — the bar the Day 6 spec set as its hardest rule.
+  - **How the week actually went vs. the plan:** the original Day 0 plan assumed a Python/FastAPI
+    greenfield rewrite; that was void before Day 1 started (CLAUDE.md's own v2 preamble). Days 3
+    and 5 were each superseded mid-week by a fuller owner spec after the originals turned out
+    thinner than the real bar (UC-1's fixture-app rework; Sarvagna's T0-T9 AI-layer breakdown).
+    Day 6 was reworked again on 2026-10-24 against its own full spec for the same reason. None of
+    the superseding work discarded anything real — every prior passing test and every real bug
+    fix was kept and re-credited against the task it actually satisfies.
+  - **The single biggest real-world lesson:** almost every late-week bug this plan's own mutation
+    checks and CI gates caught was platform-specific and invisible locally — Linux-only `Host`
+    header enforcement, IPv6-before-IPv4 resolution order, a lost `+x` bit from a Windows-authored
+    commit, Postgres superuser bypassing RLS, a free-tier Gemini key's 20/day ceiling. Every one of
+    these shipped in v0.1 only because a real CI run or a real mutation check was trusted over a
+    passing local test — the plan's own "never claim something works without pasting its check
+    output" rule (CLAUDE.md §8) is the reason none of them reached `main` silently.
+  - **Deliberately deferred, not forgotten (v0.2):** DISC-16 (`{{secrets.name}}` Vault resolution
+    into flow steps), DISC-15 (Testcontainers for the RLS/audit DB-dependent tests, removing this
+    machine's own `ConnectionStrings:YuktiRuntime`/non-superuser-role setup friction), DISC-11's
+    remaining 4 frontend vulnerabilities (need a major-version-bump ADR), marketplace
+    install/publish backend, and the `source: "template"` attribution marker (DISC-9, no producer
+    exists yet).
+  - **Still genuinely open, not closed by this tag:** D7-T3 (time-to-first-flow trial — the owner
+    is running this themselves; result to be appended here once reported back) and D7-T6 (P1
+    stretch, no scope defined yet, already the first thing the slip policy cuts — non-blocking for
+    v0.1 since it isn't a P0 item).
 - **Exit check:** every P0 box ticked or ALREADY DONE with evidence; `v0.1.0` tagged.
+  ✔ Both true as of `fdbdd20`/tag `v0.1.0` — P0-1..P0-8 and the frozen-feature verifications all
+  closed across Days 1-6 (see each day's own entries above); tag pushed to `origin/v0.1.0`.
 
 ---
 
