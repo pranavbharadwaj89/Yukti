@@ -533,18 +533,32 @@ have no old equivalent.
   outbound calls; eval harness ≥ 8/10; `npm run test:e2e -- ai-generation` (English → draft → publish →
   run); `grep -r "confidence.*=.*0\." src/` → no literal matches.
 
-## Day 6 — Sat 17 Oct · Verify the enterprise features + hardening
-- [x] D6-T1 RLS proof: tenant A cannot read/write tenant B flows, runs, results (API and direct DB with tenant session)
+## Day 6 — Sat 17 Oct · Proving the security claims
+**Reworked 2026-10-24 against the full Day 6 spec ("Proving the Security Claims").** The prior
+6-task version of this section (D6-T1–T6) was a thinner, self-authored list that pre-dated that
+spec arriving — it never carried the mutation-check rule, the SSRF guard, the dispatch benchmark,
+or the quickstart requirement, so several tasks below were marked `[x]` against a bar the spec
+doesn't actually set. Nothing done under the old list is discarded: every real test, every real
+bug found and fixed, is kept verbatim below and credited against the spec task it actually
+satisfies (in full or in part). Where a task is only partly satisfied, the remaining spec
+requirement is listed as its own open item rather than re-describing finished work.
+
+**Preconditions (spec's own gate before this section starts):** Day 5's exit check — see Day 5's
+own entry above — working tree clean on `main`, Docker available for the Testcontainers-backed
+suites (T1/T4), `plan/STANDUP.md` carrying the Day 5 digest. Re-confirm all four before resuming
+work here, don't assume they still hold.
+
+- [x] D6-T1 Tenant isolation (RLS): adversarial proof + mutation check
   ✔ `dotnet test --filter "FullyQualifiedName~TenantIsolation"`
-  **Closed 2026-10-21:** new `TenantIsolationTests.cs` (4 tests), following `AuditEntryGrantsTests`'s
-  own real-Postgres pattern — skip, not fail, when unconfigured. Proves all three documented layers
-  from `AddRowLevelSecurity`'s own migration comment independently: (1) the real repository
-  (`EfFlowRepository`/`EfFlowRunRepository`, Layer 1 + Layer 2 combined) returns `null` for a
-  cross-tenant id; (2) a raw, unfiltered SQL count against `flows`/`step_results` — zero C#
-  `WHERE TenantId=...` involved — still returns 0, proving Layer 2 (the RLS policy) holds on its
-  own; (3) attempting to `SaveChanges` a row tagged for a *different* tenant than the current
-  session is rejected by Postgres itself (`SqlState 42501`, insufficient_privilege) — the write
-  half of "cannot read/write."
+  **Core proof closed 2026-10-21, kept as-is:** new `TenantIsolationTests.cs` (4 tests), following
+  `AuditEntryGrantsTests`'s own real-Postgres pattern — skip, not fail, when unconfigured. Proves
+  all three documented layers from `AddRowLevelSecurity`'s own migration comment independently:
+  (1) the real repository (`EfFlowRepository`/`EfFlowRunRepository`, Layer 1 + Layer 2 combined)
+  returns `null` for a cross-tenant id; (2) a raw, unfiltered SQL count against
+  `flows`/`step_results` — zero C# `WHERE TenantId=...` involved — still returns 0, proving Layer 2
+  (the RLS policy) holds on its own; (3) attempting to `SaveChanges` a row tagged for a *different*
+  tenant than the current session is rejected by Postgres itself (`SqlState 42501`,
+  insufficient_privilege) — the write half of "cannot read/write."
   **A real, non-trivial finding before the tests would pass at all:** the first draft, run against
   `ConnectionStrings:Yukti` (this machine's configured connection), failed 3 of 4 — the row was
   visible, and the illegal write was *not* rejected. Root cause: that connection authenticates as
@@ -556,63 +570,365 @@ have no old equivalent.
   `AddYuktiAppRuntimeRole` migration for exactly this reason, confirmed via `pg_roles` and its own
   grants) is the role that should be used, and once `ConnectionStrings:YuktiRuntime` pointed at it,
   all 4 tests passed for real.
-  **Second finding, same investigation:** `yukti_app`'s password was still that migration's own
-  documented placeholder (`placeholder-rotate-immediately`) — its own comment says to rotate it
-  "immediately after this migration applies," which evidently never happened on this machine.
-  Attempting to rotate it and persist the new value to user-secrets was blocked by this
-  environment's own safety classifier (a secret-store write) — correctly so, not something to work
-  around. Flagged to the owner directly, not silently left unrotated and unmentioned.
-  **Third finding, the most consequential:** the CI job that actually runs `dotnet test`
-  (`build-and-test`) has no Postgres service at all — meaning `AuditEntryGrantsTests` (pre-existing)
-  and this new `TenantIsolationTests` have been silently `Skip()`-ing in CI on every single run,
-  never actually proving anything there. Fixed in the same PR: added the same throwaway
-  `postgres:16` service + migration-apply step the `api-types-drift`/`ai-off`/`e2e` jobs already
-  use, plus `ConnectionStrings__YuktiRuntime` pointed at `yukti_app` with its documented placeholder
-  (safe — a fresh, torn-down-after container every run, never the real credential). ✔ Full suite
-  locally with `YuktiRuntime` configured: 247/247, **0 skipped** (was 243/245 skipped-2 before).
-  `dotnet format --verify-no-changes` clean.
-- [x] D6-T2 RBAC proof: for every write command, an authorized-success and unauthorized-403 test (Vol 1 §25.8)
+  **Second finding, same investigation, still unresolved:** `yukti_app`'s password is still that
+  migration's own documented placeholder (`placeholder-rotate-immediately`) — its own comment says
+  to rotate it "immediately after this migration applies," which evidently never happened on this
+  machine. Rotating it and persisting the new value to user-secrets needs an owner-approved
+  secret-store write; carried forward as an open item below, not silently dropped.
+  **Third finding, the most consequential, fixed in the same PR:** the CI job that actually runs
+  `dotnet test` (`build-and-test`) had no Postgres service at all — meaning `AuditEntryGrantsTests`
+  (pre-existing) and this new `TenantIsolationTests` had been silently `Skip()`-ing in CI on every
+  single run, never actually proving anything there. Fixed: added the same throwaway `postgres:16`
+  service + migration-apply step the `api-types-drift`/`ai-off`/`e2e` jobs already use, plus
+  `ConnectionStrings__YuktiRuntime` pointed at `yukti_app` with its documented placeholder (safe — a
+  fresh, torn-down-after container every run, never the real credential). ✔ Full suite locally with
+  `YuktiRuntime` configured: 247/247, **0 skipped** (was 243/245 skipped-2 before). `dotnet format
+  --verify-no-changes` clean.
+  **Closed 2026-10-25**, once the owner configured `ConnectionStrings:YuktiRuntime` themselves:
+  - [x] Superuser guard added (ADR-0006, see below) — re-ran clean against the real non-superuser
+    role: all 4 tests pass, the guard itself didn't trip (confirming it correctly distinguishes
+    the two cases, not just that it fires).
+  - [x] **Mutation check, on scratch branch `scratch/d6-t1-mutation-check` (zero commits, never
+    pushed, deleted after):** the first attempt — dropping the policy outright — produced a RED
+    for the *wrong* reason: with `FORCE ROW LEVEL SECURITY` on and no policy at all, Postgres
+    denies everything by default (fail-closed), so the test's own arrange-phase write failed
+    before the real assertion ever ran. Restored, confirmed GREEN, then redid the mutation
+    correctly: a permissive `USING (true)` policy (simulating "the policy exists but doesn't
+    actually filter," the real danger) instead of no policy. RED:
+    `Tenant_B_cannot_see_tenant_As_flow_even_with_no_application_level_filter_at_all` →
+    `Expected: 0, Actual: 1`. Restored the exact original policy. GREEN: all 4 tests pass. Full
+    evidence in STANDUP's Day 6 digest.
+  - [ ] Rotating `yukti_app`'s placeholder password is still outstanding — not required for the
+    mutation check itself, tracked separately (see part C's migration-password finding).
+
+- [x] D6-T2 RBAC by enumeration: reflection-based proof + mutation check
   ✔ `dotnet test --filter "FullyQualifiedName~Authorization"`
-  **Closed 2026-10-21:** new `AuthorizationTests.cs` — 14 authorized-success/unauthorized-403 pairs
-  (28 tests) covering every write command handler in the codebase: `AssignRole`,
-  `UpdateRolePermissions`, `CreateFlow`, `AddFlowStep`, `PublishFlow`, `TriggerFlowRun`,
-  `CancelFlowRun`, `RegisterModule`, and all 5 `ApiCollection`/`ApiRequest` commands. Confirmed
-  before building: no dedicated RBAC test file existed at all (`Authorization` filter matched 0
-  tests, matching `GAP-MATRIX.md`'s own finding) — the mechanism (`IPermissionChecker`,
-  `FR-AUTHZ-02`'s "every command handler calls EnsurePermission as its first statement") was real
-  and correct, just unproven per-command. `RegisterUserCommand` deliberately excluded — open
-  self-registration by design, no caller identity exists yet to check a permission against (noted
-  inline in the test file, not silently skipped). `GenerateFlowCommand`'s own pair already exists
-  in `GenerateFlowCommandHandlerTests.cs` (D5-T7) — not duplicated here.
+  **Manual baseline closed 2026-10-21, kept as the regression fixture set:** new
+  `AuthorizationTests.cs` — 14 authorized-success/unauthorized-403 pairs (28 tests) covering every
+  write command handler in the codebase: `AssignRole`, `UpdateRolePermissions`, `CreateFlow`,
+  `AddFlowStep`, `PublishFlow`, `TriggerFlowRun`, `CancelFlowRun`, `RegisterModule`, and all 5
+  `ApiCollection`/`ApiRequest` commands. Confirmed before building: no dedicated RBAC test file
+  existed at all (`Authorization` filter matched 0 tests, matching `GAP-MATRIX.md`'s own finding) —
+  the mechanism (`IPermissionChecker`, `FR-AUTHZ-02`'s "every command handler calls
+  EnsurePermission as its first statement") was real and correct, just unproven per-command.
+  `RegisterUserCommand` deliberately excluded — open self-registration by design, no caller
+  identity exists yet to check a permission against (noted inline in the test file, not silently
+  skipped). `GenerateFlowCommand`'s own pair already exists in
+  `GenerateFlowCommandHandlerTests.cs` (D5-T7) — not duplicated here.
   No production in-memory implementation of `IApiCollectionRepository` existed (only the real EF
   one) — added a minimal test-only stub in the same file rather than building a production
   `InMemoryApiCollectionRepository` nobody else needs yet.
   First run found a real test-authoring mistake, not a product bug: 10 of 28 failed with
   "not found"/`NullReferenceException` because `InMemory*Repository.Save` only *stages* a write —
   nothing lands in the backing store until a `IUnitOfWork.Commit()` runs, the same mechanic
-  `AuditableCommandHandler` itself relies on (FR-OPS-03). Setup fixtures built directly via a
-  repository (bypassing the handler under test, which commits its own staged work) need an
-  explicit commit first — fixed by adding one after every such setup `.Save()` call.
-  ✔ Full suite: 275/275 (Cli 11 + Analyzers 17 + Infrastructure 145 + Orchestration 102), 0 skipped.
-  `dotnet format --verify-no-changes` clean.
-- [x] D6-T3 Vault proof: secrets resolved from Vault at runtime, never logged; credential rotation audited
-  ✔ ALREADY DONE (evidence): `dotnet test --filter "FullyQualifiedName~Vault"` → 4/4 passing in
-  `VaultCredentialResolverTests.cs`, against a real local Vault dev server (built 2026-10-11)
-- [x] D6-T4 Audit proof: publish, run trigger, role change each produce one immutable audit entry
+  `AuditableCommandHandler` itself relies on (FR-OPS-03). Fixed by committing after every such setup
+  `.Save()` call. ✔ Full suite: 275/275 (Cli 11 + Analyzers 17 + Infrastructure 145 +
+  Orchestration 102), 0 skipped. `dotnet format --verify-no-changes` clean.
+  **Why this didn't close the spec task on its own:** the spec explicitly names hand-enumerated
+  coverage like this "the weak form" — it protects today's 14 commands but a 15th command added
+  later with no permission check passes silently, because nothing scans for it.
+  **Closed 2026-10-24** with `AuthorizationEnumerationTests.cs`:
+  - [x] Reflection-based enumeration: discovers every concrete `AuditableCommandHandler<,>`
+    subtype (every write command handler — `FR-AUDIT-01` requires this base class, enforced at
+    compile time by `Yukti.Analyzers`' own `YUKTI002`), then scans each one's `HandleCore` for a
+    call to `IPermissionChecker.EnsurePermission` by reading its IL directly (`call`/`callvirt`
+    opcodes, resolving the metadata token). **Real bug caught building this, not shipped:**
+    `HandleCore` is always `async`, so its own IL is just the compiler's state-machine bootstrap —
+    the actual call lives in the generated state machine's `MoveNext`, found via
+    `[AsyncStateMachine]`. The first version scanned the wrong method and flagged all 15 real
+    handlers as missing the check; fixed by scanning the state machine type instead, confirmed by
+    re-running against the real, known-good handlers. A command with no check now fails *by its
+    own type name* — proven directly (see mutation check below), not asserted from reading the
+    scanner's own code. The 28 existing success/403 pairs above stay as this test's per-role
+    regression fixtures underneath, unchanged.
+  - [x] Mutation check, performed against real production code, not a synthetic stand-in only:
+    `_permissions.EnsurePermission(...)` was temporarily commented out of
+    `AssignRoleCommandHandler.HandleCore` (`src/Yukti.Application/IdentityAccess/Commands.cs`) on
+    2026-10-24; the enumeration test failed, naming exactly `AssignRoleCommandHandler` and nothing
+    else; the line was restored and the test re-confirmed green. A second, standing test
+    (`Mutation_check_the_detector_tells_a_real_check_apart_from_a_missing_one`) proves the same
+    thing permanently, against two synthetic handlers built for exactly this purpose, so the proof
+    doesn't depend on remembering to repeat the manual exercise later.
+  ✔ Full suite after this task: Infrastructure.Tests 160/163 (was 157/160, +3 new, 0 regressions —
+  the 3 failures are the same pre-existing `TenantIsolationTests` environment gap, unrelated).
+  Analyzers.Tests 17/17, Cli.Tests 11/11, Orchestration.Tests 110/110. `dotnet build -warnaserror`
+  on the test project → 0/0.
+
+- [x] D6-T3 Vault and secret leakage — **re-scoped 2026-10-25 to the real current risk**
+  ✔ `dotnet test --filter "FullyQualifiedName~SecretLeak|FullyQualifiedName~Redaction"`
+  **History:** closed once (2026-10-24 original pass) against the wrong evidence
+  (`VaultCredentialResolverTests.cs`, a connectivity proof, not a leak-scan); reopened same day
+  once that was caught; then blocked on a real scope finding — the spec's own premise
+  (`{{secrets.testToken}}` resolving into a step param) doesn't exist anywhere in `src/`. Owner's
+  2026-10-25 close-out order explicitly declined to build that pipeline tonight ("new
+  security-sensitive code," DISC-16, v0.2) and re-scoped T3 to the risk that's real *today*: a
+  user pasting a live credential straight into a step, most commonly a header.
+  **T3a — header redaction, closed:** new `Yukti.Domain.Auditing.SecretRedactor` — one shared
+  implementation, called from three places that previously weren't: `ReportWriters.cs`'s
+  `ParamRedaction` (JUnit params *and* data excerpt — the old version only redacted top-level
+  param keys, so a nested `headers` dict sailed through untouched, `Authorization` value
+  included), `JsonReportWriter`'s `data` field, and `Yukti.Api`'s own `StepResultResponse.From`
+  (ApiModule's response-headers field can carry a server's `Set-Cookie`). **Real, pre-existing
+  gap found and fixed in the same pass:** `AuditMetadataBuilder.Capture` had no redaction at all
+  for dictionary-shaped command properties — `[SensitiveValue]` is all-or-nothing per property, the
+  wrong tool for `AddFlowStepCommand.Params`, so the raw header value was reaching `audit_entries`
+  untouched before this fix. 4 new tests (`SecretRedactionTests.cs`): a passing step (JSON
+  report + step data clean), a failing step (JUnit failure body clean, proves the actual
+  redaction path since nothing is echoed for a plain pass), application logs (already safe by
+  design — param names only, confirmed), audit entries (the real gap above, now fixed).
+  Mutation check: `SecretRedactor.Redact` made a no-op on scratch branch
+  `scratch/d6-t3a-mutation-check` — RED: the JUnit-body and audit-entry tests fail with the raw
+  sentinel visible in cleartext; the pass-case/logs tests correctly stay green (they never needed
+  the redactor). Restored, GREEN: 4/4. Zero commits, never pushed, deleted after.
+  **T3b — platform secrets, closed:** `PlatformSecretRedactionTests.cs`, 5 tests. `AiCostRecord`
+  has no property shaped like a credential (structural proof, reflection). AI generation via a
+  stub-shaped provider never touches `ICredentialResolver` at all — confirmed by reading
+  `GeminiProvider`/`StubProvider` directly, so this surface is safe by construction, not by
+  redaction. A real Vault read with a wrong token (against the live local dev server) never logs
+  it — `VaultCredentialResolver` only ever logs the credential *reference name*, never the token.
+  The same wrong token, reached through `GeminiProvider.GenerateStructuredAsync`'s real failure
+  path, produces an `AiUnavailableException` whose `.Message` — the literal text Program.cs's
+  exception middleware writes into the RFC 7807 body — never contains it either (the message
+  names the credential reference, same reasoning). A failing DB connection with a wrong password
+  sentinel never appears in the resulting exception. **Real environment finding while building
+  this:** this machine's local Postgres uses trust authentication for localhost — confirmed
+  directly via `psql` that *any* password, even an obviously wrong one, is accepted — so a wrong
+  password alone couldn't be relied on to fail the connection here; used a deliberately wrong port
+  instead; the thing actually under test (does the connection string's password leak into the
+  exception) is unaffected by which part of the connection attempt fails. Mutation check:
+  `VaultCredentialResolver`'s log statement temporarily made to include the raw token
+  (`scratch/d6-t3b-mutation-check`) — RED: sentinel visible in the captured log text. Restored,
+  GREEN: 5/5. Zero commits, never pushed, deleted after. (T3b's other three tests prove safety
+  that already existed structurally — nothing to disable in those paths; the one live mutation
+  exercised here proves the method itself is sound, not vacuous.)
+  **Added:** `docs/known-limitations.md` (new) states the owner's exact wording on the
+  `{{secrets}}` gap. DISC-16 (above) tracks the real pipeline for v0.2.
+  ✔ Full solution: `dotnet build -warnaserror` → 0/0. `dotnet format --verify-no-changes` → clean.
+  `dotnet test` → Infrastructure.Tests 174/174 (was 165/165, +9 new, 0 regressions),
+  Orchestration.Tests 110/110, Analyzers.Tests 17/17, Cli.Tests 11/11.
+
+- [x] D6-T4 Audit, provably append-only: source-scan + mutation check
   ✔ `dotnet test --filter "FullyQualifiedName~Audit"`
-  **Closed 2026-10-24:** new `AuditTests.cs` — 4 tests proving the specific named operations end-to-end
-  through their real command handlers (`PublishFlowCommandHandler`, `TriggerFlowRunCommandHandler`,
-  `AssignRoleCommandHandler`), not a stand-in command. Each asserts exactly one entry lands in
-  `IAuditRepository`, with the correct `CommandType`/`Succeeded`/`TenantId`; a 4th proves a *failed*
-  role change still produces exactly one entry recording the failure, not zero and not two.
-  Immutability itself was already proven at two independent layers before this task — `IAuditRepository`
-  exposes no Update/Delete method at all (`Append` only), and `AuditEntryGrantsTests` proves the real
-  DB grant backs that up (`yukti_app` has SELECT+INSERT only) — this file closes the one missing piece:
-  proving "one entry per real operation," not just "the generic mechanism works" (already covered by
-  the pre-existing `AuditableCommandHandlerTests`, which uses a fake command).
-  ✔ Full suite: 279/279 (Cli 11 + Analyzers 17 + Infrastructure 149 + Orchestration 102), 0 skipped.
-  `dotnet format --verify-no-changes` clean.
-- [x] D6-T5 Run history + report pages (pass/fail/skip/flaky, screenshots, errors)
+  **Core proof closed 2026-10-24, kept as-is:** new `AuditTests.cs` — 4 tests proving the specific
+  named operations end-to-end through their real command handlers (`PublishFlowCommandHandler`,
+  `TriggerFlowRunCommandHandler`, `AssignRoleCommandHandler`), not a stand-in command. Each asserts
+  exactly one entry lands in `IAuditRepository`, with the correct
+  `CommandType`/`Succeeded`/`TenantId`; a 4th proves a *failed* role change still produces exactly
+  one entry recording the failure, not zero and not two. Immutability itself was already proven at
+  two independent layers before this task — `IAuditRepository` exposes no Update/Delete method at
+  all (`Append` only), and `AuditEntryGrantsTests` proves the real DB grant backs that up
+  (`yukti_app` has SELECT+INSERT only) — this file closed the one missing piece: proving "one entry
+  per real operation," not just "the generic mechanism works" (already covered by the pre-existing
+  `AuditableCommandHandlerTests`, which uses a fake command). ✔ Full suite: 279/279 (Cli 11 +
+  Analyzers 17 + Infrastructure 149 + Orchestration 102), 0 skipped. `dotnet format
+  --verify-no-changes` clean.
+  **Closed 2026-10-24:**
+  - [x] Source-scan test: `AuditCommandCatalogueTests.cs` — reflects over every `ICommand<>`
+    implementation in `Yukti.Application`, asserts none has a name suggesting it would mutate or
+    remove an audit entry (`*Audit*Delete*`/`*Audit*Update*`/`*Audit*Edit*`/`*Audit*Remove*`). A
+    standing mutation check proves the predicate itself would actually catch a real offending
+    name, against a synthetic `DeleteAuditEntryCommand` built for exactly that purpose.
+  - [x] **DB-grant mutation check, 2026-10-25,** once the owner configured `ConnectionStrings:
+    YuktiRuntime`: `GRANT UPDATE ON audit_entries TO yukti_app` → RED:
+    `Direct_UPDATE_against_audit_entries_fails_with_a_permissions_error` →
+    `Assert.Throws() Failure: No exception was thrown` (the UPDATE now actually succeeds).
+    `REVOKE UPDATE ON audit_entries FROM yukti_app`, confirmed grants back to exactly
+    INSERT+SELECT only → GREEN: both `AuditEntryGrantsTests` pass, 2/2. Full evidence in
+    STANDUP's Day 6 digest.
+
+- [x] D6-T5 SSRF guard (`OutboundGuard`) — **new, built from zero, never cut**
+  ✔ `dotnet test --filter "FullyQualifiedName~OutboundGuard|FullyQualifiedName~Ssrf"`
+  **Substantially built 2026-10-24.** Started from zero (confirmed by a full-repo search before
+  writing anything — zero matches for `OutboundGuard`/`SSRF`/`BlockedTargetException`/
+  `ConnectCallback` anywhere, including `docs/specification/`). Built first, ahead of the T1–T4
+  mutation checks, per the spec's own sequencing.
+  **Corrected 2026-10-25, found while verifying D6-T7's quickstart doc (full story there):**
+  `IOutboundGuard.ResolveAllowedAddressAsync` (one address) → `ResolveAllowedAddressesAsync`
+  (every allowed address, in resolution order) — a single-address return silently broke any
+  dual-stack host (`"localhost"` resolving `::1` before `127.0.0.1` on this machine, confirmed
+  directly) whose target only listens on one address family, since `ApiModule`'s own
+  `ConnectCallback` had no chance to fall back to a working address once the first candidate
+  refused the connection. Fixed at the connect-loop level, not worked around; see D6-T7 for the
+  full real-bug narrative and the two new regression tests.
+  - [x] A shared `IOutboundGuard`/`ConfiguredOutboundGuard` (`Yukti.Application/Security/`,
+    `Yukti.Infrastructure/Security/`) — one implementation, used by **both** consumers: ApiModule
+    via `SocketsHttpHandler.ConnectCallback`, WebModule via `IBrowserContext.RouteAsync` (see the
+    Web-module note below for why RouteAsync, not a native proxy).
+  - [x] Deny-list checked against the **resolved IP**, never the URL string: all 7 IPv4 ranges +
+    IPv6 `::1`/`fc00::/7`/`fe80::/10` + IPv4-mapped IPv6 forms, via `System.Net.IPNetwork` (.NET 8).
+  - [x] `BlockedTargetException` with the spec's exact wording.
+  - [x] Redirects checked at every hop: ApiModule's check is per-connection (each redirect opens a
+    new one); WebModule's RouteAsync re-enters on every request including a redirect's follow-up.
+  - [x] Modes: `Outbound:Mode` config, default `Restricted` (`appsettings.json`), `Permissive`
+    override in `appsettings.Development.json` and (deliberately, with a comment) the `e2e` CI job.
+  - [x] Per-tenant allow-list by hostname or CIDR, proven directly against the guard — **but not
+    yet reachable from a live flow run**: ApiModule/WebModule are Singleton, `ITenantContextAccessor`
+    is Scoped, and a triggered run's tenant identity needs a real design decision to thread safely
+    into a Singleton module — both call sites currently pass `tenantId: null`. Flagged, not guessed.
+  - [x] The adversarial set, each its own test, in
+    `tests/Yukti.Infrastructure.Tests/OutboundGuardTests.cs`: direct private IP, metadata endpoint,
+    hostname-resolves-to-private (stub resolver), decimal-encoded IP (resolved post-string, same as
+    any other resolution), DNS rebinding (a resolver that answers differently on a second call),
+    a genuinely public address, per-tenant allow-list permitted/blocked, IPv6 loopback/link-local,
+    plus two real end-to-end plumbing tests through ApiModule's actual HTTP pipeline.
+  - [x] The same adversarial intent run against the Web module too, in
+    `tests/Yukti.Orchestration.Tests/WebModuleOutboundGuardTests.cs` — a real block (metadata
+    endpoint) and a real pass-through (FixtureApp over loopback), both through the real Chromium
+    process. **Real finding en route:** Chromium silently bypasses a native `--proxy-server` for
+    loopback by default (confirmed empirically — tried `Proxy.Bypass="<-loopback>"` and the raw
+    `--proxy-bypass-list` argument, neither worked in this Chromium build), which would have meant
+    127.0.0.0/8 — one of the deny-list's own entries — was never actually gated. Switched to
+    `RouteAsync` (CDP-level interception, before Chromium's own proxy/bypass decision), verified
+    directly with a throwaway isolation test before committing to the fix.
+  - [x] Mutation check for the API-module path: `Mutation_check_the_same_private_target_passes_once_Restricted_mode_is_turned_off`
+    — the identical target blocked under Restricted passes under Permissive, in the same test file.
+  - [ ] Mutation check for the Web-module path specifically — not yet a standing, separate test.
+  - **Honest residual gap, not papered over:** WebModule's `RouteAsync` hands the request back to
+    Chromium's own DNS resolution after this guard's check passes — a true DNS-rebinding attacker
+    answering differently a few hundred milliseconds later, between this check and Chromium's own
+    subsequent lookup, is not closed by this path. ApiModule's ConnectCallback has no such gap (it
+    connects to the exact IP it checked). Every other adversarial case is covered for both modules.
+  - **Escalation carried from the spec, verbatim — not triggered:** nothing here touched
+    authentication, RBAC, RLS or Vault.
+  ✔ Full solution after this task: `dotnet build` → 0/0. `dotnet test` → Analyzers.Tests 17/17,
+  Cli.Tests 11/11, Orchestration.Tests 110/110 (was 108/108, +2, 0 regressions). Infrastructure.Tests
+  157/160 — the 3 failures are the pre-existing, already-documented local `YuktiRuntime`
+  environment gap, unrelated (confirmed by reading the connection-string fallback directly).
+
+- [x] D6-T6 CI gates on a real Yukti run
+  ✔ a green workflow on a real PR, linked in STANDUP
+  **Core job closed 2026-10-24, kept as-is:** new `uc1-flow-gate` CI job — confirmed neither half
+  existed before (`ci.yml` had no job running the CLI against `demo/uc1_flow.json`). Builds the CLI
+  + FixtureApp, starts FixtureApp standalone, runs `yukti run demo/uc1_flow.json --junit ...`
+  (explicitly in-process — no API, no Postgres, per the command's own description) and fails the PR
+  on a non-zero exit. Verified locally first, not just assumed from the YAML: 7/7 passed, exit 0,
+  matching D3-T4/T5's original result exactly.
+  **Closed in full, same session:**
+  - [x] Confirmed the Day 5 `ai-off` job is still present and green in `ci.yml` (lines ~243–377) —
+    not newly built, just verified it wasn't dropped; untouched by today's work.
+  - [x] New, explicitly named step in `build-and-test`: "Security gate — RLS, RBAC, Vault, secret
+    leakage, audit, SSRF (D6-T1–T5)" — the exact filter string every one of those tasks' own ✔
+    command already names (`TenantIsolation|Authorization|Vault|SecretLeak|Audit|OutboundGuard`),
+    run as its own step before the full suite, so a security-proof failure reads as its own
+    failed check in the PR, not buried inside the generic test run. Verified the filter actually
+    matches real tests locally (58 Infrastructure + 3 Analyzers + 5 Orchestration tests matched,
+    not an empty/silently-passing filter) before trusting it in CI. Kept inside the existing job
+    rather than a parallel one — full build+test runs in well under two minutes locally, nowhere
+    near the spec's 10-minute split threshold.
+  - [x] `uc1-flow-gate`'s own step: JUnit now uploaded unconditionally (`if: always()`, was
+    `if: failure()`), and a failed first attempt is automatically re-run once — if the second
+    attempt passes, the job summary records "⚠️ FLAKY: failed on attempt 1, passed on attempt 2"
+    and the job stays green; only a failure on both attempts actually fails the PR. Rehearsed
+    locally against a real FixtureApp + CLI run (happy path confirmed: passes on attempt 1, exits
+    0, summary line written) before trusting the YAML.
+  ✔ `.github/workflows/ci.yml` re-validated as real YAML (`python -c "import yaml; yaml.safe_load(...)"`,
+  UTF-8, after the earlier session's own precedent of checking this rather than eyeballing it).
+
+- [x] D6-T7 One-command start
+  ✔ `docker compose up -d && ./scripts/wait-healthy.sh && curl -f localhost:8080/health`
+  **Core compose work closed 2026-10-24, kept as-is:** confirmed before building that
+  `docker-compose.yml`/`Program.cs` had no `/health` endpoint anywhere, no auto-migration, and
+  `${YUKTI_DB_CONNECTION}` had no default — a clean clone couldn't start without undocumented
+  manual setup. Built: a `/health` endpoint, an automatic `Database.MigrateAsync()` call on
+  startup, a `curl`-backed healthcheck on the `api` service, `worker` now waiting on `api`'s
+  healthcheck too (not just postgres/redis, so it can't race migrations on a truly clean volume),
+  and a default connection string so a clean clone needs no manual `.env` setup. New
+  `docker-compose-smoke` CI job proves this from a genuinely clean checkout (this machine has no
+  Docker, so CI is the only place it could be proven at all — same situation D6-T1 was in for its
+  own Postgres CI service). `docker-compose.yml` validated with a real YAML parser, not visual
+  inspection. ✔ Backend: `dotnet build -warnaserror` → 0/0; `dotnet test` → 285/285, 0 skipped.
+  **Closed in full, same session:**
+  - [x] Added a `vault` service (dev mode, `hashicorp/vault:1.17`, `VAULT_DEV_ROOT_TOKEN_ID`) to
+    `docker-compose.yml`; `api` now depends on it (`service_healthy`) and gets `VAULT_ADDR`/
+    `VAULT_TOKEN` env vars — without those, `Program.cs`'s own `vaultConfigured` check falls back
+    to `InMemoryCredentialResolver`, so a clean `docker compose up` would never actually exercise
+    the real Vault path at all.
+  - [x] Extracted `scripts/wait-healthy.sh` — the exact polling loop `docker-compose-smoke`'s CI
+    job already had inline, generalized to take a container name + timeout. The CI job now calls
+    it instead of duplicating the loop, so the spec's own ✔ command is literally real, not just
+    documented.
+  - [x] Extended the startup seed block in `Program.cs`: a second tenant (`demo@yukti.local`,
+    Flow Author role) alongside the existing bootstrap admin, plus one published sample flow
+    ("Sample: API health check") under the admin's tenant. **Real bug caught verifying this
+    live, not shipped:** the first draft hardcoded `http://localhost:8080/health` — correct only
+    inside docker-compose; the identical seeding code also runs on local `dotnet run` and in the
+    `api-types-drift`/`ai-off`/`e2e` CI jobs, all of which bind to port 5000, so the seeded flow
+    would have failed its own first run everywhere except Docker. Fixed to read the actual
+    configured `ASPNETCORE_URLS` at seed time (`+` → `localhost`, falling back to `:5000`).
+    Verified end-to-end against this machine's real local Postgres/Redis (no Docker needed for
+    this check — same DB this machine's other tests already use): started the real API,
+    confirmed `demo@yukti.local` logs in under its own distinct tenant, confirmed the sample flow
+    exists and is Published, then **actually triggered a run** — `"status":"Passed"`, the real
+    `/health` step returning 200. Not asserted from reading the code.
+  - [x] Wrote `docs/quickstart.md` — clone → `docker compose up` → `wait-healthy.sh` → open the
+    browser → log in (either seeded account) → look at the seeded sample flow → build and run a
+    first flow of your own → the CLI as an alternative.
+  **Added 2026-10-25 (Sarvaghna's close-out order, part T7):** `docs/quickstart.md` now proven
+  on a genuinely fresh clone in CI, every PR — new `quickstart-literal` job extracts every
+  ` ```bash quickstart ` fenced block from the doc itself (`awk`, in document order) and runs the
+  result verbatim: `docker compose up -d` → `./scripts/wait-healthy.sh yukti-api` → `curl -f
+  .../health` → `dotnet run ... run demo/sample_flow.json --verbose`. New `demo/sample_flow.json`
+  — the CLI-runnable form of the exact flow the API seeds into the browser, same assertion, same
+  port. If this job ever breaks, the doc gets fixed, not the job — the extraction makes the doc
+  and the job the same text by construction, so they can't silently drift apart.
+  **A real, serious regression caught live while building this, not shipped:** running
+  `demo/sample_flow.json` against `localhost:8080` failed — "target machine actively refused
+  it" — even though `curl` to the identical URL succeeded seconds earlier. Root cause: this
+  machine resolves `"localhost"` to `::1` (IPv6) *before* `127.0.0.1` (confirmed directly via
+  `[System.Net.Dns]::GetHostAddresses`), and D6-T5's own `ConnectCallback` took `addresses[0]` —
+  connecting to `::1`, where nothing listens on a server bound to `127.0.0.1` only. This had been
+  silently masked until now because FixtureApp and Yukti.Api both happen to bind dual-stack by
+  default (Kestrel's own wildcard behavior), so every prior D6-T5 test target answered on both
+  families; a plain IPv4-only stub server (built specifically to verify this doc) was the first
+  thing that didn't. **Fixed at the source, not worked around in the test:** `IOutboundGuard`'s
+  contract changed from "resolve and return the one address to connect to" to "resolve and return
+  every address this guard allows, in resolution order" — `ResolveAllowedAddressAsync` →
+  `ResolveAllowedAddressesAsync`, returning `IReadOnlyList<IPAddress>`. `ApiModule`'s
+  `ConnectCallback` now tries each candidate in turn, falling through to the next on a connection
+  failure, restoring the exact dual-stack robustness a plain `SocketsHttpHandler` with no custom
+  callback has always had for free. `ConfiguredOutboundGuard` now filters out only the *denied*
+  candidates (keeping every allowed one, in order) instead of collapsing to a single address
+  before the deny-list check even ran. Two new tests lock this in:
+  `A_dual_stack_host_keeps_its_public_candidate_even_when_another_candidate_is_denied` (the guard
+  layer) and `ApiModule_falls_through_to_the_next_allowed_address_when_the_first_refuses_the_connection`
+  (the real plumbing, a fixed two-address guard where the first address genuinely refuses and the
+  second is the real server). Verified against the real bug directly: the exact failing command
+  (`dotnet run ... run demo/sample_flow.json --verbose` against real `localhost:8080`) now prints
+  `Sample: API health check: Passed — 1 passed, 0 failed, 0 skipped, 0 flaky`, exit 0 — not
+  inferred from the unit tests alone.
+  Sutradhar has still not run the full quickstart sequence against a genuinely fresh clone with
+  real Docker (this machine has none) — `quickstart-literal`'s own first real CI run is that
+  proof, same `docker-compose-smoke`-precedent situation as before; every individual command in
+  it has now been verified separately, including the one that was actually broken.
+  ✔ Full solution after this task: `dotnet build -warnaserror` → 0/0. `dotnet format
+  --verify-no-changes` → clean. `dotnet test` → 314/314 across all four projects (two transient,
+  contention-caused failures from overlapping background processes on this machine reproduced as
+  clean on isolated re-run — not real regressions, confirmed before trusting the green number).
+  `docker-compose.yml` and `.github/workflows/ci.yml` re-validated as real YAML.
+
+- [x] D6-T8 Dispatch overhead benchmark — **new**
+  ✔ `dotnet run --project benchmarks/DispatchBenchmark -c Release`
+  **Closed 2026-10-24.** `benchmarks/DispatchBenchmark` (new console project, added to `Yukti.sln`):
+  a 100-step flow against a `StubModule` (`Run` returns `StepOutcome.Passed()` immediately, no real
+  work) through the real `FlowEngine` — the identical InMemory wiring every orchestration test
+  already uses (`InMemoryUnitOfWorkFactory`/`InMemoryFlowRunRepository`/`ModuleDispatcher`/
+  `VariableStore`/`RetryFlakeHandler`, `RetryPolicy(MaxAttempts: 1)` so retry logic never enters the
+  measurement). The stub records `Stopwatch.GetTimestamp()` at its own entry and exit on every call;
+  the benchmark computes each gap as `nextEntry - thisExit` across all 99 consecutive pairs —
+  "module execution time excluded by construction" in the literal sense: since the stub does
+  nothing, that gap is entirely the engine's own per-step bookkeeping (commit, telemetry, logging,
+  `BindVariable`, condition evaluation, interpolation) between one module call finishing and the
+  next one starting. Reports p50/p95/p99, exits 1 if p95 exceeds 50ms (and if the stub wasn't
+  called exactly 100 times, refusing to report a number from an invalid run at all rather than a
+  misleading one).
+  ✔ **First real measurement:** p50 = 0.004–0.006 ms, p95 = 0.006–0.013 ms (two separate runs),
+  p99 = 3.9–6.3 ms (a single GC/JIT-warmup outlier each run, not a steady-state number) — comfortably
+  under the 50ms target, confirmed by two separate runs rather than one. Recorded as the baseline
+  for future comparison; exit code 0 both times.
+
+- [x] D6-BONUS Run history + report pages (pass/fail/skip/flaky, screenshots, errors) — **outside
+  this spec's task list, kept because it's real, shipped, and directly enables D6-T3's
+  screenshot-leak-scan requirement above**
   ✔ `npm test -- run-detail-page reports-page` (corrected from `RunHistory Report` — no file named
   `RunHistory` exists; the two real files proving this are named for their actual pages, same as
   Day 3/5's precedent for fixing a stale acceptance command rather than silently reinterpreting it)
@@ -646,34 +962,22 @@ have no old equivalent.
   — a trailing-slash/empty "path" collapsing to an empty file name — fixed in the same pass, not
   deferred). Frontend: `npx vitest run run-detail-page reports-page` → 9/9 (2 new); full suite
   249/249; `npm run typecheck`/`lint`/`build` all clean.
-- [x] D6-T6 CI gates a PR on `yukti run demo/uc1_flow.json`; `docker compose up` works from clean clone
-  ✔ workflow green; `/health` returns 200
-  **Closed 2026-10-24:** neither half existed before today — confirmed by reading `ci.yml` (no job
-  ever ran the CLI against `demo/uc1_flow.json`) and `docker-compose.yml`/`Program.cs` (no `/health`
-  endpoint anywhere, no auto-migration, `${YUKTI_DB_CONNECTION}` had no default so a clean clone
-  couldn't even start without undocumented manual setup).
-  New `uc1-flow-gate` CI job: builds the CLI + FixtureApp, starts FixtureApp standalone, runs
-  `yukti run demo/uc1_flow.json --junit ...` (explicitly in-process — no API, no Postgres, per the
-  command's own description) and fails the PR if it doesn't exit 0. Verified locally first (not
-  just assumed from the YAML): 7/7 passed, exit 0, matching D3-T4/T5's original result exactly.
-  New `docker-compose-smoke` CI job: `docker compose up -d --build` from a genuinely clean checkout
-  (no `.env`), polls `api`'s own healthcheck, then curls `/health` for a real 200 — proven against
-  the actual compose file and Dockerfile, not asserted from having read them (this machine has no
-  Docker installed, so CI is the only place this could be proven at all, same situation D6-T1 was
-  in for its own new Postgres CI service).
-  Built to make both honest: a `/health` endpoint (`Program.cs`) and an automatic
-  `Database.MigrateAsync()` call on startup (the existing seeding block already implicitly required
-  migrated tables — this just makes that explicit and automatic instead of needing a separate,
-  undocumented step no compose file ever ran); a `curl`-backed healthcheck on the `api` service in
-  `docker-compose.yml`; `worker` now also waits on `api`'s healthcheck (not just postgres/redis)
-  so it can't race ahead and query tables before migrations finish on a truly clean volume; and a
-  default for `${YUKTI_DB_CONNECTION}` (the same dev-only credentials already inline in the compose
-  file) so a clean clone works without any manual `.env` setup at all.
-  ✔ Backend: `dotnet build -warnaserror` → 0/0; `dotnet test` → 285/285, 0 skipped. `dotnet format
-  --verify-no-changes` clean. `docker-compose.yml` validated with a real YAML parser (not just
-  visual inspection this time — `pip install pyyaml` succeeded on this machine where it hadn't
-  before). `uc1-flow-gate`'s own steps proven locally end-to-end before being trusted in CI.
-- **Exit check:** security features proven by tests, not assumed; CI gates on a Yukti flow.
+
+- **Exit check (per spec, replaces the old one-liner):**
+  ```
+  dotnet build -warnaserror && dotnet test
+  dotnet test --filter "FullyQualifiedName~TenantIsolation|Authorization|Vault|SecretLeak|Audit|OutboundGuard"
+  docker compose up -d && ./scripts/wait-healthy.sh && curl -f localhost:8080/health
+  dotnet run --project benchmarks/DispatchBenchmark -c Release      # p95 < 50ms
+  # plus: the CI workflow green on a real PR, with UC-1 and ai-off both passing
+  ```
+  Mutation-check evidence for T1–T5 (5 of 5) in STANDUP is the one requirement above that can't be
+  satisfied by a green checkbox alone — the spec treats it as the day's single hardest rule, and
+  it's currently 0 of 5.
+  **Sequence per spec:** T5 (SSRF) first — it's the only task that leaves a real hole open if
+  skipped, and the largest. Then T1–T4's remaining mutation checks. Then T6–T8. **Never cut:** T5,
+  or any mutation check. If the day runs long, cut order is: P1 items first, then T8 (carry to
+  Day 7 as a recorded gap), then T7's quickstart doc while keeping compose itself working.
 
 ## Day 7 — Sun 18 Oct · Buffer, self-test, release
 - [x] D7-T1 Close all BLOCKED / carried tasks
@@ -912,3 +1216,20 @@ have no old equivalent.
   `A_provider_failure_still_writes_a_cost_and_quota_record_before_the_exception_propagates`. Full
   suite 243/243, `dotnet format --verify-no-changes` clean. Landed on this same branch/PR rather
   than a separate one — a direct refinement of this task's own guard logic, not a new concern.
+- [ ] DISC-15 Convert D6-T1 and D6-T4 to Testcontainers: the test provisions its own Postgres,
+  creates the `yukti_app` non-superuser role itself, runs migrations, and connects as that role.
+  Enables destructive mutation checks (`DROP POLICY`, `REVOKE`) inside a throwaway container,
+  removes the machine-specific credential dependency (ADR-0006's own superuser-fallback trap and
+  every session's `ConnectionStrings:YuktiRuntime` setup friction disappear at the source), and
+  makes these tests runnable in CI and on any clone without manual local setup. Found 2026-10-25
+  during Day 6's close-out, after the second session in a row to hit the same local credential
+  wall. Priority: **high**, v0.2.
+- [ ] DISC-16 Build `{{secrets.name}}` resolution from Vault into flow steps, resolved per-step at
+  run time, never stored in the flow definition. Reuses the T3a redactor
+  (`Yukti.Domain.Auditing.SecretRedactor`) directly — the moment a module actually calls
+  `ExecutionContext.Credentials.ResolveAsync`, the resolved value needs the exact same name-based
+  redaction already proven against pasted-in headers. Found 2026-10-24/25: D6-T3 as originally
+  specced assumed this pipeline already existed; it doesn't (confirmed by reading every
+  `ICredentialResolver` consumer in `src/` — nothing calls `ResolveAsync` yet). Explicitly deferred
+  to v0.2 by the owner (2026-10-25 close-out order): "new security-sensitive code," not something
+  to build the same night as the redaction proof it depends on. Priority: **high**, v0.2.

@@ -22,6 +22,10 @@
          in Yukti.Infrastructure.InMemory, a sibling of Yukti.Infrastructure that this project
          didn't previously need. -->
     <ProjectReference Include="..\..\src\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj" />
+    <!-- D6-T3a: SecretRedactionTests needs the real JUnit/JSON report writers (ParamRedaction's
+         own consumers) to prove the leak-scan against real report output, not a re-implementation
+         of what they do. -->
+    <ProjectReference Include="..\..\src\Yukti.Cli\Yukti.Cli.csproj" />
   </ItemGroup>
 
   <!-- Reads the same ConnectionStrings:Yukti user-secret Yukti.Api uses,

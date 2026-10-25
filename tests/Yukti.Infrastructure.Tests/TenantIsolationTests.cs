@@ -40,10 +40,36 @@ public sealed class TenantIsolationTests
         public TenantId? CurrentTenantId { get; }
     }
 
+    /// <summary>
+    /// D6-T1 close-out, 2026-10-21: this fixture's own <c>ConnectionStrings:Yukti</c> fallback
+    /// (<see cref="GetConnectionString"/>) is the Postgres superuser — and a superuser
+    /// unconditionally bypasses RLS, <c>FORCE ROW LEVEL SECURITY</c> included (<c>FORCE</c> only
+    /// binds the table *owner*, a different mechanism; see
+    /// <c>plan/adr/0006-rls-tests-require-non-superuser.md</c>). Every test here would then PASS
+    /// for a reason that proves nothing — a false pass, which is worse than a red test, because it
+    /// looks like evidence. Checked once, at the one chokepoint every test already routes through,
+    /// rather than trusting whoever configured <c>ConnectionStrings:YuktiRuntime</c> got the role
+    /// right.
+    /// </summary>
+    private static async Task AssertNotSuperuser(YuktiDbContext context, CancellationToken ct)
+    {
+        var connection = (NpgsqlConnection)context.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open) await connection.OpenAsync(ct);
+        await using var cmd = new NpgsqlCommand("SELECT current_setting('is_superuser')", connection);
+        var isSuperuser = (string)(await cmd.ExecuteScalarAsync(ct))!;
+        if (isSuperuser == "on")
+        {
+            throw new InvalidOperationException(
+                "RLS tests cannot run as a superuser — RLS is bypassed by design and these tests " +
+                "would pass meaninglessly. Point ConnectionStrings:YuktiRuntime at a non-superuser role.");
+        }
+    }
+
     private static async Task<YuktiDbContext> OpenSessionAs(string connectionString, TenantId tenantId, CancellationToken ct)
     {
         var options = new DbContextOptionsBuilder<YuktiDbContext>().UseNpgsql(connectionString).Options;
         var context = new YuktiDbContext(options);
+        await AssertNotSuperuser(context, ct);
         await new EfTenantSessionInitializer(context).EstablishTenantContext(tenantId, ct);
         return context;
     }

@@ -1,0 +1,18 @@
+{
+  "name": "Sample: API health check",
+  "description": "The quickstart's own first flow — checks that Yukti's own API is up. Matches the flow the API seeds into a fresh docker-compose stack; this is the CLI-runnable form of the same check, targeting the compose stack's exposed port directly.",
+  "steps": [
+    {
+      "name": "Check /health",
+      "module": "api",
+      "action": "request",
+      "params": {
+        "url": "http://localhost:8080/health",
+        "method": "GET",
+        "assert": [
+          { "type": "status", "expectedStatus": 200 }
+        ]
+      }
+    }
+  ]
+}

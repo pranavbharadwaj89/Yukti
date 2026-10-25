@@ -47,6 +47,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "fixtures", "fixtures", "{70
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FixtureApp", "demo\fixtures\FixtureApp\FixtureApp.csproj", "{65946343-C33E-4CB5-A6C8-9855972A4D0F}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", "{66320409-64EC-F7C5-3DEF-65E7510DAAD1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DispatchBenchmark", "benchmarks\DispatchBenchmark\DispatchBenchmark.csproj", "{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -261,6 +265,18 @@ Global
 		{65946343-C33E-4CB5-A6C8-9855972A4D0F}.Release|x64.Build.0 = Release|Any CPU
 		{65946343-C33E-4CB5-A6C8-9855972A4D0F}.Release|x86.ActiveCfg = Release|Any CPU
 		{65946343-C33E-4CB5-A6C8-9855972A4D0F}.Release|x86.Build.0 = Release|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Debug|x64.Build.0 = Debug|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Debug|x86.Build.0 = Debug|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Release|x64.ActiveCfg = Release|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Release|x64.Build.0 = Release|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Release|x86.ActiveCfg = Release|Any CPU
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -284,5 +300,6 @@ Global
 		{E9D25C05-C791-4A60-ABB0-916454259823} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{70F66200-5800-5272-FEE9-1ACA7BA430C2} = {A39C23D2-F2C0-258D-165A-CF1E7FEE6E7B}
 		{65946343-C33E-4CB5-A6C8-9855972A4D0F} = {70F66200-5800-5272-FEE9-1ACA7BA430C2}
+		{4FF706BE-2D28-4414-81ED-212EAA4B1C7B} = {66320409-64EC-F7C5-3DEF-65E7510DAAD1}
 	EndGlobalSection
 EndGlobal

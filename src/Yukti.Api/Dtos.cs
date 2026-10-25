@@ -173,9 +173,14 @@ public sealed record StepResultResponse(
     double DurationMs, string? Message, string? Error, object? Data, bool IsFlaky,
     IReadOnlyList<RetryAttemptResponse> RetryHistory)
 {
+    // D6-T3a: a module's Data can carry the same shape a header can — ApiModule's own response
+    // "headers" field, which can include a server's Set-Cookie — so the run API response needs
+    // the identical redaction the report writers apply, not a separate copy of the same logic.
     public static StepResultResponse From(StepResult result) => new(
         result.Id.Value, result.StepName, result.Module.Value, result.Action, result.Status.ToString(),
-        result.Duration.TotalMilliseconds, result.Message, result.Error, result.Data, result.IsFlaky,
+        result.Duration.TotalMilliseconds, result.Message, result.Error,
+        result.Data is IReadOnlyDictionary<string, object?> dict ? Yukti.Domain.Auditing.SecretRedactor.Redact(dict) : result.Data,
+        result.IsFlaky,
         result.RetryHistory.Select(a => new RetryAttemptResponse(
             a.AttemptNumber, a.Status.ToString(), a.Duration.TotalMilliseconds, a.Error)).ToList());
 }
