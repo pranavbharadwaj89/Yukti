@@ -29,6 +29,10 @@
     <ProjectReference Include="..\..\src\Yukti.Application\Yukti.Application.csproj" />
     <ProjectReference Include="..\..\src\Yukti.Orchestration\Yukti.Orchestration.csproj" />
     <ProjectReference Include="..\..\src\Yukti.Infrastructure.InMemory\Yukti.Infrastructure.InMemory.csproj" />
+    <!-- Test-only: D6-T5's Web-module mutation check needs the real
+         ConfiguredOutboundGuard, not just the IOutboundGuard interface
+         Yukti.Application already exposes. -->
+    <ProjectReference Include="..\..\src\Yukti.Infrastructure\Yukti.Infrastructure.csproj" />
     <ProjectReference Include="..\..\demo\fixtures\FixtureApp\FixtureApp.csproj" />
   </ItemGroup>
 

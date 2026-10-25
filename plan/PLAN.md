@@ -235,8 +235,12 @@ w/ Anthropic) → new T1 (OpenAI, not Anthropic — see DISC-7 and `plan/adr/000
 T2 (Planning pipeline) → new T3; old T3 (Analyst) → new T4; old T4 (Coder) → new T5; old T5 (UI) → new
 T7; old T6 (AI-off CI) → new T2 (promoted earlier, never cut); old T7 (Eval set) → new T8. New T0, T6, T9
 have no old equivalent.
-- [ ] D5-T0 Close Day 4 gaps, if the Day 4 exit check doesn't pass on `main` when this day opens
+- [x] D5-T0 Close Day 4 gaps, if the Day 4 exit check doesn't pass on `main` when this day opens
   ✔ Day 4 exit check passes, or this task stays open and nothing else on Day 5 starts
+  **Closed retroactively, 2026-10-25 (bookkeeping only, no new work):** found during a full
+  checkbox audit of this file that this gate's own condition was satisfied all along —
+  D4-T1..T6 all closed `[x]` with evidence before any D5-T1..T9 work started — but the box was
+  never ticked. No Day 4 gap ever existed to close.
 - [x] D5-T1 `IAiProvider` abstraction + `StubAiProvider`; 15s timeout; typed `AiUnavailableException`;
   key resolved via `ICredentialResolver` (Vault), never config/env directly. Real implementation is
   **Gemini, not OpenAI** — ADR-0003 chose OpenAI same day, then superseded hours later by ADR-0004 once
@@ -598,8 +602,19 @@ work here, don't assume they still hold.
     `Tenant_B_cannot_see_tenant_As_flow_even_with_no_application_level_filter_at_all` →
     `Expected: 0, Actual: 1`. Restored the exact original policy. GREEN: all 4 tests pass. Full
     evidence in STANDUP's Day 6 digest.
-  - [ ] Rotating `yukti_app`'s placeholder password is still outstanding — not required for the
-    mutation check itself, tracked separately (see part C's migration-password finding).
+  - [x] **Rotated 2026-10-25.** `yukti_app`'s Postgres password changed off the migration's
+    documented placeholder (`placeholder-rotate-immediately`) via `ALTER USER`, run against the
+    real local superuser connection — not a migration change, since `AddYuktiAppRuntimeRole`'s own
+    `CREATE USER IF NOT EXISTS` is idempotent and would never re-apply a new password to an
+    already-existing role. Local `ConnectionStrings:YuktiRuntime` (user-secrets, shared
+    `UserSecretsId` across `Yukti.Api` and `Yukti.Infrastructure.Tests`) updated to match, verified
+    end-to-end before calling it done: `dotnet test --filter
+    "FullyQualifiedName~TenantIsolation|FullyQualifiedName~AuditEntryGrants"` → 6/6 passing against
+    the rotated credential. CI's own throwaway-container password (`ConnectionStrings__YuktiRuntime`
+    in `docker-compose-smoke`/`uc1-flow-gate`, a fresh Postgres torn down every run) is intentionally
+    left on the same placeholder value — rotating that would change nothing real, per D6-T7's own
+    reasoning for why it was safe there in the first place. The new password lives only in
+    user-secrets, never committed.
 
 - [x] D6-T2 RBAC by enumeration: reflection-based proof + mutation check
   ✔ `dotnet test --filter "FullyQualifiedName~Authorization"`
@@ -782,7 +797,22 @@ work here, don't assume they still hold.
     directly with a throwaway isolation test before committing to the fix.
   - [x] Mutation check for the API-module path: `Mutation_check_the_same_private_target_passes_once_Restricted_mode_is_turned_off`
     — the identical target blocked under Restricted passes under Permissive, in the same test file.
-  - [ ] Mutation check for the Web-module path specifically — not yet a standing, separate test.
+  - [x] **Mutation check for the Web-module path, closed 2026-10-25:**
+    `Mutation_check_the_same_local_target_passes_once_Restricted_mode_is_turned_off`
+    (`WebModuleOutboundGuardTests.cs`) — uses the real `ConfiguredOutboundGuard` (not
+    `A_restricted_guard_blocks_navigation_to_the_metadata_endpoint`'s fake, which only proves
+    WebModule turns *some* `BlockedTargetException` into a Failed step, never that the real
+    deny-list logic is actually consulted) against the identical real target (FixtureApp over
+    loopback, itself in the deny list): Restricted mode → Failed, Permissive mode → Passed, same
+    target both times. Proven RED first, on a scratch branch
+    (`scratch/d6-t5-webmodule-mutation-check`, zero commits, never pushed, deleted after):
+    commenting out `WebModule.cs`'s own `_guard.ResolveAllowedAddressesAsync` call in its
+    `RouteAsync` handler made the Restricted-mode half wrongly report Passed
+    (`Expected: Failed, Actual: Passed`) — confirming the test really exercises the real guard, not
+    a vacuous pass. Restored, re-confirmed GREEN: 3/3 in the file. Needed one test-only
+    `ProjectReference` from `Yukti.Orchestration.Tests` to `Yukti.Infrastructure` (for
+    `ConfiguredOutboundGuard` itself) — no production layering change, no cycle (`Yukti.Infrastructure`
+    doesn't reference `Yukti.Infrastructure.InMemory` or `Yukti.Orchestration.Tests`).
   - **Honest residual gap, not papered over:** WebModule's `RouteAsync` hands the request back to
     Chromium's own DNS resolution after this guard's check passes — a true DNS-rebinding attacker
     answering differently a few hundred milliseconds later, between this check and Chromium's own
