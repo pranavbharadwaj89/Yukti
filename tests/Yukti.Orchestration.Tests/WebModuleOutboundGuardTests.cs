@@ -1,11 +1,13 @@
 using System.Net;
 using FixtureApp;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 using Yukti.Application.Security;
 using Yukti.Domain.Execution;
 using Yukti.Domain.SharedKernel;
 using Yukti.Infrastructure.InMemory.Modules;
+using Yukti.Infrastructure.Security;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
 
 namespace Yukti.Orchestration.Tests;
@@ -89,6 +91,59 @@ public sealed class WebModuleOutboundGuardTests : IAsyncLifetime
         finally
         {
             await module.Teardown(ctx, default);
+        }
+    }
+
+    private static IConfiguration Config(string mode) =>
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Outbound:Mode"] = mode }).Build();
+
+    /// <summary>
+    /// D6-T5's own standing requirement, closed: the Web-module path's
+    /// mutation check. <see cref="A_restricted_guard_blocks_navigation_to_the_metadata_endpoint"/>
+    /// above only proves WebModule turns a guard's <see cref="BlockedTargetException"/>
+    /// into a Failed step — it uses a fake that always throws, so it can't
+    /// show the *real* <see cref="ConfiguredOutboundGuard"/> deny-list logic
+    /// is actually consulted through RouteAsync on every request, as opposed
+    /// to some other code path vacuously failing. This test uses the real
+    /// production guard against the identical real target — FixtureApp over
+    /// loopback, itself in the deny list (127.0.0.0/8) — and shows the exact
+    /// same navigation flips from Failed to Passed purely by switching
+    /// Outbound:Mode, proving RouteAsync genuinely asks the real guard, not a
+    /// hardcoded stand-in.
+    /// </summary>
+    [Fact]
+    public async Task Mutation_check_the_same_local_target_passes_once_Restricted_mode_is_turned_off()
+    {
+        var restrictedModule = new WebModule(new ConfiguredOutboundGuard(Config("Restricted")));
+        var restrictedCtx = FakeContext();
+        await restrictedModule.Setup(restrictedCtx, default);
+        try
+        {
+            var blocked = await restrictedModule.Run("navigate",
+                new Dictionary<string, object?> { ["url"] = _baseUrl },
+                restrictedCtx, default);
+
+            Assert.Equal(StepStatus.Failed, blocked.Status);
+        }
+        finally
+        {
+            await restrictedModule.Teardown(restrictedCtx, default);
+        }
+
+        var permissiveModule = new WebModule(new ConfiguredOutboundGuard(Config("Permissive")));
+        var permissiveCtx = FakeContext();
+        await permissiveModule.Setup(permissiveCtx, default);
+        try
+        {
+            var passed = await permissiveModule.Run("navigate",
+                new Dictionary<string, object?> { ["url"] = _baseUrl },
+                permissiveCtx, default);
+
+            Assert.Equal(StepStatus.Passed, passed.Status);
+        }
+        finally
+        {
+            await permissiveModule.Teardown(permissiveCtx, default);
         }
     }
 }
