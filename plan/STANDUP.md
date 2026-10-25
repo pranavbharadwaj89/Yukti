@@ -2094,3 +2094,64 @@ assumption for the one thing most worth not assuming.
   meantime.
 - `quickstart-literal`'s first real CI run is still owed — this session's close with a pushed PR,
   not a merge; the owner's own review/merge is the next real action on this.
+
+### PR #57's own CI run — the real test of today's unverifiable line, and what it found
+
+The one line the local machine couldn't run (`docker compose up`) got its real test: PR #57
+(`feature/D6-close-out-T3-rescoped-T7-quickstart-ci`) ran on GitHub Actions' actual Linux runners.
+First run: 5 of 9 checks failed. Every failure was a real bug — none were flaky, none were the
+mutation-check tests misbehaving. Each was found, fixed, and reverified against a subsequent real
+run until every check was green. In order:
+
+1. **Dockerfile missing the new benchmark project's `.csproj`.** `dotnet restore Yukti.sln` inside
+   the Docker build failed (`MSB3202: project file ... was not found`) because `Yukti.sln` now
+   includes `benchmarks/DispatchBenchmark` (added for D6-T8 this session) but the Dockerfile's
+   manually-ordered `COPY *.csproj` list was never updated to match. Fixed: added the missing
+   `COPY`.
+2. **Vault healthcheck always failed.** `vault status` defaults to `https://127.0.0.1:8200` when
+   `VAULT_ADDR` is unset inside the container, but dev-mode Vault only ever serves plain HTTP —
+   every healthcheck attempt failed on a TLS handshake against a server never listening for TLS,
+   even though Vault's own logs showed it starting and unsealing correctly throughout. Fixed:
+   set `VAULT_ADDR: http://127.0.0.1:8200` on the `vault` service.
+3. **`scripts/wait-healthy.sh` lost its executable bit in git.** Tracked as mode `100644`, not
+   `100755` — a Windows-authored commit that never actually set the bit in the tree, even though
+   the file is `+x` on disk. `./scripts/wait-healthy.sh` failed with "Permission denied" (exit 126)
+   on every Linux runner that invokes it directly (`docker-compose-smoke`, `quickstart-literal`).
+   Fixed: `git update-index --chmod=+x`.
+4. **A second, real SSRF-guard bug, found by the regression test written to lock in the first
+   one.** `ApiModule.ConnectCallback`'s per-candidate `new Socket(...)` call sat outside its own
+   try/catch. On a host with IPv6 disabled at the kernel level (common on CI runners), constructing
+   an `AddressFamily.InterNetworkV6` socket throws immediately — before `ConnectAsync` ever runs —
+   so that exception escaped the fallthrough loop entirely instead of triggering a move to the next
+   candidate. Exactly the class of bug this code exists to prevent, one line earlier than the first
+   fix assumed it could happen. Fixed: moved socket construction inside the try.
+5. **The regression test itself had an unrelated bug that masked whether #4 was actually fixed.**
+   It built its HTTP request against a fake `placeholder` host (since `FixedAddressesGuard` ignores
+   the URL's host for connecting anyway) — but that fake host becomes the literal `Host:` header
+   sent to the test's `HttpListener`-backed stub server. Linux's managed `HttpListener`
+   implementation, unlike Windows' `http.sys`, enforces that the `Host` header match the registered
+   prefix's authority, and rejected the mismatch with 400 before the connection-level fallthrough
+   logic ever got exercised — so the test kept failing even after #4 was correctly fixed, for a
+   completely different reason. Fixed: pointed the test's request at the real `server.Url` instead.
+
+None of these were caught locally — (3), (4) and (5) are specifically Linux-only, and (1) and (2)
+require Docker, which this machine doesn't have. This is exactly why opening the PR and getting a
+real CI run was the right call instead of reporting "closed" on a historical-precedent assumption.
+
+**Full exit check, confirmed green on PR #57's own CI (run `40153040632`/`40153040672`, commit
+`466963d`), not assumed:**
+
+```
+build-and-test            → pass (full suite, including the security gate)
+ai-off                     → pass (full suite with Ai:Enabled=false)
+docker-compose-smoke       → pass (clean clone, no .env, real Vault/Postgres/Redis/api/worker)
+quickstart-literal         → pass (docs/quickstart.md's own fenced blocks, extracted and run verbatim)
+uc1-flow-gate              → pass
+e2e                        → pass
+frontend                   → pass
+api-types-drift            → pass
+SARVAGHNA Code Inspection   → pass
+```
+
+**Day 6 CLOSED.** Every line of the exit check is green, with real evidence from a real CI run —
+including five real bugs this exact process surfaced and fixed before they could ship, not zero.
