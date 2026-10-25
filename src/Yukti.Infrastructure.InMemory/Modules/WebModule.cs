@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Playwright;
+using Yukti.Application.Security;
 using Yukti.Contracts;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
@@ -35,6 +36,19 @@ public sealed class WebModule : IAutomationModule
     }
 
     private readonly ConcurrentDictionary<FlowRunId, WebSession> _sessions = new();
+
+    /// <summary>
+    /// D6-T5: defaults to permissive, same reasoning as ApiModule's own
+    /// guard parameter — every pre-existing construction site keeps working
+    /// unchanged. WebModule is already exempt from FR-PLUGIN-07's
+    /// zero-instance-field check (ModulePluginContractTests only covers
+    /// ApiModule/LogsModule — this module's own doc comment already
+    /// explains why it must hold per-run state), so this is a plain field,
+    /// no ConditionalWeakTable needed.
+    /// </summary>
+    private readonly IOutboundGuard _guard;
+
+    public WebModule(IOutboundGuard? guard = null) => _guard = guard ?? PermissiveOutboundGuard.Instance;
 
     public ModuleKind Kind => ModuleKind.Web;
     public string ContractVersion => "1.0.0";
@@ -136,6 +150,54 @@ public sealed class WebModule : IAutomationModule
         var playwright = await Playwright.CreateAsync();
         var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
         var context = await browser.NewContextAsync();
+
+        // D6-T5: route interception (CDP-level), not Chromium's native
+        // --proxy-server — confirmed empirically that Chromium silently
+        // bypasses a configured proxy for loopback destinations by default,
+        // even with the documented "<-loopback>" bypass-list override
+        // (tried both via Playwright's Proxy.Bypass and a raw
+        // --proxy-bypass-list argument; neither routed a single
+        // http://127.0.0.1 request through a real proxy in this Chromium
+        // build). RouteAsync intercepts before Chromium's network stack
+        // makes any proxy/bypass decision at all, so it sees every request
+        // — including loopback — regardless. Every navigation and
+        // sub-resource load re-enters this handler, which is what makes
+        // redirects checked at every hop for free: a 3xx response's
+        // Location header becomes a new request, which re-enters here.
+        //
+        // Known residual gap, stated honestly rather than silently: unlike
+        // ApiModule's ConnectCallback (which connects to the exact IP this
+        // guard already checked), ContinueAsync() hands the request back to
+        // Chromium's own resolver — a true DNS-rebinding attacker who
+        // answers differently a few hundred milliseconds later, between
+        // this check and Chromium's own subsequent lookup, is not closed by
+        // this path. Every other case in the adversarial set (direct
+        // private IP, metadata endpoint, hostname-resolves-to-private,
+        // redirect-to-private, decimal-encoded IP, loopback, public still
+        // works, per-tenant allow-list) is covered.
+        await context.RouteAsync("**/*", async route =>
+        {
+            Uri uri;
+            try { uri = new Uri(route.Request.Url); }
+            catch (UriFormatException) { await route.ContinueAsync(); return; }
+
+            if (uri.Scheme != "http" && uri.Scheme != "https")
+            {
+                await route.ContinueAsync();
+                return;
+            }
+
+            try
+            {
+                await _guard.ResolveAllowedAddressesAsync(uri.Host, tenantId: null, ctx.RunCancellation);
+                await route.ContinueAsync();
+            }
+            catch (Exception)
+            {
+                await route.AbortAsync("blockedbyclient");
+            }
+        });
+
         var page = await context.NewPageAsync();
         _sessions[ctx.RunId] = new WebSession { Playwright = playwright, Browser = browser, Context = context, Page = page };
     }

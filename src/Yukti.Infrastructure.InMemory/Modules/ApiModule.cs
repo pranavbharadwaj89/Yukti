@@ -1,6 +1,9 @@
+using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Yukti.Application.Security;
 using Yukti.Contracts;
 using Yukti.Domain.Assertions;
 using Yukti.Domain.Execution;
@@ -21,8 +24,75 @@ namespace Yukti.Infrastructure.InMemory.Modules;
 /// </summary>
 public sealed class ApiModule : IAutomationModule
 {
-    private static readonly HttpClient Http = new();
     private const int DefaultTimeoutMs = 10_000;
+
+    /// <summary>
+    /// D6-T5: per-instance HttpClients keyed by instance identity, not an
+    /// instance field — FR-PLUGIN-07's own contract test
+    /// (ModulePluginContractTests.BuiltIn_modules_hold_zero_mutable_instance_state)
+    /// asserts ApiModule has zero reflected instance fields (a static,
+    /// never-mutated-after-construction HttpClient was already the accepted
+    /// shape before D6-T5). A ConditionalWeakTable, itself a static field,
+    /// gives each instance its own guard/HttpClient — required so two
+    /// ApiModule instances in the same test process (one Restricted, one
+    /// default) never share state — while nothing about this changes after
+    /// an instance's construction, so concurrent Run() calls on the same
+    /// instance still race on nothing, exactly as the contract requires.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ApiModule, HttpClient> HttpClients = new();
+
+    /// <summary>
+    /// Guard defaults to permissive so every pre-existing construction site
+    /// (CLI, Yukti.Host, the eval host, every test) keeps working against
+    /// localhost/FixtureApp exactly as before. Only Yukti.Api's own DI
+    /// container supplies the real, config-driven guard — see
+    /// ConfiguredOutboundGuard's own doc comment. The check runs at socket
+    /// connect time on the resolved IP, inside ConnectCallback, never on the
+    /// URL string — so it holds against redirects (each hop opens a new
+    /// connection, re-entering this callback) and DNS rebinding (the
+    /// resolved address is checked once and connected to directly, never
+    /// re-resolved).
+    /// </summary>
+    public ApiModule(IOutboundGuard? guard = null)
+    {
+        var effectiveGuard = guard ?? PermissiveOutboundGuard.Instance;
+        var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (context, ct) =>
+            {
+                // D6-T5 regression, caught live verifying D6-T7's quickstart doc: a dual-stack
+                // host (e.g. "localhost", which resolves ::1 before 127.0.0.1 on most machines)
+                // must still connect when only one address family actually has something
+                // listening — a plain SocketsHttpHandler with no custom ConnectCallback has
+                // always tried multiple addresses for exactly this reason. Trying every allowed
+                // candidate in resolution order, falling through to the next on a connection
+                // failure, restores that — the guard decides which addresses are *allowed*;
+                // this loop decides which one actually *works*.
+                var addresses = await effectiveGuard.ResolveAllowedAddressesAsync(context.DnsEndPoint.Host, tenantId: null, ct);
+                Exception? lastFailure = null;
+                foreach (var address in addresses)
+                {
+                    var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    try
+                    {
+                        await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), ct);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        socket.Dispose();
+                        lastFailure = ex;
+                    }
+                }
+                throw lastFailure!;
+            }
+        };
+        HttpClients.Add(this, new HttpClient(handler));
+    }
+
+    private HttpClient Http => HttpClients.TryGetValue(this, out var client)
+        ? client
+        : throw new InvalidOperationException("ApiModule's HttpClient was never registered — construct it through ApiModule's own constructor, never via Activator/deserialization.");
 
     public ModuleKind Kind => ModuleKind.Api;
     public string ContractVersion => "1.0.0";

@@ -20,6 +20,8 @@ using Yukti.Application.Execution;
 using Yukti.Application.FlowAuthoring;
 using Yukti.Application.IdentityAccess;
 using Yukti.Application.ModulePlugin;
+using Yukti.Application.Security;
+using Yukti.Infrastructure.Security;
 using Yukti.Contracts;
 using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Events;
@@ -286,6 +288,12 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContextAccessor, HttpContextTenantAccessor>();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();
 
+// D6-T5: the real, config-driven SSRF guard — registered only here, since
+// Yukti.Api is the one process that is ever actually "hosted" (CLI/Host/
+// eval-host/test construction sites all keep PermissiveOutboundGuard, their
+// own default when no guard is supplied). ApiModule/WebModule stay
+// Singleton; this guard has no per-request state, so it's safe to share.
+builder.Services.AddSingleton<IOutboundGuard, ConfiguredOutboundGuard>();
 builder.Services.AddSingleton<ApiModule>();
 builder.Services.AddSingleton<LogsModule>();
 builder.Services.AddSingleton<WebModule>();
@@ -672,6 +680,63 @@ using (var scope = app.Services.CreateScope())
 
     await using var moduleUow = uowFactory.Create();
     await moduleUow.Commit(default);
+
+    // D6-T7: "two tenants, three roles, one sample flow" — the three roles are already seeded
+    // above; this adds the second tenant and the one sample flow, so a fresh `docker compose up`
+    // has something to look at immediately (the Day 6 spec's own quickstart requirement), not just
+    // an empty admin account. Idempotent, same check-before-create pattern as everything else here.
+    var demoUser = await authBypass.GetByEmail("demo@yukti.local", default);
+    if (demoUser is null)
+    {
+        var demoTenantId = TenantId.New();
+        // A fresh tenant needs its own RLS context before its first write —
+        // same reasoning as bootstrapAdmin's own set_config call above.
+        await seedDb.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.current_tenant_id', {demoTenantId.Value.ToString()}, false)");
+        demoUser = Yukti.Domain.IdentityAccess.User.Register(
+            "demo@yukti.local", "Demo User", demoTenantId, hasher.Hash("ChangeMe123!"));
+        demoUser.AssignRole(authorRoleId);
+        await users.Save(demoUser, default);
+        await using var demoUow = uowFactory.Create();
+        await demoUow.Commit(default);
+
+        // Context restored to the bootstrap admin's own tenant — the sample flow below, and
+        // anything seeded after this block, must land under that tenant, not the demo one.
+        await seedDb.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.current_tenant_id', {bootstrapAdmin.TenantId.Value.ToString()}, false)");
+    }
+
+    var sampleFlows = scope.ServiceProvider.GetRequiredService<IFlowRepository>();
+    var moduleResolver = scope.ServiceProvider.GetRequiredService<IModuleActionResolver>();
+    var sampleFlowExists = await seedDb.Set<Flow>()
+        .AnyAsync(f => f.TenantId == bootstrapAdmin.TenantId && f.Name == "Sample: API health check", default);
+    if (!sampleFlowExists)
+    {
+        // Real bug found while verifying this live: a hardcoded "localhost:8080" would only ever
+        // work inside docker-compose (the Dockerfile's own ASPNETCORE_URLS=http://+:8080) — every
+        // other place this exact seeding code also runs (local `dotnet run`, the api-types-drift/
+        // ai-off/e2e CI jobs, all binding to the default 5000) would seed a flow that fails on its
+        // very first run. Reads the actual configured listen address instead; "+" (bind-all-
+        // interfaces syntax, valid for Kestrel but not a connectable host) becomes localhost.
+        var listenUrl = (Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://localhost:5000")
+            .Split(';')[0].Replace("://+:", "://localhost:").TrimEnd('/');
+        var sampleFlow = Flow.CreateDraft("Sample: API health check",
+            "A starter flow — checks that Yukti's own API is up. Run it, then build your own alongside it.",
+            bootstrapAdmin.TenantId, bootstrapAdmin.Id);
+        sampleFlow.AddStep("Check /health", ModuleKind.Api, "request", new Dictionary<string, object?>
+        {
+            ["url"] = $"{listenUrl}/health",
+            ["method"] = "GET",
+            ["expectedStatus"] = 200,
+        });
+        var publishResult = await sampleFlow.Publish(moduleResolver, default);
+        if (publishResult.Succeeded)
+        {
+            await sampleFlows.Save(sampleFlow, default);
+            await using var flowUow = uowFactory.Create();
+            await flowUow.Commit(default);
+        }
+    }
 }
 
 const string flowNotFound = "Flow not found.";

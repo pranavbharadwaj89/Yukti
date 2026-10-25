@@ -6,25 +6,28 @@ using Yukti.Domain.FlowAuthoring;
 namespace Yukti.Cli;
 
 /// <summary>
-/// Redaction is name-based, not value-based — no built-in module currently
-/// resolves a credential into a param value (confirmed: nothing in src/
-/// calls ExecutionContext.Credentials.ResolveAsync yet), so there is no
-/// resolved secret this could leak today. Kept anyway, matching the spec's
-/// explicit requirement and the house rule of never printing raw param
-/// values (FlowEngine/ModuleDispatcher's own logging only ever names param
-/// keys, never values) — this is the same discipline applied to step
-/// params shown in a failure report.
+/// D6-T3a: v0.1 has no <c>{{secrets}}</c> syntax, so a header like
+/// <c>Authorization</c> is the real place a user pastes a live credential
+/// today — this is no longer purely theoretical (confirmed: no built-in
+/// module resolves a credential into a param value, so a param isn't a
+/// *resolved* secret, but it can certainly *be* one, verbatim, if the flow
+/// author typed it there). Delegates to the one shared redactor
+/// (<see cref="Yukti.Domain.Auditing.SecretRedactor"/>) rather than
+/// keeping its own copy — one implementation, used everywhere this report
+/// writer, the JSON report writer, and audit metadata capture all need it.
 /// </summary>
 public static class ParamRedaction
 {
-    private static readonly string[] SensitiveNameFragments = { "token", "secret", "password", "key", "credential", "auth" };
-
     public static IReadOnlyDictionary<string, object?> Redact(IReadOnlyDictionary<string, object?> @params) =>
-        @params.ToDictionary(
-            kv => kv.Key,
-            kv => SensitiveNameFragments.Any(f => kv.Key.Contains(f, StringComparison.OrdinalIgnoreCase))
-                ? "[REDACTED]"
-                : kv.Value);
+        Yukti.Domain.Auditing.SecretRedactor.Redact(@params);
+
+    /// <summary>A module's own output (StepOutcome.Data) can carry the same
+    /// shape a param can — ApiModule's response "headers", for one, which
+    /// can include a server's own Set-Cookie. Redacted the same way,
+    /// wherever it's a dictionary; left alone otherwise (a string/number/
+    /// list has no key names to redact by).</summary>
+    public static object? RedactData(object? data) =>
+        data is IReadOnlyDictionary<string, object?> dict ? Yukti.Domain.Auditing.SecretRedactor.Redact(dict) : data;
 }
 
 /// <summary>
@@ -60,7 +63,7 @@ public static class JUnitReportWriter
                     testcase.Add(new XElement("failure",
                         new XAttribute("message", result.Error ?? "Step failed."),
                         new XAttribute("type", $"{step.Module.Value}.{step.Action}"),
-                        new XText($"params: {paramsExcerpt}{Environment.NewLine}data excerpt: {Excerpt(result.Data)}")));
+                        new XText($"params: {paramsExcerpt}{Environment.NewLine}data excerpt: {Excerpt(ParamRedaction.RedactData(result.Data))}")));
                     break;
                 case StepStatus.Skipped:
                     testcase.Add(new XElement("skipped", new XAttribute("message", result.Message ?? "when condition was false")));
@@ -140,7 +143,7 @@ public static class JsonReportWriter
                 durationMs = r.Duration.TotalMilliseconds,
                 message = r.Message,
                 error = r.Error,
-                data = r.Data,
+                data = ParamRedaction.RedactData(r.Data),
                 isFlaky = r.IsFlaky,
                 retryHistory = r.RetryHistory.Select(a => new
                 {

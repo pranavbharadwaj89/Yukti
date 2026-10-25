@@ -31,6 +31,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # D6-T7: dev-mode Vault — unsealed, in-memory, no persisted volume (owner's own call, recorded
+  # in the Day 6 spec's open questions: dev mode for v0.1, production-mode Vault with real unseal
+  # keys is v0.2 hosting work). The root token below is a well-known dev-only value, safe only
+  # because this container is thrown away with every `docker compose down`; never used outside
+  # local/demo compose.
+  vault:
+    image: hashicorp/vault:1.17
+    container_name: yukti-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: yukti-dev-root-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
@@ -40,6 +61,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      vault:
         condition: service_healthy
     ports:
       - "8080:8080"
@@ -57,6 +80,12 @@ services:
       - ConnectionStrings__Redis=redis:6379
       - Deployment__SelfHosted=true
       - Cors__AllowedOrigins__0=http://localhost:5173
+      # D6-T7: without these, Program.cs's own `vaultConfigured` check (VAULT_TOKEN unset) falls
+      # back to InMemoryCredentialResolver — real, but it means a clean `docker compose up` would
+      # never actually exercise the real Vault path at all. Dev-only token, matches the vault
+      # service's own VAULT_DEV_ROOT_TOKEN_ID above.
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=yukti-dev-root-token
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s

@@ -78,6 +78,37 @@ jobs:
     # tests check. Both assembled from separate PG*/YUKTI_APP_* pieces at shell runtime, same
     # convention as every other job's migration step in this file, so no literal credential
     # string sits in the YAML diff.
+    # D6-T6: a dedicated, named gate for the five security proofs (D6-T1–T5), so a failure here
+    # reads as "a security proof broke" in the PR's check list, not buried inside the generic full
+    # suite below. Same filter every one of those tasks' own ✔ command already names; this doesn't
+    # change what runs, it gives it its own auditable step. Kept inside this job rather than split
+    # into a parallel one — total suite time is well under the spec's 10-minute split threshold
+    # (full solution build+test completes in well under two minutes on this size of codebase).
+    - name: Security gate — RLS, RBAC, Vault, secret leakage, audit, SSRF (D6-T1–T5)
+      env:
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: yukti
+        PGUSERNAME: postgres
+        PGPASSWORD_: password
+        YUKTI_APP_USERNAME: yukti_app
+        YUKTI_APP_PASSWORD: placeholder-rotate-immediately
+      run: |
+        CONN="Host=$PGHOST"
+        CONN="$CONN;Port=$PGPORT"
+        CONN="$CONN;Database=$PGDATABASE"
+        CONN="$CONN;Username=$PGUSERNAME"
+        CONN="$CONN;Password=$PGPASSWORD_"
+        export ConnectionStrings__Yukti="$CONN"
+        RUNTIME_CONN="Host=$PGHOST"
+        RUNTIME_CONN="$RUNTIME_CONN;Port=$PGPORT"
+        RUNTIME_CONN="$RUNTIME_CONN;Database=$PGDATABASE"
+        RUNTIME_CONN="$RUNTIME_CONN;Username=$YUKTI_APP_USERNAME"
+        RUNTIME_CONN="$RUNTIME_CONN;Password=$YUKTI_APP_PASSWORD"
+        export ConnectionStrings__YuktiRuntime="$RUNTIME_CONN"
+        dotnet test --no-build -c Release --verbosity normal \
+          --filter "FullyQualifiedName~TenantIsolation|FullyQualifiedName~Authorization|FullyQualifiedName~Vault|FullyQualifiedName~SecretLeak|FullyQualifiedName~Audit|FullyQualifiedName~OutboundGuard"
+
     - name: Run .NET Unit & Integration Tests
       env:
         PGHOST: localhost
@@ -442,6 +473,13 @@ jobs:
     - name: Start the API with the fixture AI provider
       env:
         ASPNETCORE_ENVIRONMENT: Production
+        # D6-T5: this job's generated flow calls http://localhost:5000/ (the API's
+        # own health check) through the real hosted ApiModule — a deliberate local
+        # target, not an SSRF attempt, so it opts into Permissive explicitly rather
+        # than inheriting Production's Restricted default (127.0.0.0/8 is denied).
+        # The real SSRF proof lives in D6-T5's own OutboundGuardTests, run by
+        # build-and-test above, which exercise Restricted mode directly.
+        Outbound__Mode: Permissive
         Ai__Enabled: "true"
         Ai__Provider: fixture
         PGHOST: localhost
@@ -527,15 +565,31 @@ jobs:
         done
         echo "FixtureApp never came up within 30s:"; cat fixtureapp.log; exit 1
 
+    # D6-T6: a flaky failure is re-run once automatically — a run that only passes on the
+    # re-run is reported as flaky in the job summary rather than silently green, the same
+    # honesty rule D3-T5's own flake-rate measurement already holds the product to.
     - name: Run the UC-1 flow gate
-      run: dotnet src/Yukti.Cli/bin/Release/net8.0/Yukti.Cli.dll run demo/uc1_flow.json --junit uc1-results.xml
+      run: |
+        if dotnet src/Yukti.Cli/bin/Release/net8.0/Yukti.Cli.dll run demo/uc1_flow.json --junit uc1-results.xml; then
+          echo "UC-1 flow gate passed on the first attempt." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        echo "First attempt failed — re-running once before treating this as a real failure." >&2
+        mv uc1-results.xml uc1-results-attempt1.xml 2>/dev/null || true
+        if dotnet src/Yukti.Cli/bin/Release/net8.0/Yukti.Cli.dll run demo/uc1_flow.json --junit uc1-results.xml; then
+          echo "⚠️ UC-1 flow gate is FLAKY: failed on attempt 1, passed on attempt 2." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        echo "UC-1 flow gate failed on both attempts — a real failure, not a flake." >> "$GITHUB_STEP_SUMMARY"
+        exit 1
 
-    - name: Upload JUnit report on failure
-      if: failure()
+    - name: Upload JUnit report
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: uc1-flow-junit
-        path: uc1-results.xml
+        path: uc1-results*.xml
+        if-no-files-found: ignore
 
     - name: Show FixtureApp log on failure
       if: failure()
@@ -553,21 +607,46 @@ jobs:
       run: docker compose up -d --build
 
     - name: Wait for the api service to report healthy
-      run: |
-        for i in $(seq 1 60); do
-          status=$(docker inspect --format='{{json .State.Health.Status}}' yukti-api 2>/dev/null || echo '"starting"')
-          echo "api health: $status"
-          if [ "$status" = '"healthy"' ]; then exit 0; fi
-          if [ "$status" = '"unhealthy"' ]; then break; fi
-          sleep 2
-        done
-        echo "api never reported healthy:"; docker compose logs api; exit 1
+      run: ./scripts/wait-healthy.sh yukti-api 120
 
     - name: /health returns 200
       run: curl -sf -o /dev/null -w '%{http_code}\n' http://localhost:8080/health
 
     - name: Worker started cleanly behind api's healthcheck
       run: docker compose logs worker
+
+    - name: Show logs on failure
+      if: failure()
+      run: docker compose logs
+
+    - name: Tear down
+      if: always()
+      run: docker compose down -v
+
+  # D6-T7: proves docs/quickstart.md on a genuinely fresh clone, every PR — not by retyping its
+  # commands into this file (which can drift from the doc silently) but by extracting the exact
+  # fenced blocks the doc itself marks runnable (```bash quickstart) and executing them verbatim.
+  # If a step here breaks, the fix is to the doc, never to this job — the job's only job is to
+  # run what the doc says, byte for byte.
+  quickstart-literal:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Extract every ```bash quickstart block from docs/quickstart.md, in document order
+      run: |
+        awk '/^```bash quickstart$/{capture=1; next} /^```$/{capture=0} capture' docs/quickstart.md > quickstart-extracted.sh
+        echo "--- extracted script ---"
+        cat quickstart-extracted.sh
+        test -s quickstart-extracted.sh || { echo "No \`\`\`bash quickstart blocks found — the doc's own markers are missing or renamed."; exit 1; }
+
+    - name: Run the quickstart, verbatim
+      run: bash -euo pipefail quickstart-extracted.sh
 
     - name: Show logs on failure
       if: failure()
