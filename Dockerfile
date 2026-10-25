@@ -22,6 +22,10 @@ COPY tests/Yukti.Infrastructure.Tests/Yukti.Infrastructure.Tests.csproj tests/Yu
 COPY tests/Yukti.Orchestration.Tests/Yukti.Orchestration.Tests.csproj tests/Yukti.Orchestration.Tests/
 COPY tests/Yukti.Cli.Tests/Yukti.Cli.Tests.csproj tests/Yukti.Cli.Tests/
 COPY tools/Yukti.LoadTest/Yukti.LoadTest.csproj tools/Yukti.LoadTest/
+# D6-T8: added to Yukti.sln the same session this Dockerfile's own comment below warns about —
+# "forgot project X" is exactly what a solution-level restore needs every project's .csproj
+# copied in first to avoid; this line is why that comment is correct to worry about it.
+COPY benchmarks/DispatchBenchmark/DispatchBenchmark.csproj benchmarks/DispatchBenchmark/
 
 # Restore the whole solution, not individual projects one at a time.
 # Yukti.Analyzers is consumed as a Roslyn analyzer reference (not a normal
