@@ -92,6 +92,14 @@ services:
       # service's own VAULT_DEV_ROOT_TOKEN_ID above.
       - VAULT_ADDR=http://vault:8200
       - VAULT_TOKEN=yukti-dev-root-token
+      # Found 2026-10-25, D7-T3's own trial: without this, every POST /api/v1/flows/generate
+      # (the AI "suggest a flow" feature) 500s — FileAiRequestQuotaLedger's own fallback walks up
+      # from AppContext.BaseDirectory looking for Yukti.sln to find "the repo root," which never
+      # exists inside this published, binaries-only container (/app/api). The config key below is
+      # the escape hatch the class already had, just never set for this stack; a container's own
+      # filesystem is fine for this — the ledger is dev-mode, ephemeral, torn down with the
+      # container every run, same reasoning already applied to Vault's dev-mode state above.
+      - Ai__Budget__RequestQuotaLedgerPath=/app/api/ledger/gemini-requests.jsonl
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s
