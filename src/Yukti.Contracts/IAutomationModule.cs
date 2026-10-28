@@ -11,8 +11,13 @@ public sealed record StepOutcome
     public object? Data { get; init; }
     public AiAttribution? AiAttribution { get; init; }
 
-    public static StepOutcome Passed(string? message = null, object? data = null) =>
-        new() { Status = StepStatus.Passed, Message = message, Data = data };
+    /// <summary>Web UI Testing Module Spec, WEB-T3: present only when a module resolved its
+    /// target via a fallback locator rather than the primary one — "never a silent pass," the
+    /// spec's own rule for locator decay.</summary>
+    public LocatorResolutionInfo? LocatorResolution { get; init; }
+
+    public static StepOutcome Passed(string? message = null, object? data = null, LocatorResolutionInfo? locatorResolution = null) =>
+        new() { Status = StepStatus.Passed, Message = message, Data = data, LocatorResolution = locatorResolution };
 
     public static StepOutcome Failed(string error, object? data = null) =>
         new() { Status = StepStatus.Failed, Error = error, Data = data };

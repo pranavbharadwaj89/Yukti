@@ -1451,7 +1451,20 @@ work here, don't assume they still hold.
   ✔ `dotnet test --filter "FullyQualifiedName~ObjectRepository"` → 13/13 passed.
   Two real gaps found and fixed while building this, both pre-existing (not introduced by WEB-T2):
   see DISC-22 and DISC-23.
-  Next: WEB-T3 (locator strategies and resolution).
+  **WEB-T3 (locator strategies and resolution) closed 2026-10-29:** `PlaywrightLocatorResolver`
+  (`Yukti.Infrastructure.InMemory.Modules`) — all seven web strategies, `Within` chaining, `Nth`,
+  ordered fallback with a flagged, never-silent pass (`LocatorResolutionInfo`, new optional field
+  on `StepOutcome`/`StepResult`, same shape `AiAttribution` already uses; surfaced in the JUnit
+  and JSON reports and the API's `StepResultResponse`), and rich total-failure diagnostics
+  (every strategy tried, real match counts). Proven standalone against a real headless Chromium
+  page, same pattern as `FixtureAppTests` proving `FixtureApp` before any module drives it — not
+  yet wired into `WebModule`'s own actions, which is WEB-T4's job next.
+  ✔ `dotnet test --filter "FullyQualifiedName~LocatorResolutionTests"` → 13/13 passed.
+  **Found while building this:** `ILocator.WaitForAsync` throws `System.TimeoutException`
+  directly, not `PlaywrightException` like the methods `WebModule.WithSelectorNotFound` already
+  catches — noted in the spec file for WEB-T4's awareness, not a bug anywhere today (nothing
+  existing calls `WaitForAsync`).
+  Next: WEB-T4 (migrate the existing module).
 - [ ] DISC-22 `RequestTemplate` (API-T9, `plan/specs/API-TESTING-MODULE.md`) has **no database-
   level RLS at all** — `AddRequestTemplates`'s migration creates the table and
   `GrantYuktiAppRequestTemplatesPrivileges` grants the app role read/write, but neither applies

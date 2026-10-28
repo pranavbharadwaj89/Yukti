@@ -23,6 +23,7 @@ public sealed class StepResult : Entity<StepResultId>
     public string? Error { get; }
     public object? Data { get; }
     public AiAttribution? AiAttribution { get; }
+    public LocatorResolutionInfo? LocatorResolution { get; }
 
     private readonly List<RetryAttempt> _retryHistory;
     public IReadOnlyList<RetryAttempt> RetryHistory => _retryHistory.AsReadOnly();
@@ -31,7 +32,8 @@ public sealed class StepResult : Entity<StepResultId>
         FlowStepId sourceStepId, string stepName, ModuleKind module, string action,
         StepStatus status, TimeSpan duration,
         string? message = null, string? error = null, object? data = null,
-        AiAttribution? aiAttribution = null, IEnumerable<RetryAttempt>? retryHistory = null)
+        AiAttribution? aiAttribution = null, IEnumerable<RetryAttempt>? retryHistory = null,
+        LocatorResolutionInfo? locatorResolution = null)
         : base(StepResultId.New())
     {
         SourceStepId = sourceStepId;
@@ -44,6 +46,7 @@ public sealed class StepResult : Entity<StepResultId>
         Error = error;
         Data = data;
         AiAttribution = aiAttribution;
+        LocatorResolution = locatorResolution;
         _retryHistory = retryHistory?.ToList() ?? new List<RetryAttempt>();
     }
 
@@ -59,7 +62,8 @@ public sealed class StepResult : Entity<StepResultId>
     // fully bindable, higher-arity constructor it will prefer automatically.
     private StepResult(
         StepResultId id, FlowStepId sourceStepId, string stepName, ModuleKind module, string action,
-        StepStatus status, TimeSpan duration, string? message, string? error, object? data, AiAttribution? aiAttribution)
+        StepStatus status, TimeSpan duration, string? message, string? error, object? data, AiAttribution? aiAttribution,
+        LocatorResolutionInfo? locatorResolution)
         : base(id)
     {
         SourceStepId = sourceStepId;
@@ -72,6 +76,7 @@ public sealed class StepResult : Entity<StepResultId>
         Error = error;
         Data = data;
         AiAttribution = aiAttribution;
+        LocatorResolution = locatorResolution;
         _retryHistory = new List<RetryAttempt>();
     }
 
@@ -82,4 +87,6 @@ public sealed class StepResult : Entity<StepResultId>
         new(sourceStepId, stepName, module, action, StepStatus.Failed, TimeSpan.Zero, error: error);
 
     public bool IsFlaky => Status == StepStatus.Passed && _retryHistory.Count > 0;
+
+    public bool UsedLocatorFallback => Status == StepStatus.Passed && LocatorResolution is not null;
 }

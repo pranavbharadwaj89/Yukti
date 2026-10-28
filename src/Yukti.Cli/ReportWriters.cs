@@ -68,13 +68,34 @@ public static class JUnitReportWriter
                 case StepStatus.Skipped:
                     testcase.Add(new XElement("skipped", new XAttribute("message", result.Message ?? "when condition was false")));
                     break;
-                case StepStatus.Passed when result.IsFlaky:
-                    testcase.Add(new XElement("properties",
-                        new XElement("property", new XAttribute("name", "flaky"), new XAttribute("value", "true")),
-                        new XElement("property", new XAttribute("name", "attempts"), new XAttribute("value", (result.RetryHistory.Count + 1).ToString()))));
-                    testcase.Add(new XElement("system-out",
-                        string.Join(Environment.NewLine, result.RetryHistory.Select(a =>
-                            $"attempt {a.AttemptNumber}: {a.Status} ({a.Duration.TotalMilliseconds:F0}ms){(a.Error is null ? "" : " — " + a.Error)}"))));
+                case StepStatus.Passed when result.IsFlaky || result.UsedLocatorFallback:
+                    var properties = new List<XElement>();
+                    var systemOutLines = new List<string>();
+
+                    if (result.IsFlaky)
+                    {
+                        properties.Add(new XElement("property", new XAttribute("name", "flaky"), new XAttribute("value", "true")));
+                        properties.Add(new XElement("property", new XAttribute("name", "attempts"), new XAttribute("value", (result.RetryHistory.Count + 1).ToString())));
+                        systemOutLines.AddRange(result.RetryHistory.Select(a =>
+                            $"attempt {a.AttemptNumber}: {a.Status} ({a.Duration.TotalMilliseconds:F0}ms){(a.Error is null ? "" : " — " + a.Error)}"));
+                    }
+
+                    // Web UI Testing Module Spec, WEB-T3: "a step that succeeds via a fallback
+                    // passes and is flagged... the report saying which fallback was used and why
+                    // the primary failed" — surfaced as a JUnit property, the same honesty
+                    // mechanism already used for flaky steps, never a silent pass.
+                    if (result.UsedLocatorFallback)
+                    {
+                        var info = result.LocatorResolution!;
+                        properties.Add(new XElement("property", new XAttribute("name", "locatorFallbackUsed"), new XAttribute("value", "true")));
+                        properties.Add(new XElement("property", new XAttribute("name", "locatorStrategyUsed"), new XAttribute("value", info.StrategyUsed.ToString())));
+                        systemOutLines.Add($"locator fallback used: strategy {info.StrategyUsed} — primary failed because: {info.PrimaryFailureReason}" +
+                            (info.Description is null ? "" : $" (entry: {info.Description})"));
+                    }
+
+                    testcase.Add(new XElement("properties", properties));
+                    if (systemOutLines.Count > 0)
+                        testcase.Add(new XElement("system-out", string.Join(Environment.NewLine, systemOutLines)));
                     break;
             }
 
@@ -145,6 +166,13 @@ public static class JsonReportWriter
                 error = r.Error,
                 data = ParamRedaction.RedactData(r.Data),
                 isFlaky = r.IsFlaky,
+                usedLocatorFallback = r.UsedLocatorFallback,
+                locatorResolution = r.LocatorResolution is null ? null : new
+                {
+                    strategyUsed = r.LocatorResolution.StrategyUsed.ToString(),
+                    primaryFailureReason = r.LocatorResolution.PrimaryFailureReason,
+                    description = r.LocatorResolution.Description,
+                },
                 retryHistory = r.RetryHistory.Select(a => new
                 {
                     attemptNumber = a.AttemptNumber,

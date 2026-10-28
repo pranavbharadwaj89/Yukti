@@ -89,6 +89,15 @@ public sealed class FlowRunConfiguration : IEntityTypeConfiguration<FlowRun>
                 .HasColumnName("ai_attribution")
                 .HasColumnType("jsonb");
 
+            // Web UI Testing Module Spec, WEB-T3: same "one nullable jsonb column, not a child
+            // table" shape as AiAttribution just above — present iff a locator fallback was used.
+            results.Property(s => s.LocatorResolution)
+                .HasConversion(
+                    info => info == null ? null : JsonSerializer.Serialize(info, (JsonSerializerOptions?)null),
+                    json => json == null ? null : JsonSerializer.Deserialize<LocatorResolutionInfo>(json, (JsonSerializerOptions?)null))
+                .HasColumnName("locator_resolution")
+                .HasColumnType("jsonb");
+
             results.OwnsMany(s => s.RetryHistory, attempts =>
             {
                 attempts.ToTable("retry_attempts");
