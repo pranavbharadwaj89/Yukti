@@ -15,4 +15,5 @@ public enum Permission
     ModuleManage,
     UserManage,
     ApiCollectionManage,
+    RequestTemplateManage,
 }

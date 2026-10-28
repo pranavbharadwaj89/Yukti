@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Yukti.Application.Abstractions;
+using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
@@ -7,6 +8,29 @@ using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Infrastructure.InMemory;
+
+public sealed class InMemoryRequestTemplateRepository : IRequestTemplateRepository
+{
+    private readonly ConcurrentDictionary<Guid, RequestTemplate> _store = new();
+    private readonly InMemoryUnitOfWorkFactory _uowFactory;
+
+    public InMemoryRequestTemplateRepository(InMemoryUnitOfWorkFactory uowFactory) => _uowFactory = uowFactory;
+
+    public Task<RequestTemplate?> GetById(RequestTemplateId id, CancellationToken ct) =>
+        Task.FromResult(_store.TryGetValue(id.Value, out var template) ? template : null);
+
+    public Task Save(RequestTemplate template, CancellationToken ct)
+    {
+        _uowFactory.StageSave(() => _store[template.Id.Value] = template, template);
+        return Task.CompletedTask;
+    }
+
+    public Task Delete(RequestTemplate template, CancellationToken ct)
+    {
+        _uowFactory.StageSave(() => _store.TryRemove(template.Id.Value, out _), template);
+        return Task.CompletedTask;
+    }
+}
 
 public sealed class InMemoryFlowRepository : IFlowRepository
 {

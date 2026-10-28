@@ -66,6 +66,7 @@ public sealed class YuktiDbContext : DbContext
 
     public DbSet<Flow> Flows => Set<Flow>();
     public DbSet<ApiCollection> ApiCollections => Set<ApiCollection>();
+    public DbSet<RequestTemplate> RequestTemplates => Set<RequestTemplate>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<TestEnvironment> TestEnvironments => Set<TestEnvironment>();
     public DbSet<TriggerDefinition> Triggers => Set<TriggerDefinition>();
@@ -87,6 +88,7 @@ public sealed class YuktiDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ModuleRegistrationConfiguration());
         modelBuilder.ApplyConfiguration(new FlowConfiguration());
         modelBuilder.ApplyConfiguration(new ApiCollectionConfiguration());
+        modelBuilder.ApplyConfiguration(new RequestTemplateConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
         modelBuilder.ApplyConfiguration(new TestEnvironmentConfiguration());
         modelBuilder.ApplyConfiguration(new TriggerConfiguration());

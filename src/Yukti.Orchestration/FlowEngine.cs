@@ -2,8 +2,10 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Yukti.Application.Abstractions;
 using Yukti.Contracts;
+using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
+using Yukti.Domain.SharedKernel;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
 
 namespace Yukti.Orchestration;
@@ -36,11 +38,12 @@ public sealed class FlowEngine
     private readonly IUnitOfWorkFactory _uowFactory;
     private readonly RetryPolicy _defaultRetryPolicy;
     private readonly ILogger<FlowEngine> _logger;
+    private readonly IRequestTemplateRepository? _requestTemplates;
 
     public FlowEngine(
         IModuleDispatcher dispatcher, IModuleRegistry registry, IVariableStore variables, IRetryFlakeHandler retryHandler,
         IFlowRunRepository runRepository, IUnitOfWorkFactory uowFactory, ILogger<FlowEngine> logger,
-        RetryPolicy? defaultRetryPolicy = null)
+        RetryPolicy? defaultRetryPolicy = null, IRequestTemplateRepository? requestTemplates = null)
     {
         _dispatcher = dispatcher;
         _registry = registry;
@@ -50,6 +53,63 @@ public sealed class FlowEngine
         _uowFactory = uowFactory;
         _logger = logger;
         _defaultRetryPolicy = defaultRetryPolicy ?? new RetryPolicy(MaxAttempts: 2, InitialBackoff: TimeSpan.FromMilliseconds(200), BackoffMultiplier: 2.0);
+        _requestTemplates = requestTemplates;
+    }
+
+    /// <summary>
+    /// API-T9: a step's own `templateId` resolves against the CURRENT template on every run
+    /// (never baked in at publish time), which is the entire point — editing a template updates
+    /// every flow that uses it with no flow edits. `_requestTemplates` is null for every caller
+    /// that doesn't configure one (every test/CLI construction site, unchanged); resolution is
+    /// then simply skipped, not an error, so a flow with no `templateId` anywhere never notices.
+    ///
+    /// Merge rule: the template supplies defaults, the step's own params always win per field —
+    /// `headers` merges key-by-key (a step overriding one header keeps the template's others);
+    /// `auth`/`timeoutMs` are whole-value (the step's own value, if present, replaces the
+    /// template's entirely); `url` is special-cased: an absolute step URL is used as-is (the
+    /// template's baseUrl is irrelevant), a relative one is joined onto the template's baseUrl,
+    /// so a step can reference a template and supply just a path.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, object?>> ResolveRequestTemplate(IReadOnlyDictionary<string, object?> stepParams, CancellationToken ct)
+    {
+        if (_requestTemplates is null || stepParams.GetValueOrDefault("templateId") is not string templateIdRaw)
+            return stepParams;
+
+        if (!Guid.TryParse(templateIdRaw, out var guid))
+            throw new RequestTemplateResolutionException(templateIdRaw);
+
+        var template = await _requestTemplates.GetById(new RequestTemplateId(guid), ct);
+        if (template is null)
+            throw new RequestTemplateResolutionException(templateIdRaw);
+
+        var merged = new Dictionary<string, object?>(stepParams);
+
+        if (template.Headers.Count > 0)
+        {
+            var mergedHeaders = new Dictionary<string, object?>(template.Headers);
+            if (stepParams.GetValueOrDefault("headers") is IReadOnlyDictionary<string, object?> stepHeaders)
+                foreach (var (k, v) in stepHeaders)
+                    mergedHeaders[k] = v;
+            merged["headers"] = mergedHeaders;
+        }
+
+        if (!stepParams.ContainsKey("auth") && template.Auth is not null)
+            merged["auth"] = template.Auth;
+
+        if (!stepParams.ContainsKey("timeoutMs") && template.DefaultTimeoutMs is not null)
+            merged["timeoutMs"] = template.DefaultTimeoutMs;
+
+        if (template.BaseUrl is not null)
+        {
+            var stepUrl = stepParams.GetValueOrDefault("url") as string;
+            merged["url"] = string.IsNullOrEmpty(stepUrl)
+                ? template.BaseUrl
+                : stepUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || stepUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? stepUrl
+                    : template.BaseUrl.TrimEnd('/') + "/" + stepUrl.TrimStart('/');
+        }
+
+        return merged;
     }
 
     public async Task<FlowRun> Execute(Flow flow, FlowRun run, ICredentialResolver credentials, CancellationToken ct)
@@ -145,7 +205,8 @@ public sealed class FlowEngine
                 IReadOnlyDictionary<string, object?> interpolatedParams;
                 try
                 {
-                    interpolatedParams = await _variables.Interpolate(step.Params, run.Variables, credentials, ct);
+                    var resolvedParams = await ResolveRequestTemplate(step.Params, ct);
+                    interpolatedParams = await _variables.Interpolate(resolvedParams, run.Variables, credentials, ct);
                 }
                 catch (VariableResolutionException ex)
                 {

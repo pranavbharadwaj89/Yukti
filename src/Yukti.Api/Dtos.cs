@@ -1,4 +1,5 @@
 using Yukti.Application.Abstractions;
+using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.ModulePlugin;
@@ -111,6 +112,18 @@ public sealed record ApiCollectionResponse(
 
 public sealed record CreateProjectRequest(string Name, string? Description);
 public sealed record RenameProjectRequest(string Name, string? Description);
+
+public sealed record CreateRequestTemplateRequest(string Name, string? BaseUrl, Dictionary<string, object?>? Headers, object? Auth, int? DefaultTimeoutMs);
+public sealed record UpdateRequestTemplateRequest(string Name, string? BaseUrl, Dictionary<string, object?>? Headers, object? Auth, int? DefaultTimeoutMs);
+public sealed record CreatedRequestTemplateResponse(Guid TemplateId);
+public sealed record RequestTemplateResponse(Guid Id, string Name, string? BaseUrl, IReadOnlyDictionary<string, object?> Headers, object? Auth, int? DefaultTimeoutMs, int Version)
+{
+    public static RequestTemplateResponse From(RequestTemplate t) => new(t.Id.Value, t.Name, t.BaseUrl, t.Headers, t.Auth, t.DefaultTimeoutMs, t.Version);
+}
+public sealed record RequestTemplateUsageResponse(Guid FlowId, string FlowName, string StepName)
+{
+    public static RequestTemplateUsageResponse From(RequestTemplateUsageReadModel u) => new(u.FlowId.Value, u.FlowName, u.StepName);
+}
 
 public sealed record ProjectResponse(Guid Id, string Name, string? Description)
 {

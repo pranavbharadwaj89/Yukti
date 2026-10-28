@@ -1270,6 +1270,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/request-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateRequestTemplateRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CreatedRequestTemplateResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/request-templates/{templateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    templateId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RequestTemplateResponse"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    templateId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateRequestTemplateRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    templateId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/request-templates/{templateId}/usages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    templateId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RequestTemplateUsageResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{runId}": {
         parameters: {
             query?: never;
@@ -1824,6 +1979,16 @@ export interface components {
             name?: string | null;
             description?: string | null;
         };
+        CreateRequestTemplateRequest: {
+            name?: string | null;
+            baseUrl?: string | null;
+            headers?: {
+                [key: string]: unknown;
+            } | null;
+            auth?: unknown;
+            /** Format: int32 */
+            defaultTimeoutMs?: number | null;
+        };
         CreateTestEnvironmentRequest: {
             name?: string | null;
             variables?: {
@@ -1851,6 +2016,10 @@ export interface components {
         CreatedProjectResponse: {
             /** Format: uuid */
             projectId?: string;
+        };
+        CreatedRequestTemplateResponse: {
+            /** Format: uuid */
+            templateId?: string;
         };
         CreatedTestEnvironmentResponse: {
             /** Format: uuid */
@@ -2056,6 +2225,26 @@ export interface components {
             name?: string | null;
             description?: string | null;
         };
+        RequestTemplateResponse: {
+            /** Format: uuid */
+            id?: string;
+            name?: string | null;
+            baseUrl?: string | null;
+            headers?: {
+                [key: string]: unknown;
+            } | null;
+            auth?: unknown;
+            /** Format: int32 */
+            defaultTimeoutMs?: number | null;
+            /** Format: int32 */
+            version?: number;
+        };
+        RequestTemplateUsageResponse: {
+            /** Format: uuid */
+            flowId?: string;
+            flowName?: string | null;
+            stepName?: string | null;
+        };
         RetryAttemptResponse: {
             /** Format: int32 */
             attemptNumber?: number;
@@ -2171,6 +2360,16 @@ export interface components {
             } | null;
             body?: unknown;
             assertions?: unknown;
+        };
+        UpdateRequestTemplateRequest: {
+            name?: string | null;
+            baseUrl?: string | null;
+            headers?: {
+                [key: string]: unknown;
+            } | null;
+            auth?: unknown;
+            /** Format: int32 */
+            defaultTimeoutMs?: number | null;
         };
         UpdateRolePermissionsRequest: {
             permissions?: string[] | null;

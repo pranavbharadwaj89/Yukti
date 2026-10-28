@@ -63,6 +63,15 @@ public interface IProjectRepository
     Task Delete(Project project, CancellationToken ct);
 }
 
+// API-T9: same disposable/editable-resource shape as IApiCollectionRepository/IProjectRepository
+// (no version history beyond RequestTemplate's own visible counter, no publish step).
+public interface IRequestTemplateRepository
+{
+    Task<RequestTemplate?> GetById(RequestTemplateId id, CancellationToken ct);
+    Task Save(RequestTemplate template, CancellationToken ct);
+    Task Delete(RequestTemplate template, CancellationToken ct);
+}
+
 public interface ITestEnvironmentRepository
 {
     Task<TestEnvironment?> GetById(TestEnvironmentId id, CancellationToken ct);
