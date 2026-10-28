@@ -164,6 +164,7 @@ public sealed class ApiModule : IAutomationModule
                 new ParamSpec { Name = "assert", Type = ParamType.Array, Required = false, Description = "Array of assertions (see docs/specs/modules/api.md for exact shapes): status, statusIn, pathEquals, pathContains, pathExists, pathCount, headerExists, headerEquals, headerContains, cookieExists, schema, responseTimeUnder, bodyMatchesPattern. All evaluated; failures collected, not fail-fast." },
                 new ParamSpec { Name = "expectedStatus", Type = ParamType.Number, Required = false, Description = "Convenience shorthand for a single {type:'status'} assertion; kept for backward compatibility." },
                 new ParamSpec { Name = "extract", Type = ParamType.Array, Required = false, Description = "Values to pull out, written to this step's own data.extracted.<saveAs> (reach it via {{vars.<step>.extracted.<saveAs>}}). Each entry: {saveAs, source: body|header|status|responseTime|cookie, path (JSONPath into the body, or the header/cookie name), xpath (body only, for an XML response), required (default true)}. A required extraction that matches nothing fails the step, naming it." },
+                new ParamSpec { Name = "auth", Type = ParamType.Object, Required = false, Description = "basic|bearer|apiKey (shapes: docs/specs/modules/api.md). Via {{secrets.name}}, never a plain string; a same-named header/query/cookie overrides it." },
             }
         }
     };
@@ -197,17 +198,26 @@ public sealed class ApiModule : IAutomationModule
             var url = parameters.GetValueOrDefault("url") as string
                 ?? throw new ArgumentException("api.request requires a 'url' parameter.");
             var method = (parameters.GetValueOrDefault("method") as string ?? "GET").ToUpperInvariant();
+
+            // API-T4: by the time Run() sees `parameters`, FlowEngine has already resolved any
+            // {{secrets.name}} reference inside `auth` into a real value (VariableStore,
+            // API-T4) — ApiModule itself never touches Vault/ICredentialResolver directly, the
+            // same "already-resolved plain value" shape {{vars.x}} has always arrived in.
+            var auth = BuildAuth(parameters);
+
+            var queryParams = MergeObjectDict(auth.ExtraQueryParams, AsParamDictionary(parameters.GetValueOrDefault("queryParams")));
             var urlWithPathParams = ResolvePathParams(url, AsParamDictionary(parameters.GetValueOrDefault("pathParams")));
-            var finalUrl = ApplyQueryParams(urlWithPathParams, AsParamDictionary(parameters.GetValueOrDefault("queryParams")));
+            var finalUrl = ApplyQueryParams(urlWithPathParams, queryParams);
             var assertions = BuildAssertions(parameters);
             var timeoutMs = parameters.TryGetValue("timeoutMs", out var timeoutRaw) && timeoutRaw is not null
                 ? Convert.ToInt32(timeoutRaw)
                 : DefaultTimeoutMs;
             var redirectPolicy = (parameters.GetValueOrDefault("redirectPolicy") as string ?? "follow").ToLowerInvariant();
-            var headersDict = AsStringDictionary(parameters.GetValueOrDefault("headers"));
+            var headersDict = MergeStringDict(auth.ExtraHeaders, AsStringDictionary(parameters.GetValueOrDefault("headers")));
             var bodyParam = parameters.GetValueOrDefault("body");
             var jar = GetCookieJar(ctx.RunId);
-            ApplyCookies(jar, new Uri(finalUrl, UriKind.Absolute), AsStringDictionary(parameters.GetValueOrDefault("cookies")));
+            var cookiesDict = MergeStringDict(auth.ExtraCookies, AsStringDictionary(parameters.GetValueOrDefault("cookies")));
+            ApplyCookies(jar, new Uri(finalUrl, UriKind.Absolute), cookiesDict);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(timeoutMs);
@@ -479,6 +489,87 @@ public sealed class ApiModule : IAutomationModule
             value = null;
             return false;
         }
+    }
+
+    /// <summary>API-T4: what an `auth` entry contributes to the request — never applied
+    /// directly to an HttpRequestMessage here, just handed back as plain string->string maps so
+    /// Run() can merge them with the step's own headers/queryParams/cookies (an explicit one of
+    /// the same name always wins over what auth would otherwise set).</summary>
+    private readonly record struct AuthApplication(
+        IReadOnlyDictionary<string, string> ExtraHeaders,
+        IReadOnlyDictionary<string, string> ExtraQueryParams,
+        IReadOnlyDictionary<string, string> ExtraCookies)
+    {
+        public static readonly AuthApplication None = new(
+            new Dictionary<string, string>(), new Dictionary<string, string>(), new Dictionary<string, string>());
+    }
+
+    private static AuthApplication BuildAuth(IReadOnlyDictionary<string, object?> parameters)
+    {
+        if (parameters.GetValueOrDefault("auth") is not IReadOnlyDictionary<string, object?> auth)
+            return AuthApplication.None;
+
+        var type = auth.GetValueOrDefault("type") as string
+            ?? throw new ArgumentException("api.request 'auth' requires a 'type' field.");
+
+        switch (type)
+        {
+            case "basic":
+                {
+                    var username = RequireAuthString(auth, "username", type);
+                    var password = RequireAuthString(auth, "password", type);
+                    var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+                    return AuthApplication.None with { ExtraHeaders = new Dictionary<string, string> { ["Authorization"] = $"Basic {encoded}" } };
+                }
+            case "bearer":
+                {
+                    var token = RequireAuthString(auth, "token", type);
+                    return AuthApplication.None with { ExtraHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {token}" } };
+                }
+            case "apiKey":
+                {
+                    var name = RequireAuthString(auth, "name", type);
+                    var value = RequireAuthString(auth, "value", type);
+                    var location = auth.GetValueOrDefault("in") as string ?? "header";
+                    return location switch
+                    {
+                        "header" => AuthApplication.None with { ExtraHeaders = new Dictionary<string, string> { [name] = value } },
+                        "query" => AuthApplication.None with { ExtraQueryParams = new Dictionary<string, string> { [name] = value } },
+                        "cookie" => AuthApplication.None with { ExtraCookies = new Dictionary<string, string> { [name] = value } },
+                        _ => throw new ArgumentException($"api.request auth type 'apiKey' has unknown 'in' value '{location}'. Supported: header, query, cookie."),
+                    };
+                }
+            default:
+                throw new ArgumentException($"api.request 'auth' has unknown type '{type}'. Supported: basic, bearer, apiKey.");
+        }
+    }
+
+    private static string RequireAuthString(IReadOnlyDictionary<string, object?> auth, string key, string type) =>
+        auth.GetValueOrDefault(key) as string
+        ?? throw new ArgumentException($"api.request auth type '{type}' requires a '{key}' string field.");
+
+    private static IReadOnlyDictionary<string, string> MergeStringDict(
+        IReadOnlyDictionary<string, string> baseDict, IReadOnlyDictionary<string, string> overrideDict)
+    {
+        if (baseDict.Count == 0)
+            return overrideDict;
+        var merged = new Dictionary<string, string>(baseDict, StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in overrideDict)
+            merged[key] = value;
+        return merged;
+    }
+
+    private static IReadOnlyDictionary<string, object?> MergeObjectDict(
+        IReadOnlyDictionary<string, string> baseDict, IReadOnlyDictionary<string, object?> overrideDict)
+    {
+        if (baseDict.Count == 0)
+            return overrideDict;
+        var merged = new Dictionary<string, object?>(overrideDict.Count + baseDict.Count);
+        foreach (var (key, value) in baseDict)
+            merged[key] = value;
+        foreach (var (key, value) in overrideDict)
+            merged[key] = value;
+        return merged;
     }
 
     private static List<Assertion> BuildAssertions(IReadOnlyDictionary<string, object?> parameters)

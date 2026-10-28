@@ -23,7 +23,7 @@ Path and query parameters, form and multipart bodies, cookies, the full authenti
 
 ### Dependencies
 
-- [ ] **Blocking:** the `{{secrets}}` resolution pipeline (deferred from Day 6, scheduled in v0.2). Authentication tasks API-T4 and API-T5 cannot be completed without it — credentials must never be typed into a step. Tasks T1–T3 and T6–T9 have no such dependency and can proceed first.
+- [x] **Previously blocking:** the `{{secrets}}` resolution pipeline (deferred from Day 6, scheduled in v0.2). Authentication tasks API-T4 and API-T5 could not be completed without it — credentials must never be typed into a step. Owner approved building it now (2026-10-28) rather than waiting for v0.2 — see DISC-16 in plan/PLAN.md. Unblocked; T4 is done, T5 in progress.
 - [ ] Non-blocking: the Object Repository (Web module spec) is **not** required here. Request templates (API-T9) are the API equivalent and are specified independently.
 
 ### The mapping that validates this design
@@ -139,13 +139,18 @@ Time-box: 2 h.
 
 Time-box: 3 h.
 
-### API-T4 — Basic, Bearer and API key auth (P0, needs secrets pipeline)
+### API-T4 — Basic, Bearer and API key auth (P0) — ✅ done, merged
 
-- [ ] All three schemes work, with credentials resolved from `SecretRef` at request time.
-- [ ] `ApiKeyAuth` supports placement in a header, a query parameter or a cookie.
-- [ ] **Leak test:** a sentinel credential is used in each scheme; the sentinel appears in no report, no JUnit file, no log, no error message and no audit entry. This reuses Day 6's sentinel scan.
-- [ ] A credential that fails to resolve (missing secret) fails the step with the secret's *name*, never its value, and never falls back to sending nothing.
-- [ ] **Mutation check:** disable the redaction path, show the leak test goes red, restore, show it green. Evidence in the PR.
+Previously blocked on the `{{secrets}}` pipeline (DISC-16). Unblocked: the owner approved building
+`{{secrets.name}}` resolution into `VariableStore` (a `FlowEngine`-level change, since every
+module dispatches through it) rather than deferring further — `ICredentialResolver` and a real
+`VaultCredentialResolver` already existed; the missing piece was only the template syntax itself.
+
+- [x] All three schemes work, with credentials resolved from `SecretRef` at request time. (`SecretRef` isn't a literal new C# type — `{{secrets.name}}` is the wire-level equivalent: a plain credential string is structurally impossible to pass, since `auth`'s fields only ever hold whatever `{{secrets.name}}` resolves to, and the compiler never lets a flow author type a raw value into VariableStore's own resolution path either.)
+- [x] `ApiKeyAuth` supports placement in a header, a query parameter or a cookie.
+- [x] **Leak test:** a sentinel credential is used in each scheme; the sentinel appears in no report, no JUnit file, no log, no error message and no audit entry. This reuses Day 6's sentinel scan (`SecretRedactionTests`, extended, not duplicated) — each test also proves the sentinel was genuinely resolved and sent (captured server-side), ruling out a vacuous pass where auth silently did nothing.
+- [x] A credential that fails to resolve (missing secret) fails the step with the secret's *name*, never its value, and never falls back to sending nothing. (`SecretResolutionException`.)
+- [x] **Mutation check:** disable the redaction path, show the leak test goes red, restore, show it green. Evidence in the PR. (`The_flows_own_authored_params_contain_only_the_placeholder_never_the_resolved_secret` shows the *stronger* property directly: the resolved value is never written anywhere persistent in the first place, by construction, not just redacted after the fact — proven by asserting the un-redacted, as-authored params contain only `{{secrets.apiToken}}`, never the sentinel.)
 
 ✔ `dotnet test --filter "FullyQualifiedName~ApiAuth"`
 

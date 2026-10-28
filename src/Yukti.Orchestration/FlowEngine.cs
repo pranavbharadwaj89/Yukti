@@ -144,7 +144,7 @@ public sealed class FlowEngine
                 IReadOnlyDictionary<string, object?> interpolatedParams;
                 try
                 {
-                    interpolatedParams = _variables.Interpolate(step.Params, run.Variables);
+                    interpolatedParams = await _variables.Interpolate(step.Params, run.Variables, credentials, ct);
                 }
                 catch (VariableResolutionException ex)
                 {

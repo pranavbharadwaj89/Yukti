@@ -1300,7 +1300,7 @@ work here, don't assume they still hold.
   makes these tests runnable in CI and on any clone without manual local setup. Found 2026-10-25
   during Day 6's close-out, after the second session in a row to hit the same local credential
   wall. Priority: **high**, v0.2.
-- [ ] DISC-16 Build `{{secrets.name}}` resolution from Vault into flow steps, resolved per-step at
+- [x] DISC-16 Build `{{secrets.name}}` resolution from Vault into flow steps, resolved per-step at
   run time, never stored in the flow definition. Reuses the T3a redactor
   (`Yukti.Domain.Auditing.SecretRedactor`) directly — the moment a module actually calls
   `ExecutionContext.Credentials.ResolveAsync`, the resolved value needs the exact same name-based
@@ -1309,6 +1309,13 @@ work here, don't assume they still hold.
   `ICredentialResolver` consumer in `src/` — nothing calls `ResolveAsync` yet). Explicitly deferred
   to v0.2 by the owner (2026-10-25 close-out order): "new security-sensitive code," not something
   to build the same night as the redaction proof it depends on. Priority: **high**, v0.2.
+  **Revisited and built 2026-10-28** (owner's explicit go-ahead, API-T4/T5): `VariableStore.Interpolate`
+  now resolves `{{secrets.name}}` through the already-existing `ICredentialResolver`/
+  `VaultCredentialResolver` — the resolved value lives only in the per-dispatch parameter set
+  `FlowEngine` hands to a module, never written into `run.Variables`, so it can't leak back out
+  via a later `{{vars...}}` reference or a `saveAs`. Proven in `VariableStoreTests` and (API-T4's
+  own leak test, reusing the same sentinel scan this entry anticipated) `SecretRedactionTests`.
+  This unblocks API-T4 (done) and API-T5 (OAuth2 client credentials, in progress).
 - [x] DISC-17 `docker compose up` — the actual documented quickstart path, and therefore every
   seeded demo flow a new user/teammate ever runs — connected to Postgres as the **superuser**
   (`PGUSER:-postgres`), never as `yukti_app`/`yukti_worker` (the restricted, non-owner roles

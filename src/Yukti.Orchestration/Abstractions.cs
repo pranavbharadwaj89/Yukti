@@ -24,10 +24,19 @@ public interface IModuleDispatcher
         ExecutionContext ctx, CancellationToken ct);
 }
 
-/// <summary>Resolves {{vars.x.y}} interpolation and `when` condition expressions. (Volume 1 Part I §5.3, Part III §19.4/19.6)</summary>
+/// <summary>
+/// Resolves {{vars.x.y}} and {{secrets.name}} interpolation and `when` condition expressions.
+/// (Volume 1 Part I §5.3, Part III §19.4/19.6; {{secrets.name}}: API Testing Module Spec, API-T4)
+/// </summary>
 public interface IVariableStore
 {
-    IReadOnlyDictionary<string, object?> Interpolate(IReadOnlyDictionary<string, object?> parameters, IReadOnlyDictionary<string, object?> vars);
+    /// <summary>Async because a {{secrets.name}} reference resolves through <paramref
+    /// name="credentials"/> (Vault or whichever ICredentialResolver is configured) — the
+    /// resolved value is never written into the run's own Variables, only into the returned,
+    /// per-dispatch parameter set, so it can never leak back out via a later {{vars...}}.</summary>
+    Task<IReadOnlyDictionary<string, object?>> Interpolate(
+        IReadOnlyDictionary<string, object?> parameters, IReadOnlyDictionary<string, object?> vars,
+        ICredentialResolver credentials, CancellationToken ct);
     bool EvaluateCondition(string? whenCondition, IReadOnlyDictionary<string, object?> vars);
 }
 
