@@ -210,9 +210,18 @@ Time-box: 3 h.
 
 Time-box: 2 h.
 
-### API-T9 — Request templates (P1)
+### API-T9 — Request templates (P1) — ⏸️ deferred to v0.2, see plan/PLAN.md DISC-19
 
 The API equivalent of the Web module's Object Repository, and the same maintenance argument applies.
+
+**Escalated, not built:** "updates every flow that uses it, with no flow edits" needs real runtime
+template resolution, which requires module-specific code above `ApiModule` itself (`FlowEngine` or
+a new `ExecutionContext` capability) — exactly what this spec's own governing rule says to stop
+and escalate for. No existing precedent to mirror either: `ApiCollection`/`ApiRequest` are a
+separate, non-publishing "API Studio" context with no runtime resolution into `Flow`/`FlowStep`,
+and the Web module's own "Object Repository" doesn't exist in the code at all. Asked the owner via
+AskUserQuestion; chose to defer to v0.2 over approving the engine change or a weaker publish-time-
+only version. Full reasoning in `plan/PLAN.md`'s DISC-19.
 
 - [ ] A **request template** is a versioned, tenant-scoped artifact holding a base URL, common headers, an auth spec and a default timeout.
 - [ ] A step references a template and overrides any field. Changing the template updates every flow that uses it, with no flow edits — proven with three flows and one base-URL change.
