@@ -1356,3 +1356,30 @@ work here, don't assume they still hold.
   by this session's own safety classifier even though it only restores already-reviewed,
   migration-declared intent. Not required for this PR's own fix (that's docker-compose/the real
   deployed path); only blocks re-running the real API locally, non-Docker, against the split role.
+- [x] DISC-18 D7-T3's real trial (owner, 2026-10-25/26, Docker installed fresh for exactly this)
+  surfaced two more real bugs on top of DISC-17, neither caught by any CI job because none of
+  them exercises AI-enabled generation against a real, published container:
+  1. **Frontend/Docker port mismatch.** `apps/yukti-gui`'s `VITE_API_BASE_URL` default is
+     `http://localhost:5000` (the non-Docker local-dev port), but `docker-compose.yml` publishes
+     the API on `8080`. Login "not working" was this, not bad credentials — confirmed directly:
+     the documented `admin@yukti.local`/`ChangeMe123!` pair returned a real 200 + JWT from
+     `curl` against `:8080` the whole time. `docs/quickstart.md`'s "Start the frontend" step
+     never says to set `VITE_API_BASE_URL` for the compose scenario — logged as a doc gap, not
+     yet fixed (see below).
+  2. **Every `POST /api/v1/flows/generate` 500s inside the real container.**
+     `FileAiRequestQuotaLedger`'s fallback (`RepoRoot()`) walks up from
+     `AppContext.BaseDirectory` looking for `Yukti.sln` to locate "the repo root" for its ledger
+     file — which never exists inside a published, binaries-only container (`/app/api`). Never
+     caught before because no CI job calls this endpoint with `Ai:Enabled` at its real default
+     (`true`) against a real published container — `e2e` uses `Ai:Provider=fixture` (ADR-0005),
+     `ai-off` deliberately disables AI, and nothing else hits `/flows/generate` at all.
+     **Fixed in `docker-compose.yml`**: sets `Ai__Budget__RequestQuotaLedgerPath` explicitly
+     (the class's own existing escape hatch, just never set for this stack) to a writable
+     in-container path — dev-mode, ephemeral, torn down with the container every run, same
+     reasoning already applied to Vault's dev-mode state in the same file.
+  **Still open, not yet fixed:** `docs/quickstart.md`'s frontend step doesn't mention
+  `VITE_API_BASE_URL` at all — the next person to follow it literally hits the same login
+  confusion. Logged here rather than silently fixed mid-trial, since D7-T3 itself is still in
+  progress and a new, larger initiative (owner's "Module Depth" program) arrived before the
+  trial's own timing could be completed — picking this doc fix up is a small, safe follow-on,
+  not blocking anything.
