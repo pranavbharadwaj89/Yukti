@@ -1383,3 +1383,23 @@ work here, don't assume they still hold.
   progress and a new, larger initiative (owner's "Module Depth" program) arrived before the
   trial's own timing could be completed — picking this doc fix up is a small, safe follow-on,
   not blocking anything.
+- [ ] DISC-19 API-T9 (Request templates, `plan/specs/API-TESTING-MODULE.md`) needs real
+  runtime template resolution — the spec's own checklist requires "changing the template updates
+  every flow that uses it, with no flow edits," proven across three flows and one base-URL
+  change. That can only hold if a step's `templateId` is resolved on every `FlowRun`, not baked
+  in once at `Flow.Publish()` (publish-time-only resolution would mean a template edit after
+  publish never reaches an already-published flow — a materially smaller feature than the one
+  asked for). But modules receive only `ExecutionContext` (run id, read-only variables,
+  credential resolver, logger) — never a repository or `DbContext` — so `ApiModule` itself
+  cannot look up a template from storage. Resolving it would require either `FlowEngine` (above
+  the module) or a new capability added to `ExecutionContext`'s own contract — exactly what the
+  spec's own governing rule calls out: "If a task appears to require module-specific code
+  anywhere above the module, stop and escalate — the design is wrong." Checked for precedent
+  first: `ApiCollection`/`ApiRequest` (Yukti.Domain.ApiTesting) are real, tenant-scoped, EF-
+  persisted aggregates, but belong to a separate ad-hoc "API Studio" explorer context with no
+  publish step and no runtime resolution into `Flow`/`FlowStep` at all; the Web module's "Object
+  Repository," which the spec explicitly compares Request Templates to, doesn't exist anywhere
+  in the code — only in the read-only architecture blueprint. Escalated via AskUserQuestion;
+  owner chose **defer to v0.2** over approving the engine-level change or building the weaker
+  publish-time-only version. Proceeding to API-T10 (importers), which stays entirely inside
+  `ApiModule` like T2/T3/T6/T8.
