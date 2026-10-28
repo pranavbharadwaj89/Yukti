@@ -1136,10 +1136,18 @@ requestTemplates.MapPost("/", async (CreateRequestTemplateRequest req, ClaimsPri
     return Results.Created($"{apiV1}/request-templates/{templateId.Value}", new CreatedRequestTemplateResponse(templateId.Value));
 }).Produces<CreatedRequestTemplateResponse>(StatusCodes.Status201Created);
 
-requestTemplates.MapGet("/{templateId:guid}", async (Guid templateId, HttpContext context, IRequestTemplateRepository repo, CancellationToken ct) =>
+requestTemplates.MapGet("/{templateId:guid}", async (Guid templateId, HttpContext context, ClaimsPrincipal principal, IRequestTemplateRepository repo, CancellationToken ct) =>
 {
+    // SARVAGHNA finding, PR #71: GetById alone relied entirely on EfRequestTemplateRepository's
+    // own ambient-tenant filter — correct in the real EF path, but this explicit check is the
+    // one place in THIS endpoint that is independently, visibly tenant-safe regardless of which
+    // IRequestTemplateRepository is wired in, same defense-in-depth every other
+    // handle-then-tenant-check endpoint in this file already has (e.g. RenameApiCollection's own
+    // _tenantGuard.EnsureAccessible).
     var template = await repo.GetById(new RequestTemplateId(templateId), ct);
-    return template is null ? ProblemResults.NotFound(context, requestTemplateNotFound) : Results.Ok(RequestTemplateResponse.From(template));
+    return template is null || template.TenantId != principal.GetTenantId()
+        ? ProblemResults.NotFound(context, requestTemplateNotFound)
+        : Results.Ok(RequestTemplateResponse.From(template));
 }).Produces<RequestTemplateResponse>();
 
 requestTemplates.MapPut("/{templateId:guid}", async (Guid templateId, UpdateRequestTemplateRequest req, HttpContext context, ClaimsPrincipal principal, UpdateRequestTemplateCommandHandler handler, CancellationToken ct) =>
