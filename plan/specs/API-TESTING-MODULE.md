@@ -232,13 +232,13 @@ only version. Full reasoning in `plan/PLAN.md`'s DISC-19.
 
 Time-box: 3 h.
 
-### API-T10 — Importers (P1)
+### API-T10 — Importers (P1) — ✅ done, merged
 
 Direct adoption levers. Both were identified in the original blueprint as switching-cost reducers.
 
-- [ ] **OpenAPI import:** read a specification and generate flow steps for selected endpoints, with parameters and a schema assertion pre-filled.
-- [ ] **Postman collection import:** convert a v2.1 collection into API steps, including auth, headers and body. Variables map to Yukti variables.
-- [ ] Anything that can't be converted is reported clearly rather than silently dropped. A partial import that looks complete is worse than a refused one.
+- [x] **OpenAPI import:** read a specification and generate flow steps for selected endpoints, with parameters and a schema assertion pre-filled. (JSON documents only, not YAML — a documented scope-down to avoid a new NuGet dependency this task doesn't strictly need; see docs/specs/modules/api-import.md.)
+- [x] **Postman collection import:** convert a v2.1 collection into API steps, including auth, headers and body. Variables map to Yukti variables. (Postman's own `{{name}}` syntax maps directly onto `{{vars.name}}`.)
+- [x] Anything that can't be converted is reported clearly rather than silently dropped. A partial import that looks complete is worse than a refused one.
 
 ✔ `dotnet test --filter "FullyQualifiedName~ApiImport"`
 

@@ -14,4 +14,11 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- API-T10: ApiImportTests calls OpenApiImporter/PostmanImporter directly — a pure
+         transformation, unlike CliIntegrationTests' own deliberate process-spawning tests of the
+         actual built exe (OutputType=Exe doesn't prevent referencing it as a library assembly). -->
+    <ProjectReference Include="..\..\src\Yukti.Cli\Yukti.Cli.csproj" />
+  </ItemGroup>
+
 </Project>
