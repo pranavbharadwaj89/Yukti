@@ -33,7 +33,7 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
 
 ## Web UI Testing Module (`plan/specs/WEB-TESTING-MODULE.md`)
 
-WEB-T1 (shared vocabulary) closed 2026-10-29. WEB-T2 (Object Repository) next.
+WEB-T1 (shared vocabulary) and WEB-T2 (Object Repository) closed 2026-10-29. WEB-T3 next.
 
 1. 🟡 **"Confirm Playwright stays" (the spec's own blocking question).** Treating this as already
    settled, not re-asking: `CLAUDE.md` §4 already names `Microsoft.Playwright (.NET)` as the web
@@ -55,10 +55,24 @@ WEB-T1 (shared vocabulary) closed 2026-10-29. WEB-T2 (Object Repository) next.
    Chromium in CI/mutation checks for now — each extra engine run in CI is real time and a real
    flake surface, and nothing today asks for cross-browser coverage. *Tell me if Firefox/WebKit
    need real CI coverage now, not just a config option.*
-5. 🔵 Before WEB-T2: investigating whether the existing artifact-storage machinery (the thing
-   `Flow`/`ObjectRepository`'s `RequestTemplate` precedent should reuse) supports a second
-   artifact kind cleanly, or needs storage work first. Will report findings before starting T2,
-   not asking you anything yet.
+5. 🔵 **Resolved, not asked:** the existing artifact-storage machinery reuses cleanly for a
+   second artifact kind — `ObjectRepository` uses the exact same EF patterns (`OwnsMany`/jsonb,
+   `FamilyId`+`Version`+`Status`+`TenantId`) `Flow` already does. No storage work was needed
+   first. Built as WEB-T2, 2026-10-29.
+6. 🟡 **`RepositoryRef` has no `RepositoryId`.** The spec's own domain model defines
+   `RepositoryRef(Page, Element)` — a step names "Checkout › submitButton," never which Object
+   Repository artifact that page lives in. *Default, already built:* resolution and the
+   existence check both search every repository the tenant owns for a matching page/element,
+   succeeding on the first match. This matters once a tenant has more than one repository with
+   overlapping page names — ambiguous today by design, not by oversight. *Tell me if you'd
+   rather `RepositoryRef` carry an explicit `RepositoryId` (a real, if small, deviation from the
+   spec's own listed domain model) — I haven't done that without checking first.*
+7. 🔵 DISC-22/DISC-23 (`plan/PLAN.md`) — two real, pre-existing gaps found while building WEB-T2:
+   `RequestTemplate` has no DB-level RLS at all (app-level `TenantId` filter only), and API-T9's
+   `IRequestTemplateExistsChecker` was never actually wired into the real publish command handler
+   despite being built and tested. The second is already fixed (same change that wired WEB-T2's
+   own checker in). The first is a real security-posture question for you, not something I fixed
+   silently on a different module's table — see DISC-22 for the two ways to close it.
 
 ---
 

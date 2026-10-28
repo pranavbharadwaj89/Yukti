@@ -6,6 +6,7 @@ using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
+using Yukti.Domain.UiVocabulary;
 
 namespace Yukti.Infrastructure.InMemory;
 
@@ -30,6 +31,49 @@ public sealed class InMemoryRequestTemplateRepository : IRequestTemplateReposito
         _uowFactory.StageSave(() => _store.TryRemove(template.Id.Value, out _), template);
         return Task.CompletedTask;
     }
+}
+
+public sealed class InMemoryObjectRepositoryRepository : IObjectRepositoryRepository
+{
+    private readonly ConcurrentDictionary<Guid, ObjectRepository> _store = new();
+    private readonly InMemoryUnitOfWorkFactory _uowFactory;
+
+    public InMemoryObjectRepositoryRepository(InMemoryUnitOfWorkFactory uowFactory) => _uowFactory = uowFactory;
+
+    public Task<ObjectRepository?> GetById(RepositoryId id, CancellationToken ct) =>
+        Task.FromResult(_store.TryGetValue(id.Value, out var repository) ? repository : null);
+
+    public Task Save(ObjectRepository repository, CancellationToken ct)
+    {
+        _uowFactory.StageSave(() => _store[repository.Id.Value] = repository, repository);
+        return Task.CompletedTask;
+    }
+
+    public Task Delete(ObjectRepository repository, CancellationToken ct)
+    {
+        _uowFactory.StageSave(() => _store.TryRemove(repository.Id.Value, out _), repository);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Test-only accessor for IObjectRepositoryElementQuery's in-memory counterpart --
+    /// searching every repository for a tenant is a Query concern (this repository itself
+    /// deliberately has no Find/search method, matching every other repository here), but the
+    /// in-memory query needs *some* way to see what's been saved without a second, duplicate
+    /// store.</summary>
+    internal IEnumerable<ObjectRepository> AllSaved => _store.Values;
+}
+
+public sealed class InMemoryObjectRepositoryElementQuery : IObjectRepositoryElementQuery
+{
+    private readonly InMemoryObjectRepositoryRepository _repositories;
+
+    public InMemoryObjectRepositoryElementQuery(InMemoryObjectRepositoryRepository repositories) => _repositories = repositories;
+
+    public Task<Locator?> FindElement(string page, string element, TenantId tenantId, CancellationToken ct) =>
+        Task.FromResult(_repositories.AllSaved
+            .Where(r => r.TenantId == tenantId)
+            .Select(r => r.FindElement(page, element))
+            .FirstOrDefault(l => l is not null));
 }
 
 public sealed class InMemoryFlowRepository : IFlowRepository

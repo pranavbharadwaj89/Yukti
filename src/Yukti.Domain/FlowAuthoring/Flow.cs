@@ -145,7 +145,15 @@ public sealed class Flow : AggregateRoot<FlowId>
     /// from the two-argument form above, rather than an optional trailing parameter, so
     /// CancellationToken stays the last parameter on both (YUKTI003) without breaking every
     /// existing two-argument call site.</summary>
-    public async Task<FlowPublishResult> Publish(IModuleActionResolver resolver, IRequestTemplateExistsChecker? templateChecker, CancellationToken ct)
+    public Task<FlowPublishResult> Publish(IModuleActionResolver resolver, IRequestTemplateExistsChecker? templateChecker, CancellationToken ct) =>
+        Publish(resolver, templateChecker, null, ct);
+
+    /// <summary>Web UI Testing Module Spec, WEB-T2: same "add another optional checker, keep
+    /// every existing overload compiling" shape as the templateChecker overload above, rather
+    /// than growing this one's own parameter list.</summary>
+    public async Task<FlowPublishResult> Publish(
+        IModuleActionResolver resolver, IRequestTemplateExistsChecker? templateChecker,
+        IRepositoryEntryExistsChecker? repositoryChecker, CancellationToken ct)
     {
         if (Status != FlowStatus.Draft)
             return FlowPublishResult.Failure(new[]
@@ -186,6 +194,28 @@ public sealed class Flow : AggregateRoot<FlowId>
                 if (!exists)
                     errors.Add(new FlowPublishError($"steps[{i}].params.templateId", "unresolved_request_template",
                         $"Step '{step.Name}' references request template '{templateId}', which was not found."));
+            }
+
+            // WEB-T2: a RepositoryRef can appear as any param's value (not restricted to one
+            // param name — "selector", "source", "target" etc. all carry a locator depending on
+            // the action), so this scans every param value rather than one fixed key, unlike the
+            // templateId check above. Recognized by shape: an object with exactly these two
+            // string keys, mirroring how a RepositoryRef serializes on the wire.
+            if (repositoryChecker is not null)
+            {
+                foreach (var (paramName, paramValue) in step.Params)
+                {
+                    if (paramValue is not IReadOnlyDictionary<string, object?> dict
+                        || dict.Count != 2
+                        || dict.GetValueOrDefault("repositoryPage") is not string page
+                        || dict.GetValueOrDefault("repositoryElement") is not string element)
+                        continue;
+
+                    var exists = await repositoryChecker.ExistsAsync(page, element, TenantId, ct);
+                    if (!exists)
+                        errors.Add(new FlowPublishError($"steps[{i}].params.{paramName}", "unresolved_repository_entry",
+                            $"Step '{step.Name}' references repository element '{page}.{element}', which was not found."));
+                }
             }
 
             // A later step's saveAs is deliberately not yet in

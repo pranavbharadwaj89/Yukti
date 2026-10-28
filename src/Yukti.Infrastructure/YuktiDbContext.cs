@@ -9,6 +9,7 @@ using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.Scheduling;
 using Yukti.Domain.SharedKernel;
+using Yukti.Domain.UiVocabulary;
 using Yukti.Infrastructure.Configurations;
 using Yukti.Infrastructure.ReadModels;
 
@@ -67,6 +68,7 @@ public sealed class YuktiDbContext : DbContext
     public DbSet<Flow> Flows => Set<Flow>();
     public DbSet<ApiCollection> ApiCollections => Set<ApiCollection>();
     public DbSet<RequestTemplate> RequestTemplates => Set<RequestTemplate>();
+    public DbSet<ObjectRepository> ObjectRepositories => Set<ObjectRepository>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<TestEnvironment> TestEnvironments => Set<TestEnvironment>();
     public DbSet<TriggerDefinition> Triggers => Set<TriggerDefinition>();
@@ -89,6 +91,7 @@ public sealed class YuktiDbContext : DbContext
         modelBuilder.ApplyConfiguration(new FlowConfiguration());
         modelBuilder.ApplyConfiguration(new ApiCollectionConfiguration());
         modelBuilder.ApplyConfiguration(new RequestTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new ObjectRepositoryConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
         modelBuilder.ApplyConfiguration(new TestEnvironmentConfiguration());
         modelBuilder.ApplyConfiguration(new TriggerConfiguration());

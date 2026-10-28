@@ -77,14 +77,31 @@ public sealed class PublishFlowCommandHandler : AuditableCommandHandler<PublishF
     private readonly IModuleActionResolver _resolver;
     private readonly IPermissionChecker _permissions;
     private readonly ITenantGuard _tenantGuard;
+    private readonly IRequestTemplateExistsChecker? _templateChecker;
+    private readonly IRepositoryEntryExistsChecker? _repositoryChecker;
 
-    public PublishFlowCommandHandler(IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, ITenantGuard tenantGuard, IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor)
+    /// <summary>
+    /// `templateChecker`/`repositoryChecker` optional, defaulting to null — every existing
+    /// direct construction site (Yukti.Host, Yukti.Cli, the authorization/audit tests) keeps
+    /// compiling and behaving identically; only the real DI-wired Api process, which has both
+    /// registered, actually enforces either check. Found while building WEB-T2: API-T9's own
+    /// IRequestTemplateExistsChecker was built and tested at the domain level but was never
+    /// actually passed in here, so the real `POST /flows/{id}/publish` endpoint has never
+    /// enforced "the referenced request template exists" either — closed now for both checks
+    /// together rather than leaving the same gap a second time for repository references.
+    /// </summary>
+    public PublishFlowCommandHandler(
+        IFlowRepository flows, IModuleActionResolver resolver, IPermissionChecker permissions, ITenantGuard tenantGuard,
+        IUnitOfWorkFactory uowFactory, IAuditRepository audit, ITenantContextAccessor tenantAccessor,
+        IRequestTemplateExistsChecker? templateChecker = null, IRepositoryEntryExistsChecker? repositoryChecker = null)
         : base(audit, tenantAccessor, uowFactory)
     {
         _flows = flows;
         _resolver = resolver;
         _permissions = permissions;
         _tenantGuard = tenantGuard;
+        _templateChecker = templateChecker;
+        _repositoryChecker = repositoryChecker;
     }
 
     protected override async Task<FlowPublishResult> HandleCore(PublishFlowCommand cmd, CancellationToken ct)
@@ -95,7 +112,7 @@ public sealed class PublishFlowCommandHandler : AuditableCommandHandler<PublishF
             ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
         _tenantGuard.EnsureAccessible(flow.TenantId); // FR-TENANT-01 Layer 3
 
-        var result = await flow.Publish(_resolver, ct);
+        var result = await flow.Publish(_resolver, _templateChecker, _repositoryChecker, ct);
 
         // FR-OPS-03: no commit here even when Succeeded — the outer
         // wrapper commits (staged state if Succeeded, nothing but the
