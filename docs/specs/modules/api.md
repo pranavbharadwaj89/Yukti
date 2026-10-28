@@ -80,14 +80,42 @@ failure on an invalid pattern, never an unhandled exception).
 `items[0].id`) into the parsed JSON response body, evaluated by
 `JsonPathEvaluator` (a minimal evaluator — no full JSONPath `$`/wildcards/
 filters). `header`/`cookie` are matched case-insensitively against the
-response's headers and `Set-Cookie` cookie names. `schema` is a JSON Schema
-object (not a JSON string) validated by `MinimalJsonSchemaValidator` — see
-"Known constraints" below for exactly what subset it supports. All
+response's headers and `Set-Cookie` cookie names. `schema` (API-T8, ADR-0007)
+is a real JSON Schema (draft 2020-12) validated by `JsonSchema.Net`, either
+inline as a JSON object, or a string naming a reusable schema artifact
+loaded from `ApiSchemaStore` (see "Schema validation" below) — every
+violation is listed with its own instance path, not just the first. All
 assertions in the array are checked via `AssertionEvaluator`; every failure
 is collected and joined with `; ` into a single `error` string — it does
 not fail fast on the first bad assertion, matching the TS prototype's
 `checkAssertion` behavior. An unknown `type` or a malformed entry raises a
 clean `StepOutcome.Failed` rather than an unhandled exception.
+
+## Schema validation (API-T8, ADR-0007)
+
+`JsonSchemaValidator` wraps `JsonSchema.Net` (draft 2020-12) — `$ref`,
+`oneOf`/`anyOf`/`allOf`/`not`, `pattern`, `format`, and numeric/string
+length bounds all work, unlike the retired validation path. Evaluated with
+`OutputFormat.List`; every leaf result with errors becomes one `<path>:
+<message>` entry (`$` for the root), joined with `; ` into the assertion's
+single `error` string — the same multi-failure join convention as
+`assertionResults` and every other collected-failures case in this module.
+
+A `schema` value that's a JSON object is used inline. A `schema` value
+that's a *string* names a schema file in `ApiSchemaStore`'s configured
+directory (`YUKTI_API_SCHEMAS_DIR` env var, default `<app base dir>/api-
+schemas`, looked up as `<name>.json`) — the reusable-artifact half of
+API-T8. Resolved at `assert`-parse time (`AssertionParamMapper`), so an
+unknown reference fails the step naming it, same as a missing multipart
+file. Like `ApiFileStorage` (API-T3), this directory is shared across
+tenants, not yet scoped to a run or tenant — there's no upload mechanism to
+either module to hang that scoping from. Treat it as operator-managed
+fixtures, a real documented gap, not a security boundary.
+
+`MinimalJsonSchemaValidator` (the hand-rolled subset) is still in the
+codebase but no longer used by any assertion — left in place rather than
+deleted, since removing working, documented, tested code that isn't
+actually in the way is unnecessary churn.
 
 ## Response handling
 
@@ -204,10 +232,8 @@ not tenant data — a real gap, not a hidden one.
 - The multipart file-parts directory is shared across tenants (see above)
   — not yet a security boundary, just a fixtures folder.
 - `JsonPathEvaluator`'s `path` syntax is dotted segments plus `[index]` array
-  access only — no JSONPath `$`, wildcards, or filter expressions.
-- `MinimalJsonSchemaValidator` (the `schema` assertion) supports only
-  `type`, `required`, `properties`, `items`, and `enum` — no `$ref`, no
-  `oneOf`/`anyOf`/`allOf`/`not`, no `pattern`/`format`/numeric or string
-  length bounds, no schema draft negotiation. It's a hand-rolled subset
-  (matching `JsonPathEvaluator`'s own scope-down), not a full JSON Schema
-  implementation.
+  access only — no JSONPath `$`, wildcards, or filter expressions. (The
+  `schema` assertion's own JSON Schema validation no longer shares this
+  limitation — see "Schema validation" above.)
+- The named-schema-reference directory (`ApiSchemaStore`) is shared across
+  tenants, same gap as the multipart file-parts directory above.
