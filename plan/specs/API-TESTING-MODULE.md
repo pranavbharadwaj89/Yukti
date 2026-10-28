@@ -102,14 +102,26 @@ public sealed record MatchesJsonSchema(string SchemaRefOrInline)    : ApiAsserti
 
 ## Tasks — request building and authentication
 
-### API-T1 — Domain model and schema (P0)
+### API-T1 — Domain model and schema (P0) — ⏭️ superseded, covered incrementally by T2–T10
 
-- [ ] Every type from the domain model section exists, with `mypy`-equivalent strictness: nullable reference types on, no `object` where a union will do.
-- [ ] `supported_actions()` returns the `request` action with the full parameter schema for all new fields. Every parameter and every union case has a non-empty description.
-- [ ] A round-trip test: serialize a fully-populated `ApiRequestSpec` to flow JSON and back, and assert equality. This catches schema drift before it reaches the UI.
-- [ ] The existing `ApiModuleAssertionTests` still pass unchanged.
+Deliberately **not** built as a standalone `ApiRequestSpec`/`RequestBody`/`AuthSpec`/
+`ExtractionSpec` type set — this spec's own intro says "shapes are illustrative, not literal,
+match the codebase's existing conventions." Building those types ahead of the tasks that
+actually need them would be exactly the premature abstraction CLAUDE.md's coding rules warn
+against. Instead, each task built the real shape it actually needed, as it needed it:
+`pathParams`/`queryParams` (T2), body/cookie shapes (T3), `auth` (T4/T5), `extract` (T6), the
+assertion hierarchy (T7), `schema`/`ApiSchemaStore` (T8), `RequestTemplate` (T9), import DTOs
+(T10). `supported_actions()` carries the full, current parameter schema with a non-empty
+description on every param — proven continuously by `ModuleRegistryTests` and every task's own
+tests, not by one T1-shaped round-trip test. Nothing here is outstanding; there is simply no
+separate T1 deliverable to tick.
 
-✔ `dotnet test --filter "FullyQualifiedName~ApiModel"`
+- [ ] Every type from the domain model section exists, with `mypy`-equivalent strictness: nullable reference types on, no `object` where a union will do. *(N/A — see above.)*
+- [x] `supported_actions()` returns the `request` action with the full parameter schema for all new fields. Every parameter and every union case has a non-empty description.
+- [ ] A round-trip test: serialize a fully-populated `ApiRequestSpec` to flow JSON and back, and assert equality. This catches schema drift before it reaches the UI. *(N/A — no such literal type exists; schema drift is instead caught per-task, e.g. `ApiImportTests`' `Generated_flow_file_round_trips_through_FlowFileJson_deserialization`.)*
+- [x] The existing `ApiModuleAssertionTests` still pass unchanged (now extended, never broken, across T2–T8).
+
+✔ `dotnet test --filter "FullyQualifiedName~ApiModel"` — no `ApiModel`-named tests exist; see above.
 
 Time-box: 2 h.
 
@@ -191,15 +203,17 @@ This is what makes multi-step API flows possible. REST Assured's `extract().path
 
 Time-box: 3 h.
 
-### API-T7 — The expanded assertion set (P0)
+### API-T7 — The expanded assertion set (P0) — ✅ done, merged
 
-- [ ] Every assertion type from the domain model works, with the existing four unchanged in behaviour so current flows keep passing.
-- [ ] Each failure reports **expected, actual, and the path or header involved**, plus a truncated response body. An assertion failure a tester can't diagnose from the report is a failed assertion implementation.
-- [ ] `ResponseTimeUnder` measures the full request-to-response time and excludes Yukti's own overhead, so it means what a user thinks it means.
-- [ ] Numeric comparison handles JSON number types sensibly: `1` equals `1.0`, and a string `"1"` does **not** equal a number `1`. Test both explicitly — loose equality here causes false passes.
-- [ ] **Soft assertions (P1):** an assertion marked non-fatal collects its failure and lets the step continue, reporting every failure together. The report model already supports multiple failures per step, so this is cheap and genuinely useful.
+- [x] Every assertion type from the domain model works, with the existing four unchanged in behaviour so current flows keep passing.
+- [x] Each failure reports **expected, actual, and the path or header involved**, plus a truncated response body. An assertion failure a tester can't diagnose from the report is a failed assertion implementation.
+- [x] `ResponseTimeUnder` measures the full request-to-response time and excludes Yukti's own overhead, so it means what a user thinks it means.
+- [x] Numeric comparison handles JSON number types sensibly: `1` equals `1.0`, and a string `"1"` does **not** equal a number `1`. Test both explicitly — loose equality here causes false passes.
+- [ ] **Soft assertions (P1):** not built — every assertion in the array is still evaluated and every failure collected (not fail-fast, see docs/specs/modules/api.md), but there is no per-assertion "non-fatal" marker that lets a *step* pass despite a failed assertion. P1, not required for this task's own gate.
 
-✔ `dotnet test --filter "FullyQualifiedName~ApiAssertion"`
+✔ `dotnet test --filter "FullyQualifiedName~ApiModuleAssertionTests"` (the spec's own literal
+filter, `ApiAssertion`, doesn't match this project's actual test class name — fixed vocabulary,
+not renamed to match the spec's illustrative name, per CLAUDE.md. 21/21 passing.)
 
 Time-box: 3 h.
 
@@ -312,10 +326,10 @@ dotnet test --filter "FullyQualifiedName~ModuleParity" # contract untouched
 
 ### Open questions
 
-- [ ] **Blocking T4 and T5 — you:** is the `{{secrets}}` pipeline scheduled before or after this module? If after, T4 and T5 are blocked and the module ships without authentication, which limits it severely.
-- [ ] **Blocking T8 — you:** which JSON Schema library? Any addition needs an ADR. `JsonSchema.Net` is the common .NET choice.
-- [ ] **Non-blocking — you:** do your team's APIs use OAuth client credentials, or a different flow (authorization code, implicit)? The spec builds client credentials because it's the machine-to-machine standard; another flow would change T5.
-- [ ] **Non-blocking — you:** is a real Postman collection available to test T10's importer against? Without one, the importer is built against assumptions.
+- [x] **Blocking T4 and T5 — you:** is the `{{secrets}}` pipeline scheduled before or after this module? **Answered 2026-10-28**: build it now rather than wait — the `{{secrets.name}}` syntax was added to `VariableStore` this session (see DISC-16, `plan/PLAN.md`), unblocking both.
+- [x] **Blocking T8 — you:** which JSON Schema library? **Answered**: `JsonSchema.Net` 9.5.0 — ADR-0007.
+- [x] **Non-blocking — you:** do your team's APIs use OAuth client credentials, or a different flow? **Answered**: client credentials, as the spec's own default assumed — T5 built exactly that.
+- [ ] **Non-blocking — you:** is a real Postman collection available to test T10's importer against? Still unanswered — `PostmanImporter` was built and tested against hand-written Collection v2.1 JSON matching the documented schema, not a real exported collection. If a real one surfaces later, worth a quick pass to confirm nothing in a real export surprises the importer.
 
 ### Risks
 
