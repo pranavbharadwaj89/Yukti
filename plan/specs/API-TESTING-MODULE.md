@@ -169,18 +169,18 @@ Time-box: 4 h.
 
 ## Tasks — extraction, assertions, templates
 
-### API-T6 — Extraction into variables (P0)
+### API-T6 — Extraction into variables (P0) — ✅ done, merged
 
 This is what makes multi-step API flows possible. REST Assured's `extract().path()`.
 
-- [ ] JSONPath extraction from the response body: `$.data.orders[0].id` saved as a named variable, usable by any later step via `{{vars.name}}`.
-- [ ] Extraction from a **header**, the **status code**, the **response time** and a **cookie**, not just the body.
-- [ ] Several extractions per step, each with its own `saveAs`.
-- [ ] A path that matches nothing **fails the step** by default, naming the path and showing a truncated response body. It never writes an empty variable silently — that produces a confusing failure three steps later instead of a clear one here.
-- [ ] `Required: false` allows an optional extraction that writes null when absent, for genuinely optional fields.
-- [ ] XPath extraction for XML responses, same rules.
-- [ ] Extracted values keep their type: a JSON number stays a number, an object stays an object, so a later step can reference `{{vars.order.customer.name}}`.
-- [ ] Publish-time validation: a step referencing `{{vars.x}}` where no earlier step saves `x` is rejected with the existing 422 behaviour. **Reuse the existing validator — do not write a second one.**
+- [x] JSONPath extraction from the response body: `$.data.orders[0].id` saved as a named variable, usable by any later step via `{{vars.name}}`. (Addressed as `{{vars.<step>.extracted.name}}`, nested under the step's own `saveAs` rather than a flat top-level name — see docs/specs/modules/api.md's "Extraction" section for why this satisfies the validator-reuse rule below with zero engine change.)
+- [x] Extraction from a **header**, the **status code**, the **response time** and a **cookie**, not just the body.
+- [x] Several extractions per step, each with its own `saveAs`.
+- [x] A path that matches nothing **fails the step** by default, naming the path and showing a truncated response body. It never writes an empty variable silently — that produces a confusing failure three steps later instead of a clear one here.
+- [x] `Required: false` allows an optional extraction that writes null when absent, for genuinely optional fields.
+- [x] XPath extraction for XML responses, same rules.
+- [x] Extracted values keep their type: a JSON number stays a number, an object stays an object, so a later step can reference `{{vars.order.customer.name}}`.
+- [x] Publish-time validation: a step referencing `{{vars.x}}` where no earlier step saves `x` is rejected with the existing 422 behaviour. **Reuse the existing validator — do not write a second one.** (Zero new validation code: `Flow.cs`'s existing check only inspects a `{{vars.x...}}` reference's first segment against declared `SaveAs` names, which the nested-under-SaveAs addressing above already satisfies untouched.)
 
 ✔ `dotnet test --filter "FullyQualifiedName~ApiExtraction"`
 

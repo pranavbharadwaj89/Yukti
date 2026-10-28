@@ -45,6 +45,7 @@ returns `Failed("Unknown api action '<action>'. Supported: 'request'.")`.
 | `timeoutMs` | number | no | `10000` | done (via `AbortController`) | done (via a linked `CancellationTokenSource.CancelAfter`, since the module's shared static `HttpClient` can't safely take a per-request `.Timeout` under concurrent flows) — the budget covers the whole request including any redirects it follows |
 | `assert` | array | no | `[]` | done (see below) | done — full `Assertion` hierarchy (`Yukti.Domain.Assertions`), `type`-discriminated on the wire (see below) |
 | `expectedStatus` | number | no | - | not present (TS uses `assert: [{status}]` instead) | done — kept as backward-compatible shorthand, translated into an implicit `{type:"status"}` assertion prepended to the `assert` list |
+| `extract` | array | no | `[]` | not present | done (API-T6) — see "Extraction" below |
 
 **Assertion wire shape (C#)** — `type`-discriminated JSON objects, mapped
 1:1 onto `Yukti.Domain.Assertions.Assertion`'s record types via
@@ -129,6 +130,53 @@ Both implementations:
   `error: <exception message>`, no `data`.
 - **Timeout**: `status: failed`, `error: "Request timed out after <timeoutMs>ms"`,
   no `data`.
+
+## Extraction (API-T6)
+
+`extract` is an array of `{saveAs, source, path?, xpath?, required?}`, evaluated
+**before** `assert` (so a bad extraction — almost always the author's own typo —
+is diagnosed on its own terms rather than buried under unrelated assertion
+failures from the same response). Every entry writes into this step's own
+`data.extracted.<saveAs>`:
+
+```json
+{ "extract": [
+  { "saveAs": "orderId", "source": "body", "path": "data.orders[0].id" },
+  { "saveAs": "requestId", "source": "header", "path": "X-Request-Id" },
+  { "saveAs": "code", "source": "status" },
+  { "saveAs": "elapsed", "source": "responseTime" },
+  { "saveAs": "sessionCookie", "source": "cookie", "path": "session" },
+  { "saveAs": "legacyId", "source": "body", "xpath": "/order/id" },
+  { "saveAs": "optional", "source": "body", "path": "data.maybe", "required": false }
+]}
+```
+
+Reached from a later step via `{{vars.<step>.extracted.<saveAs>}}` —
+**deliberately not** a flat top-level `{{vars.<saveAs>}}`. This is a narrower
+reading than the spec's own illustrative wording, chosen because the
+existing publish-time validator (`Flow.cs`) only ever checks a
+`{{vars.x...}}` reference's *first* segment against a step's own declared
+`SaveAs` name; nesting under that satisfies "reuse the existing validator,
+never write a second one" with zero engine or domain change, exactly as
+required.
+
+- `source: body` (the default) evaluates `path` as a dotted
+  JSONPath-subset path via `JsonPathEvaluator` (same evaluator `assert`
+  uses), or `xpath` via `System.Xml.XPath` against the raw response text
+  when the response is XML. `path` and `xpath` are mutually exclusive.
+- `source: header` / `cookie` match `path` case-insensitively against the
+  response's headers / the cookie jar (after this response's own
+  `Set-Cookie` has already been folded in).
+- `source: status` / `responseTime` need no `path` at all.
+- A required (`required` defaults to `true`) extraction that finds nothing
+  fails the step, naming the `saveAs` and the `source:path`/`xpath`
+  locator, plus a body excerpt truncated to 300 characters — never a silent
+  empty write. `required: false` writes `null` instead.
+- A value keeps its parsed type (`JsonPathEvaluator.ToPlainValue` — number,
+  string, bool, null, object, array), so `{{vars.<step>.extracted.order.customer.name}}`
+  works for an extracted object exactly like the body itself does.
+- A malformed XML document or a non-matching XPath expression are both
+  "not found" — never an unhandled exception.
 
 ## Multipart file parts (API-T3)
 
