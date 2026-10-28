@@ -1315,7 +1315,7 @@ work here, don't assume they still hold.
   `FlowEngine` hands to a module, never written into `run.Variables`, so it can't leak back out
   via a later `{{vars...}}` reference or a `saveAs`. Proven in `VariableStoreTests` and (API-T4's
   own leak test, reusing the same sentinel scan this entry anticipated) `SecretRedactionTests`.
-  This unblocks API-T4 (done) and API-T5 (OAuth2 client credentials, in progress).
+  This unblocks API-T4 (done) and API-T5 (OAuth2 client credentials, done).
 - [x] DISC-17 `docker compose up` — the actual documented quickstart path, and therefore every
   seeded demo flow a new user/teammate ever runs — connected to Postgres as the **superuser**
   (`PGUSER:-postgres`), never as `yukti_app`/`yukti_worker` (the restricted, non-owner roles

@@ -23,7 +23,7 @@ Path and query parameters, form and multipart bodies, cookies, the full authenti
 
 ### Dependencies
 
-- [x] **Previously blocking:** the `{{secrets}}` resolution pipeline (deferred from Day 6, scheduled in v0.2). Authentication tasks API-T4 and API-T5 could not be completed without it — credentials must never be typed into a step. Owner approved building it now (2026-10-28) rather than waiting for v0.2 — see DISC-16 in plan/PLAN.md. Unblocked; T4 is done, T5 in progress.
+- [x] **Previously blocking:** the `{{secrets}}` resolution pipeline (deferred from Day 6, scheduled in v0.2). Authentication tasks API-T4 and API-T5 could not be completed without it — credentials must never be typed into a step. Owner approved building it now (2026-10-28) rather than waiting for v0.2 — see DISC-16 in plan/PLAN.md. Unblocked; T4 and T5 are both done.
 - [ ] Non-blocking: the Object Repository (Web module spec) is **not** required here. Request templates (API-T9) are the API equivalent and are specified independently.
 
 ### The mapping that validates this design
@@ -156,17 +156,17 @@ module dispatches through it) rather than deferring further — `ICredentialReso
 
 Time-box: 3 h.
 
-### API-T5 — OAuth 2.0 client credentials (P0, needs secrets pipeline)
+### API-T5 — OAuth 2.0 client credentials (P0) — ✅ done, merged
 
-The single biggest current gap. Without it, every authenticated API suite needs a manual token step that expires and breaks.
+The single biggest current gap. Without it, every authenticated API suite needs a manual token step that expires and breaks. Previously blocked alongside API-T4 on the `{{secrets}}` pipeline (DISC-16) — unblocked the same way (owner's go-ahead, 2026-10-28).
 
-- [ ] Yukti fetches the token itself from `TokenUrl` using the client ID and secret, and attaches it as a bearer token.
-- [ ] The token is **cached for its lifetime** (from the response's `expires_in`, minus a safety margin of 60 seconds) and reused across steps and across flows within the same tenant and configuration.
-- [ ] Expiry triggers an automatic refresh, transparently to the flow.
-- [ ] A token fetch failure fails the step with the provider's error description included, so a misconfigured client is diagnosable.
-- [ ] The token value never appears in any output, same scan as T4.
-- [ ] The cache key includes the tenant, so two tenants with the same token URL never share a token. **This is a tenant-isolation concern — test it explicitly.**
-- [ ] A **custom auth step** escape hatch exists: call an endpoint, extract a value with T6's extraction, use it via `{{vars}}` in later steps. This covers schemes Yukti doesn't implement.
+- [x] Yukti fetches the token itself from `TokenUrl` using the client ID and secret, and attaches it as a bearer token. (Through `ApiModule`'s own `Http` client — the token fetch goes through the SSRF guard exactly like any other request, per this spec's own "never bypass the SSRF guard" rule.)
+- [x] The token is **cached for its lifetime** (from the response's `expires_in`, minus a safety margin of 60 seconds) and reused across steps and across flows within the same tenant and configuration. (A process-lifetime static `ConcurrentDictionary`, same category of static state as the module's own shared `HttpClient` — not per-instance, so `FR-PLUGIN-07`'s zero-instance-fields contract test is untouched.)
+- [x] Expiry triggers an automatic refresh, transparently to the flow.
+- [x] A token fetch failure fails the step with the provider's error description included, so a misconfigured client is diagnosable. (Parses `error_description`/`error` from the OAuth error response.)
+- [x] The token value never appears in any output, same scan as T4. (Same `SecretRedactionTests` extended for T4 — the bearer token `oauth2ClientCredentials` produces is attached to the exact same `Authorization` header the `bearer`/`basic` schemes already use, so the existing name-based redaction and the authored-params-never-contain-the-resolved-value proof both already cover it structurally; `clientId`/`clientSecret` themselves are `{{secrets.x}}`-resolved exactly like T4's other credentials.)
+- [x] The cache key includes the tenant, so two tenants with the same token URL never share a token. **This is a tenant-isolation concern — test it explicitly.** (New `ExecutionContext.TenantId` — optional/non-`required`, so every pre-existing construction site keeps compiling; `FlowEngine` is the only real populator. `Two_tenants_with_the_same_token_url_and_client_never_share_a_cached_token` uses the identical `tokenUrl`+`clientId` for both tenants on purpose, so isolation demonstrably comes from the tenant alone.)
+- [x] A **custom auth step** escape hatch exists: call an endpoint, extract a value with T6's extraction, use it via `{{vars}}` in later steps. This covers schemes Yukti doesn't implement. (No new code — this is exactly what API-T6's `extract` + ordinary `{{vars.<step>.extracted.<name>}}` chaining already does; `ApiExtractionTests` already proves the mechanism.)
 
 ✔ `dotnet test --filter "FullyQualifiedName~OAuth"`
 

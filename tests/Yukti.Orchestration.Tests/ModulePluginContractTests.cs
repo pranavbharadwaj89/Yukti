@@ -30,13 +30,18 @@ public sealed class ModulePluginContractTests
     }
 
     [Fact]
-    public void ExecutionContext_exposes_exactly_the_four_FR_PLUGIN_02_properties()
+    public void ExecutionContext_exposes_exactly_the_five_FR_PLUGIN_02_properties()
     {
+        // API-T5: TenantId joins the original four — a conscious, owner-approved widening (the
+        // OAuth2 client-credentials token cache needs to scope by tenant, and a module has no
+        // other way to learn it without a repository), not an accidental scope-creep this test
+        // failed to catch. Still exactly enumerable, still never a repository/DbContext/engine
+        // reference — the same "narrow slice, nothing more" shape FR-PLUGIN-02 asks for either way.
         var propertyNames = typeof(ExecutionContext).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name)
             .ToHashSet();
 
-        var expected = new[] { "RunId", "Variables", "Credentials", "RunCancellation" };
+        var expected = new[] { "RunId", "Variables", "Credentials", "RunCancellation", "TenantId" };
 
         Assert.Equal(expected.OrderBy(n => n), propertyNames.OrderBy(n => n));
     }

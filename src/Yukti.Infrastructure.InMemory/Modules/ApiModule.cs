@@ -164,7 +164,7 @@ public sealed class ApiModule : IAutomationModule
                 new ParamSpec { Name = "assert", Type = ParamType.Array, Required = false, Description = "Array of assertions (see docs/specs/modules/api.md for exact shapes): status, statusIn, pathEquals, pathContains, pathExists, pathCount, headerExists, headerEquals, headerContains, cookieExists, schema, responseTimeUnder, bodyMatchesPattern. All evaluated; failures collected, not fail-fast." },
                 new ParamSpec { Name = "expectedStatus", Type = ParamType.Number, Required = false, Description = "Convenience shorthand for a single {type:'status'} assertion; kept for backward compatibility." },
                 new ParamSpec { Name = "extract", Type = ParamType.Array, Required = false, Description = "Values to pull out, written to this step's own data.extracted.<saveAs> (reach it via {{vars.<step>.extracted.<saveAs>}}). Each entry: {saveAs, source: body|header|status|responseTime|cookie, path (JSONPath into the body, or the header/cookie name), xpath (body only, for an XML response), required (default true)}. A required extraction that matches nothing fails the step, naming it." },
-                new ParamSpec { Name = "auth", Type = ParamType.Object, Required = false, Description = "basic|bearer|apiKey (shapes: docs/specs/modules/api.md). Via {{secrets.name}}, never a plain string; a same-named header/query/cookie overrides it." },
+                new ParamSpec { Name = "auth", Type = ParamType.Object, Required = false, Description = "basic|bearer|apiKey|oauth2ClientCredentials (shapes: docs/specs/modules/api.md). Via {{secrets.name}}, never a plain string; a same-named header/query/cookie overrides it." },
             }
         }
     };
@@ -203,7 +203,7 @@ public sealed class ApiModule : IAutomationModule
             // {{secrets.name}} reference inside `auth` into a real value (VariableStore,
             // API-T4) — ApiModule itself never touches Vault/ICredentialResolver directly, the
             // same "already-resolved plain value" shape {{vars.x}} has always arrived in.
-            var auth = BuildAuth(parameters);
+            var auth = await BuildAuth(parameters, ctx.TenantId, ct);
 
             var queryParams = MergeObjectDict(auth.ExtraQueryParams, AsParamDictionary(parameters.GetValueOrDefault("queryParams")));
             var urlWithPathParams = ResolvePathParams(url, AsParamDictionary(parameters.GetValueOrDefault("pathParams")));
@@ -504,7 +504,11 @@ public sealed class ApiModule : IAutomationModule
             new Dictionary<string, string>(), new Dictionary<string, string>(), new Dictionary<string, string>());
     }
 
-    private static AuthApplication BuildAuth(IReadOnlyDictionary<string, object?> parameters)
+    /// <summary>Instance method, not static: `oauth2ClientCredentials` fetches its token through
+    /// this module's own `Http` (so the SSRF guard applies to the token fetch exactly like any
+    /// other request, per the spec's own rule). <paramref name="tenantId"/> scopes the OAuth
+    /// token cache only — the other three schemes ignore it entirely.</summary>
+    private async Task<AuthApplication> BuildAuth(IReadOnlyDictionary<string, object?> parameters, TenantId? tenantId, CancellationToken ct)
     {
         if (parameters.GetValueOrDefault("auth") is not IReadOnlyDictionary<string, object?> auth)
             return AuthApplication.None;
@@ -539,14 +543,110 @@ public sealed class ApiModule : IAutomationModule
                         _ => throw new ArgumentException($"api.request auth type 'apiKey' has unknown 'in' value '{location}'. Supported: header, query, cookie."),
                     };
                 }
+            case "oauth2ClientCredentials":
+                {
+                    var tokenUrl = RequireAuthString(auth, "tokenUrl", type);
+                    var clientId = RequireAuthString(auth, "clientId", type);
+                    var clientSecret = RequireAuthString(auth, "clientSecret", type);
+                    var scopes = auth.GetValueOrDefault("scopes") is IEnumerable<object?> rawScopes
+                        ? rawScopes.Select(s => s?.ToString() ?? "").ToList()
+                        : null;
+                    var token = await GetOrFetchOAuthToken(tokenUrl, clientId, clientSecret, scopes, tenantId, ct);
+                    return AuthApplication.None with { ExtraHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {token}" } };
+                }
             default:
-                throw new ArgumentException($"api.request 'auth' has unknown type '{type}'. Supported: basic, bearer, apiKey.");
+                throw new ArgumentException($"api.request 'auth' has unknown type '{type}'. Supported: basic, bearer, apiKey, oauth2ClientCredentials.");
         }
     }
 
     private static string RequireAuthString(IReadOnlyDictionary<string, object?> auth, string key, string type) =>
         auth.GetValueOrDefault(key) as string
         ?? throw new ArgumentException($"api.request auth type '{type}' requires a '{key}' string field.");
+
+    /// <summary>
+    /// API-T5: one token per (tenant, tokenUrl, clientId, scopes) — the tenant in the key is
+    /// explicitly the tenant-isolation guarantee the spec demands ("two tenants with the same
+    /// token URL never share a token"). Process-lifetime, not per-run or per-instance: a static
+    /// field is fine here (FR-PLUGIN-07 only forbids *instance* fields a concurrent Run() could
+    /// race on), and the whole point of caching is reuse across runs and flows.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(TenantId? TenantId, string TokenUrl, string ClientId, string ScopeKey), CachedOAuthToken> OAuthTokenCache = new();
+
+    private readonly record struct CachedOAuthToken(string AccessToken, DateTimeOffset ExpiresAt);
+
+    private async Task<string> GetOrFetchOAuthToken(
+        string tokenUrl, string clientId, string clientSecret, IReadOnlyList<string>? scopes, TenantId? tenantId, CancellationToken ct)
+    {
+        var scopeKey = scopes is { Count: > 0 } ? string.Join(" ", scopes) : "";
+        var key = (tenantId, tokenUrl, clientId, scopeKey);
+
+        if (OAuthTokenCache.TryGetValue(key, out var cached) && DateTimeOffset.UtcNow < cached.ExpiresAt)
+            return cached.AccessToken;
+
+        var fresh = await FetchOAuthToken(tokenUrl, clientId, clientSecret, scopes, ct);
+        OAuthTokenCache[key] = fresh;
+        return fresh.AccessToken;
+    }
+
+    /// <summary>Goes through `Http` — the same shared, SSRF-guarded client every other request
+    /// in this module uses — so a token-fetch target is checked exactly like any other.</summary>
+    private async Task<CachedOAuthToken> FetchOAuthToken(
+        string tokenUrl, string clientId, string clientSecret, IReadOnlyList<string>? scopes, CancellationToken ct)
+    {
+        var form = new Dictionary<string, string>
+        {
+            ["grant_type"] = "client_credentials",
+            ["client_id"] = clientId,
+            ["client_secret"] = clientSecret,
+        };
+        if (scopes is { Count: > 0 })
+            form["scope"] = string.Join(" ", scopes);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, tokenUrl) { Content = new FormUrlEncodedContent(form) };
+        using var response = await Http.SendAsync(request, ct);
+        var text = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var description = TryExtractOAuthErrorDescription(text) ?? $"HTTP {(int)response.StatusCode}";
+            throw new ArgumentException($"OAuth2 token request to '{tokenUrl}' failed: {description}");
+        }
+
+        JsonElement root;
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            root = doc.RootElement.Clone();
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException($"OAuth2 token response from '{tokenUrl}' was not valid JSON: {ex.Message}");
+        }
+
+        if (!root.TryGetProperty("access_token", out var tokenEl) || tokenEl.GetString() is not string accessToken)
+            throw new ArgumentException($"OAuth2 token response from '{tokenUrl}' has no 'access_token'.");
+
+        // expires_in minus a 60s safety margin, per the spec's own rule; a response with no
+        // expires_in at all defaults to a conservative 5 minutes rather than caching forever.
+        var expiresInSeconds = root.TryGetProperty("expires_in", out var expiresEl) && expiresEl.TryGetInt32(out var seconds) ? seconds : 300;
+        var expiresAt = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(0, expiresInSeconds - 60));
+        return new CachedOAuthToken(accessToken, expiresAt);
+    }
+
+    private static string? TryExtractOAuthErrorDescription(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var description = doc.RootElement.TryGetProperty("error_description", out var d) ? d.GetString() : null;
+            var error = doc.RootElement.TryGetProperty("error", out var e) ? e.GetString() : null;
+            return description ?? error;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static IReadOnlyDictionary<string, string> MergeStringDict(
         IReadOnlyDictionary<string, string> baseDict, IReadOnlyDictionary<string, string> overrideDict)

@@ -160,7 +160,7 @@ Both implementations:
 - **Timeout**: `status: failed`, `error: "Request timed out after <timeoutMs>ms"`,
   no `data`.
 
-## Authentication (API-T4)
+## Authentication (API-T4/T5)
 
 `auth` is `{type, ...}`. Every credential value comes through `{{secrets.name}}`
 (VariableStore, resolved via `ExecutionContext`'s `ICredentialResolver` —
@@ -174,12 +174,37 @@ Vault or `ICredentialResolver` directly.
 { "auth": { "type": "basic", "username": "{{secrets.dbUser}}", "password": "{{secrets.dbPass}}" } }
 { "auth": { "type": "bearer", "token": "{{secrets.apiToken}}" } }
 { "auth": { "type": "apiKey", "name": "X-Api-Key", "value": "{{secrets.apiKey}}", "in": "header" } }
+{ "auth": { "type": "oauth2ClientCredentials", "tokenUrl": "https://auth.example.com/token",
+            "clientId": "{{secrets.oauthClientId}}", "clientSecret": "{{secrets.oauthClientSecret}}",
+            "scopes": ["read", "write"] } }
 ```
 
 - `basic` → `Authorization: Basic <base64(username:password)>`.
 - `bearer` → `Authorization: Bearer <token>`.
 - `apiKey` → `name`/`value` placed per `in`: `header` (default), `query`, or
   `cookie`.
+- `oauth2ClientCredentials` (API-T5) → `ApiModule` fetches its own token —
+  a `grant_type=client_credentials` POST to `tokenUrl`, through its own
+  `Http` client, so **the token fetch goes through the SSRF guard exactly
+  like any other request**. The response's `access_token` is attached as
+  `Authorization: Bearer <token>`.
+  - **Cached** for its lifetime (`expires_in` minus a 60-second safety
+    margin; no `expires_in` at all defaults to a conservative 5 minutes)
+    and reused across steps and flows — a process-lifetime static cache,
+    keyed by `(TenantId?, tokenUrl, clientId, scopes)`. Expiry triggers a
+    transparent refetch on the next request that needs it.
+  - **Tenant-isolated**: `ExecutionContext.TenantId` (new, API-T5 —
+    optional/non-`required`, so every pre-existing `ExecutionContext`
+    construction site keeps compiling unchanged; `FlowEngine` is the only
+    real populator, from the `FlowRun`) is part of the cache key, so two
+    tenants configured with the identical `tokenUrl`/`clientId` never
+    share a cached token even though nothing else about their config
+    differs.
+  - A failed token fetch fails the step with the provider's own
+    `error_description` (or `error`) from the OAuth error response, not a
+    generic HTTP status.
+  - `scopes`, if given, is space-joined into the request's own `scope`
+    field, per RFC 6749.
 - An explicit `headers`/`queryParams`/`cookies` entry of the **same name**
   always overrides what `auth` would otherwise set — `auth` only fills in
   what isn't already there.

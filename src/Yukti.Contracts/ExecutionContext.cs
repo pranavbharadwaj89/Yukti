@@ -25,4 +25,13 @@ public sealed class ExecutionContext
     public required IReadOnlyDictionary<string, object?> Variables { get; init; }
     public required ICredentialResolver Credentials { get; init; }
     public required CancellationToken RunCancellation { get; init; }
+
+    /// <summary>
+    /// API-T5: lets a module scope its own process-lifetime caches (e.g. ApiModule's OAuth2
+    /// client-credentials token cache) by tenant, without giving it a repository or any other
+    /// way to look tenants up itself. Optional and not `required` on purpose — every
+    /// pre-existing ExecutionContext construction site (every test, the CLI, Yukti.Host) keeps
+    /// compiling unchanged; only FlowEngine, the one real populator, sets it from the FlowRun.
+    /// </summary>
+    public TenantId? TenantId { get; init; }
 }
