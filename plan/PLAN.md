@@ -1426,3 +1426,21 @@ work here, don't assume they still hold.
   (schema-driven UI conventions, TanStack Query) is meaningfully larger scope than the
   domain/migration/engine-hook work the rest of API-T9 needed, closer to a full day's work by
   itself. Not forgotten; a real follow-up, not a silent gap.
+- [ ] DISC-21 Owner's "Module Depth" program, second module: the Web UI Testing Module Spec
+  ("Selenium-class capability on Playwright," 2026-10-27) — saved to
+  `plan/specs/WEB-TESTING-MODULE.md`, same pattern as `API-TESTING-MODULE.md`. Tasks WEB-T1–T8,
+  in order; WEB-T1 and WEB-T2 are prerequisites for the not-yet-started Mobile module and must
+  stay engine-neutral.
+  **WEB-T1 (shared UI vocabulary) closed 2026-10-29:** `Yukti.Domain.UiVocabulary` — `Locator`,
+  `LocatorSpec`, `LocatorStrategy`, `WaitCondition` + 13 subtypes, placed inside the existing
+  `Yukti.Domain` project (zero `PackageReference`s already, so "no Playwright type" is structural,
+  not just conventional) rather than a new project. `UiVocabularyTests` (17/17): an assembly-
+  reference check that fails if `Yukti.Domain` ever references Playwright, plus the spec's own
+  "fake engine" design test (test-only, pattern-matches every `WaitCondition` case with zero
+  browser types). `ADR-0008` records the engine decision the spec itself calls "locked, do not
+  revisit," consistent with `CLAUDE.md` §4's existing Playwright line and ADR-0001.
+  ✔ `dotnet test --filter "FullyQualifiedName~UiVocabulary"` → 17/17 passed.
+  **Open per the spec's own "Open questions":** Gate 2 (port a real 10+ test Selenium/Playwright
+  suite) needs the owner to supply one — tracked, not resolved, in `plan/OPEN-QUESTIONS.md`.
+  `executeScript` deferred by default per the spec's own recommendation (P1, non-blocking).
+  Next: WEB-T2 (Object Repository artifact).
