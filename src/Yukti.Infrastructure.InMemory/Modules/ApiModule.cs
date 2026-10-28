@@ -5,6 +5,8 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.XPath;
 using Yukti.Application.Security;
 using Yukti.Contracts;
 using Yukti.Domain.Assertions;
@@ -161,6 +163,7 @@ public sealed class ApiModule : IAutomationModule
                 new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = DefaultTimeoutMs, Description = "Request timeout in milliseconds, for the whole request including any redirects it follows." },
                 new ParamSpec { Name = "assert", Type = ParamType.Array, Required = false, Description = "Array of assertions (see docs/specs/modules/api.md for exact shapes): status, statusIn, pathEquals, pathContains, pathExists, pathCount, headerExists, headerEquals, headerContains, cookieExists, schema, responseTimeUnder, bodyMatchesPattern. All evaluated; failures collected, not fail-fast." },
                 new ParamSpec { Name = "expectedStatus", Type = ParamType.Number, Required = false, Description = "Convenience shorthand for a single {type:'status'} assertion; kept for backward compatibility." },
+                new ParamSpec { Name = "extract", Type = ParamType.Array, Required = false, Description = "Values to pull out, written to this step's own data.extracted.<saveAs> (reach it via {{vars.<step>.extracted.<saveAs>}}). Each entry: {saveAs, source: body|header|status|responseTime|cookie, path (JSONPath into the body, or the header/cookie name), xpath (body only, for an XML response), required (default true)}. A required extraction that matches nothing fails the step, naming it." },
             }
         }
     };
@@ -315,6 +318,11 @@ public sealed class ApiModule : IAutomationModule
                 }
             }
 
+            // API-T6: before assertions, so a bad extraction (the author's own typo, almost
+            // always) is diagnosed on its own terms rather than buried under unrelated
+            // assertion failures from the same response.
+            var extracted = BuildExtractions(parameters, bodyElement, text, responseHeaders, statusCode, durationMs, jar, currentUri);
+
             var assertionContext = new AssertionContext(statusCode, bodyElement, responseHeaders, cookieNames, durationMs, text);
             var assertionResults = assertions
                 .Select(a =>
@@ -341,6 +349,7 @@ public sealed class ApiModule : IAutomationModule
                 ["body"] = bodyForOutput,
                 ["durationMs"] = durationMs,
                 ["assertionResults"] = assertionResults,
+                ["extracted"] = extracted,
             };
 
             var failures = assertionResults.Where(r => r["passed"] is false).Select(r => r["error"] as string).ToList();
@@ -352,6 +361,123 @@ public sealed class ApiModule : IAutomationModule
         catch (Exception ex)
         {
             return StepOutcome.Failed(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// API-T6: written under this step's own `extracted` key, never as a flat top-level
+    /// variable — {{vars.&lt;step&gt;.extracted.&lt;saveAs&gt;}}, not {{vars.&lt;saveAs&gt;}}.
+    /// The existing publish-time validator (Flow.cs) only ever checks a {{vars.x...}}
+    /// reference's FIRST segment against a step's own declared SaveAs name — it never looks
+    /// past that — so nesting here needs zero engine/domain change and is still validated by
+    /// exactly that one existing validator, never a second one.
+    /// </summary>
+    private static Dictionary<string, object?> BuildExtractions(
+        IReadOnlyDictionary<string, object?> parameters, JsonElement? bodyElement, string rawBodyText,
+        IReadOnlyDictionary<string, string> responseHeaders, int statusCode, int durationMs, CookieContainer jar, Uri uri)
+    {
+        var result = new Dictionary<string, object?>();
+        if (parameters.GetValueOrDefault("extract") is not IEnumerable<object?> rawExtractions)
+            return result;
+
+        foreach (var raw in rawExtractions)
+        {
+            if (raw is not IReadOnlyDictionary<string, object?> spec)
+                throw new ArgumentException("Each 'extract' entry must be an object.");
+
+            var saveAs = spec.GetValueOrDefault("saveAs") as string
+                ?? throw new ArgumentException("Each 'extract' entry requires a 'saveAs'.");
+            var source = (spec.GetValueOrDefault("source") as string ?? "body").ToLowerInvariant();
+            var required = spec.GetValueOrDefault("required") is bool r ? r : true;
+            var locator = spec.GetValueOrDefault("path") as string ?? spec.GetValueOrDefault("xpath") as string;
+
+            bool found;
+            object? value;
+            switch (source)
+            {
+                case "status":
+                    found = true;
+                    value = (long)statusCode;
+                    break;
+
+                case "responsetime":
+                    found = true;
+                    value = (long)durationMs;
+                    break;
+
+                case "header":
+                    if (locator is null)
+                        throw new ArgumentException($"extract '{saveAs}' (source 'header') requires a 'path' naming the header.");
+                    found = responseHeaders.TryGetValue(locator, out var headerValue);
+                    value = headerValue;
+                    break;
+
+                case "cookie":
+                    if (locator is null)
+                        throw new ArgumentException($"extract '{saveAs}' (source 'cookie') requires a 'path' naming the cookie.");
+                    var cookie = jar.GetCookies(uri).Cast<Cookie>()
+                        .FirstOrDefault(c => string.Equals(c.Name, locator, StringComparison.OrdinalIgnoreCase));
+                    found = cookie is not null;
+                    value = cookie?.Value;
+                    break;
+
+                case "body" when spec.GetValueOrDefault("xpath") is string xpath:
+                    found = TryExtractXPath(rawBodyText, xpath, out value);
+                    break;
+
+                case "body":
+                    if (locator is null)
+                        throw new ArgumentException($"extract '{saveAs}' (source 'body') requires a 'path'.");
+                    if (bodyElement is not null && JsonPathEvaluator.TryGetByPath(bodyElement.Value, locator, out var element))
+                    {
+                        found = true;
+                        value = JsonPathEvaluator.ToPlainValue(element);
+                    }
+                    else
+                    {
+                        found = false;
+                        value = null;
+                    }
+                    break;
+
+                default:
+                    throw new ArgumentException($"extract '{saveAs}' has unknown source '{source}'. Supported: body, header, status, responseTime, cookie.");
+            }
+
+            if (!found)
+            {
+                if (!required)
+                {
+                    result[saveAs] = null;
+                    continue;
+                }
+                var truncatedBody = rawBodyText.Length > 300 ? rawBodyText[..300] + "…" : rawBodyText;
+                throw new ArgumentException(
+                    $"extract '{saveAs}' found nothing at {source}:'{locator}'. Response body (truncated): {truncatedBody}");
+            }
+
+            result[saveAs] = value;
+        }
+
+        return result;
+    }
+
+    /// <summary>API-T6: a malformed document or an invalid/non-matching expression both come
+    /// back as "not found" — the same "fails loudly unless Required:false" rule as a body
+    /// JSONPath miss, never a raw XML/XPath exception escaping to the caller.</summary>
+    private static bool TryExtractXPath(string xml, string xpath, out object? value)
+    {
+        try
+        {
+            var navigator = new XPathDocument(new StringReader(xml)).CreateNavigator();
+            var node = navigator.SelectSingleNode(xpath);
+            value = node?.Value;
+            return node is not null;
+        }
+        catch (Exception ex) when (ex is XmlException or XPathException or ArgumentException)
+        {
+            value = null;
+            return false;
         }
     }
 
