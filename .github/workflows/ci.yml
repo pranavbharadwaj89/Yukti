@@ -252,7 +252,14 @@ jobs:
         CONN="$CONN;Username=$PGUSERNAME"
         CONN="$CONN;Password=$PGPASSWORD_"
         export ConnectionStrings__Yukti="$CONN"
-        nohup dotnet src/Yukti.Api/bin/Release/net8.0/Yukti.Api.dll > /tmp/yukti-api.log 2>&1 &
+        # DISC: WebApplication.CreateBuilder's default content root is the process's
+        # current directory, not the dll's own directory — launching by a path from
+        # $GITHUB_WORKSPACE (as below) silently drops appsettings.json (an *optional*
+        # config source), so every setting it alone provides falls back to its
+        # hardcoded default. cd into the dll's own directory first so the real file loads.
+        cd src/Yukti.Api/bin/Release/net8.0
+        nohup dotnet Yukti.Api.dll > /tmp/yukti-api.log 2>&1 &
+        cd "$GITHUB_WORKSPACE"
         for i in $(seq 1 30); do
           if curl -sf -o /dev/null http://localhost:5000/swagger/v1/swagger.json; then exit 0; fi
           sleep 1
@@ -366,7 +373,10 @@ jobs:
         CONN="$CONN;Username=$PGUSERNAME"
         CONN="$CONN;Password=$PGPASSWORD_"
         export ConnectionStrings__Yukti="$CONN"
-        nohup dotnet src/Yukti.Api/bin/Release/net8.0/Yukti.Api.dll > /tmp/yukti-api-aioff.log 2>&1 &
+        # See the api-types-drift job's identical "Start the API" step for why this cd matters.
+        cd src/Yukti.Api/bin/Release/net8.0
+        nohup dotnet Yukti.Api.dll > /tmp/yukti-api-aioff.log 2>&1 &
+        cd "$GITHUB_WORKSPACE"
         for i in $(seq 1 30); do
           if curl -sf -o /dev/null http://localhost:5000/swagger/v1/swagger.json; then exit 0; fi
           sleep 1
@@ -495,7 +505,10 @@ jobs:
         CONN="$CONN;Password=$PGPASSWORD_"
         export ConnectionStrings__Yukti="$CONN"
         export Ai__FixtureDirectory="$GITHUB_WORKSPACE/apps/yukti-gui/e2e/fixtures/ai"
-        nohup dotnet src/Yukti.Api/bin/Release/net8.0/Yukti.Api.dll > /tmp/yukti-api-e2e.log 2>&1 &
+        # See the api-types-drift job's identical "Start the API" step for why this cd matters.
+        cd src/Yukti.Api/bin/Release/net8.0
+        nohup dotnet Yukti.Api.dll > /tmp/yukti-api-e2e.log 2>&1 &
+        cd "$GITHUB_WORKSPACE"
         for i in $(seq 1 30); do
           if curl -sf -o /dev/null http://localhost:5000/swagger/v1/swagger.json; then exit 0; fi
           sleep 1
