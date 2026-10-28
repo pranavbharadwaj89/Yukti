@@ -467,6 +467,26 @@ public sealed class ApiModuleAssertionTests
     }
 
     [Fact]
+    public async Task BodyMatchesPattern_an_invalid_regex_fails_the_step_cleanly_not_an_unhandled_exception()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "anything");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "bodyMatchesPattern", ["pattern"] = "(unclosed" } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Failed, outcome.Status);
+        Assert.Contains("Invalid regular expression pattern", outcome.Error);
+    }
+
+    [Fact]
     public async Task Numeric_path_value_does_not_loosely_equal_a_string_even_when_their_text_matches()
     {
         // Real pre-existing bug, found and fixed building API-T7's own explicit rule

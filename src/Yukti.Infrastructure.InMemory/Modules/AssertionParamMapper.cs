@@ -55,8 +55,12 @@ internal static class AssertionParamMapper
 
     private static IReadOnlyList<int> RequireIntList(IReadOnlyDictionary<string, object?> raw, string key, string type)
     {
-        if (raw.GetValueOrDefault(key) is not IEnumerable<object?> items)
+        // Plain System.Collections.IEnumerable, not IEnumerable<object?> — a typed numeric
+        // collection (e.g. List<long>) doesn't satisfy the generic interface since value types
+        // aren't covariant, even though every real caller today arrives as List<object?> via
+        // JsonParamNormalizer.
+        if (raw.GetValueOrDefault(key) is not System.Collections.IEnumerable items || items is string)
             throw new ArgumentException($"assert type '{type}' requires a '{key}' array field.");
-        return items.Select(i => Convert.ToInt32(i)).ToList();
+        return items.Cast<object?>().Select(i => Convert.ToInt32(i)).ToList();
     }
 }

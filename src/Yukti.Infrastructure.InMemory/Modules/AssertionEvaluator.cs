@@ -124,9 +124,20 @@ internal static class AssertionEvaluator
             case BodyMatchesPatternAssertion a:
                 {
                     var body = context.RawBody ?? "";
-                    return System.Text.RegularExpressions.Regex.IsMatch(body, a.Pattern)
-                        ? (true, null)
-                        : (false, $"Body does not match pattern '{a.Pattern}'");
+                    try
+                    {
+                        return System.Text.RegularExpressions.Regex.IsMatch(body, a.Pattern, System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(2))
+                            ? (true, null)
+                            : (false, $"Body does not match pattern '{a.Pattern}'");
+                    }
+                    catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+                    {
+                        return (false, $"Body pattern match for '{a.Pattern}' timed out");
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        return (false, $"Invalid regular expression pattern '{a.Pattern}': {ex.Message}");
+                    }
                 }
 
             default:
