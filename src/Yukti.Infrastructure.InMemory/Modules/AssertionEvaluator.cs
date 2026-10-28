@@ -14,7 +14,9 @@ internal readonly record struct AssertionContext(
     int StatusCode,
     JsonElement? Body,
     IReadOnlyDictionary<string, string> Headers,
-    IReadOnlySet<string> CookieNames);
+    IReadOnlySet<string> CookieNames,
+    int DurationMs = 0,
+    string? RawBody = null);
 
 /// <summary>
 /// Evaluates one Assertion (Yukti.Domain.Assertions) against an
@@ -81,6 +83,50 @@ internal static class AssertionEvaluator
                         return (false, "Schema validation failed: response body is not JSON");
                     var (valid, error) = MinimalJsonSchemaValidator.Validate(context.Body.Value, a.Schema);
                     return valid ? (true, null) : (false, $"Schema validation failed: {error}");
+                }
+
+            case StatusInAssertion a:
+                return a.ExpectedStatuses.Contains(context.StatusCode)
+                    ? (true, null)
+                    : (false, $"Expected status in [{string.Join(", ", a.ExpectedStatuses)}], got {context.StatusCode}");
+
+            case PathCountAssertion a:
+                {
+                    if (context.Body is null)
+                        return (false, $"Path '{a.Path}' count check failed: response body is not JSON");
+                    if (!JsonPathEvaluator.TryGetByPath(context.Body.Value, a.Path, out var element))
+                        return (false, $"Path '{a.Path}' does not exist");
+                    var actualCount = element.ValueKind == JsonValueKind.Array ? element.GetArrayLength() : 1;
+                    return actualCount == a.ExpectedCount
+                        ? (true, null)
+                        : (false, $"Path '{a.Path}' expected count {a.ExpectedCount}, got {actualCount}");
+                }
+
+            case HeaderEqualsAssertion a:
+                if (!context.Headers.TryGetValue(a.HeaderName, out var headerValue))
+                    return (false, $"Header '{a.HeaderName}' does not exist");
+                return headerValue == a.ExpectedValue
+                    ? (true, null)
+                    : (false, $"Header '{a.HeaderName}' expected '{a.ExpectedValue}', got '{headerValue}'");
+
+            case HeaderContainsAssertion a:
+                if (!context.Headers.TryGetValue(a.HeaderName, out var containsValue))
+                    return (false, $"Header '{a.HeaderName}' does not exist");
+                return containsValue.Contains(a.Fragment, StringComparison.Ordinal)
+                    ? (true, null)
+                    : (false, $"Header '{a.HeaderName}' value '{containsValue}' does not contain '{a.Fragment}'");
+
+            case ResponseTimeUnderAssertion a:
+                return context.DurationMs < a.Max.TotalMilliseconds
+                    ? (true, null)
+                    : (false, $"Expected response time under {a.Max.TotalMilliseconds}ms, took {context.DurationMs}ms");
+
+            case BodyMatchesPatternAssertion a:
+                {
+                    var body = context.RawBody ?? "";
+                    return System.Text.RegularExpressions.Regex.IsMatch(body, a.Pattern)
+                        ? (true, null)
+                        : (false, $"Body does not match pattern '{a.Pattern}'");
                 }
 
             default:

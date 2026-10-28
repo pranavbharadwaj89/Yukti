@@ -18,6 +18,11 @@ internal static class PlainValueEquality
             return actual is null && expected is null;
         if (IsNumeric(actual) && IsNumeric(expected))
             return Convert.ToDouble(actual) == Convert.ToDouble(expected);
+        // API Testing Module Spec, API-T7: a number and a string never compare equal just
+        // because their text matches — found as a real, already-shipped false-pass bug here:
+        // the ToString() fallback below previously made ValuesEqual(1L, "1") return true.
+        if (IsNumeric(actual) != IsNumeric(expected))
+            return false;
         return actual.Equals(expected) || actual.ToString() == expected.ToString();
     }
 

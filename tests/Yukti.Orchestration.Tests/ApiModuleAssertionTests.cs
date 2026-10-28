@@ -289,6 +289,225 @@ public sealed class ApiModuleAssertionTests
         Assert.Contains("requires a 'url' parameter", outcome.Error);
     }
 
+    // --- API Testing Module Spec, API-T7: the expanded assertion set ---
+
+    [Fact]
+    public async Task StatusIn_passes_when_the_actual_status_is_one_of_the_allowed_set()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 201;
+            await WriteBody(ctx, "{}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "statusIn", ["expectedStatuses"] = new List<object?> { 200L, 201L, 202L } } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Passed, outcome.Status);
+    }
+
+    [Fact]
+    public async Task StatusIn_fails_naming_the_allowed_set_when_the_actual_status_is_outside_it()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 500;
+            await WriteBody(ctx, "{}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "statusIn", ["expectedStatuses"] = new List<object?> { 200L, 201L } } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Failed, outcome.Status);
+        Assert.Equal("Expected status in [200, 201], got 500", outcome.Error);
+    }
+
+    [Fact]
+    public async Task PathCount_counts_an_arrays_length()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "{\"items\":[\"a\",\"b\",\"c\"]}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "pathCount", ["path"] = "items", ["expectedCount"] = 3L } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Passed, outcome.Status);
+    }
+
+    [Fact]
+    public async Task PathCount_fails_naming_expected_and_actual_when_the_length_differs()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "{\"items\":[\"a\",\"b\"]}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "pathCount", ["path"] = "items", ["expectedCount"] = 5L } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Failed, outcome.Status);
+        Assert.Equal("Path 'items' expected count 5, got 2", outcome.Error);
+    }
+
+    [Fact]
+    public async Task HeaderEquals_passes_on_an_exact_match_and_fails_naming_actual_on_mismatch()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            ctx.Response.Headers.Add("X-Trace-Id", "abc-123");
+            await WriteBody(ctx, "{}");
+        });
+
+        var module = new ApiModule();
+        var passOutcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "headerEquals", ["header"] = "X-Trace-Id", ["equals"] = "abc-123" } },
+        }, NewContext(), CancellationToken.None);
+        Assert.Equal(StepStatus.Passed, passOutcome.Status);
+
+        var failOutcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "headerEquals", ["header"] = "X-Trace-Id", ["equals"] = "wrong-value" } },
+        }, NewContext(), CancellationToken.None);
+        Assert.Equal(StepStatus.Failed, failOutcome.Status);
+        Assert.Equal("Header 'X-Trace-Id' expected 'wrong-value', got 'abc-123'", failOutcome.Error);
+    }
+
+    [Fact]
+    public async Task HeaderContains_matches_a_substring_of_the_headers_value()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            ctx.Response.Headers.Add("Content-Disposition", "attachment; filename=report.pdf");
+            await WriteBody(ctx, "{}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "headerContains", ["header"] = "Content-Disposition", ["contains"] = "report.pdf" } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Passed, outcome.Status);
+    }
+
+    [Fact]
+    public async Task ResponseTimeUnder_passes_for_a_generous_budget_and_fails_for_an_impossible_one()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "{}");
+        });
+
+        var module = new ApiModule();
+        var passOutcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "responseTimeUnder", ["maxMs"] = 60000L } },
+        }, NewContext(), CancellationToken.None);
+        Assert.Equal(StepStatus.Passed, passOutcome.Status);
+
+        var failOutcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "responseTimeUnder", ["maxMs"] = 0L } },
+        }, NewContext(), CancellationToken.None);
+        Assert.Equal(StepStatus.Failed, failOutcome.Status);
+    }
+
+    [Fact]
+    public async Task BodyMatchesPattern_regex_matches_the_raw_response_text()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "order-confirmation-99231");
+        });
+
+        var module = new ApiModule();
+        var passOutcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "bodyMatchesPattern", ["pattern"] = "^order-confirmation-\\d+$" } },
+        }, NewContext(), CancellationToken.None);
+        Assert.Equal(StepStatus.Passed, passOutcome.Status);
+
+        var failOutcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "bodyMatchesPattern", ["pattern"] = "^nope$" } },
+        }, NewContext(), CancellationToken.None);
+        Assert.Equal(StepStatus.Failed, failOutcome.Status);
+    }
+
+    [Fact]
+    public async Task Numeric_path_value_does_not_loosely_equal_a_string_even_when_their_text_matches()
+    {
+        // Real pre-existing bug, found and fixed building API-T7's own explicit rule
+        // ("a string '1' does not equal a number 1"): PlainValueEquality.ValuesEqual's
+        // ToString() fallback previously made this pass.
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "{\"id\":1}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "pathEquals", ["path"] = "id", ["equals"] = "1" } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Failed, outcome.Status);
+        Assert.Contains("expected \"1\", got 1", outcome.Error);
+    }
+
+    [Fact]
+    public async Task Numeric_path_value_still_equals_across_integer_and_floating_representations()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            await WriteBody(ctx, "{\"id\":1}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["assert"] = new List<object?> { new Dictionary<string, object?> { ["type"] = "pathEquals", ["path"] = "id", ["equals"] = 1.0 } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Passed, outcome.Status);
+    }
+
     private static async Task WriteBody(HttpListenerContext ctx, string json)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(json);

@@ -28,7 +28,13 @@ internal static class AssertionParamMapper
             "headerExists" => new HeaderExistsAssertion(RequireString(raw, "header", type)),
             "cookieExists" => new CookieExistsAssertion(RequireString(raw, "cookie", type)),
             "schema" => new SchemaValidationAssertion(RequireAny(raw, "schema", type)),
-            _ => throw new ArgumentException($"Unknown assertion type '{type}'. Supported: status, pathEquals, pathContains, pathExists, headerExists, cookieExists, schema."),
+            "statusIn" => new StatusInAssertion(RequireIntList(raw, "expectedStatuses", type)),
+            "pathCount" => new PathCountAssertion(RequireString(raw, "path", type), RequireInt(raw, "expectedCount", type)),
+            "headerEquals" => new HeaderEqualsAssertion(RequireString(raw, "header", type), RequireString(raw, "equals", type)),
+            "headerContains" => new HeaderContainsAssertion(RequireString(raw, "header", type), RequireString(raw, "contains", type)),
+            "responseTimeUnder" => new ResponseTimeUnderAssertion(TimeSpan.FromMilliseconds(RequireInt(raw, "maxMs", type))),
+            "bodyMatchesPattern" => new BodyMatchesPatternAssertion(RequireString(raw, "pattern", type)),
+            _ => throw new ArgumentException($"Unknown assertion type '{type}'. Supported: status, statusIn, pathEquals, pathContains, pathExists, pathCount, headerExists, headerEquals, headerContains, cookieExists, schema, responseTimeUnder, bodyMatchesPattern."),
         };
     }
 
@@ -46,4 +52,11 @@ internal static class AssertionParamMapper
     private static object RequireAny(IReadOnlyDictionary<string, object?> raw, string key, string type) =>
         raw.GetValueOrDefault(key)
         ?? throw new ArgumentException($"assert type '{type}' requires a '{key}' field.");
+
+    private static IReadOnlyList<int> RequireIntList(IReadOnlyDictionary<string, object?> raw, string key, string type)
+    {
+        if (raw.GetValueOrDefault(key) is not IEnumerable<object?> items)
+            throw new ArgumentException($"assert type '{type}' requires a '{key}' array field.");
+        return items.Select(i => Convert.ToInt32(i)).ToList();
+    }
 }
