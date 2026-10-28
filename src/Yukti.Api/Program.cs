@@ -351,6 +351,9 @@ builder.Services.AddScoped<DeleteApiCollectionCommandHandler>();
 builder.Services.AddScoped<AddApiRequestCommandHandler>();
 builder.Services.AddScoped<UpdateApiRequestCommandHandler>();
 builder.Services.AddScoped<DeleteApiRequestCommandHandler>();
+builder.Services.AddScoped<CreateRequestTemplateCommandHandler>();
+builder.Services.AddScoped<UpdateRequestTemplateCommandHandler>();
+builder.Services.AddScoped<DeleteRequestTemplateCommandHandler>();
 builder.Services.AddScoped<AddFlowStepCommandHandler>();
 builder.Services.AddScoped<PublishFlowCommandHandler>();
 builder.Services.AddScoped<TriggerFlowRunCommandHandler>();
@@ -1119,6 +1122,56 @@ apiCollections.MapDelete("/{collectionId:guid}/requests/{requestId:guid}", async
         return ProblemResults.NotFound(context, apiCollectionNotFound);
     }
 }).Produces(StatusCodes.Status204NoContent);
+
+// ---- Request templates (API Testing Module Spec, API-T9) — backend/API only this week; no new
+// frontend page yet (tracked separately), but FindFlowsReferencing already gives one the read
+// model it would need for "the UI shows which flows use a template."
+const string requestTemplateNotFound = "Request template not found.";
+var requestTemplates = app.MapGroup($"{apiV1}/request-templates").WithTags("RequestTemplates").RequireAuthorization().RequireRateLimiting("PerTenant");
+
+requestTemplates.MapPost("/", async (CreateRequestTemplateRequest req, ClaimsPrincipal principal, CreateRequestTemplateCommandHandler handler, CancellationToken ct) =>
+{
+    var templateId = await handler.Handle(new CreateRequestTemplateCommand(
+        req.Name, principal.GetTenantId(), req.BaseUrl, req.Headers, req.Auth, req.DefaultTimeoutMs, principal.GetUserId()), ct);
+    return Results.Created($"{apiV1}/request-templates/{templateId.Value}", new CreatedRequestTemplateResponse(templateId.Value));
+}).Produces<CreatedRequestTemplateResponse>(StatusCodes.Status201Created);
+
+requestTemplates.MapGet("/{templateId:guid}", async (Guid templateId, HttpContext context, IRequestTemplateRepository repo, CancellationToken ct) =>
+{
+    var template = await repo.GetById(new RequestTemplateId(templateId), ct);
+    return template is null ? ProblemResults.NotFound(context, requestTemplateNotFound) : Results.Ok(RequestTemplateResponse.From(template));
+}).Produces<RequestTemplateResponse>();
+
+requestTemplates.MapPut("/{templateId:guid}", async (Guid templateId, UpdateRequestTemplateRequest req, HttpContext context, ClaimsPrincipal principal, UpdateRequestTemplateCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        await handler.Handle(new UpdateRequestTemplateCommand(
+            new RequestTemplateId(templateId), req.Name, req.BaseUrl, req.Headers, req.Auth, req.DefaultTimeoutMs, principal.GetUserId()), ct);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, requestTemplateNotFound);
+    }
+}).Produces(StatusCodes.Status204NoContent);
+
+requestTemplates.MapDelete("/{templateId:guid}", async (Guid templateId, HttpContext context, ClaimsPrincipal principal, DeleteRequestTemplateCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        await handler.Handle(new DeleteRequestTemplateCommand(new RequestTemplateId(templateId), principal.GetUserId()), ct);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, requestTemplateNotFound);
+    }
+}).Produces(StatusCodes.Status204NoContent);
+
+requestTemplates.MapGet("/{templateId:guid}/usages", async (Guid templateId, ClaimsPrincipal principal, IRequestTemplateUsageQuery query, CancellationToken ct) =>
+    Results.Ok((await query.FindFlowsReferencing(new RequestTemplateId(templateId), principal.GetTenantId(), ct)).Select(RequestTemplateUsageResponse.From)))
+.Produces<IEnumerable<RequestTemplateUsageResponse>>();
 
 // ---- Projects + TestEnvironments — deliberately direct repository CRUD
 // rather than the full AuditableCommandHandler ceremony every other

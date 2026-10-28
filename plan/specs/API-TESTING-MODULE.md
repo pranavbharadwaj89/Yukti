@@ -215,23 +215,24 @@ Time-box: 3 h.
 
 Time-box: 2 h.
 
-### API-T9 — Request templates (P1) — ⏸️ deferred to v0.2, see plan/PLAN.md DISC-19
+### API-T9 — Request templates (P1) — ✅ done (backend/API), merged; UI page deferred
 
 The API equivalent of the Web module's Object Repository, and the same maintenance argument applies.
 
-**Escalated, not built:** "updates every flow that uses it, with no flow edits" needs real runtime
-template resolution, which requires module-specific code above `ApiModule` itself (`FlowEngine` or
-a new `ExecutionContext` capability) — exactly what this spec's own governing rule says to stop
-and escalate for. No existing precedent to mirror either: `ApiCollection`/`ApiRequest` are a
-separate, non-publishing "API Studio" context with no runtime resolution into `Flow`/`FlowStep`,
-and the Web module's own "Object Repository" doesn't exist in the code at all. Asked the owner via
-AskUserQuestion; chose to defer to v0.2 over approving the engine change or a weaker publish-time-
-only version. Full reasoning in `plan/PLAN.md`'s DISC-19.
+**Originally escalated** (DISC-19): "updates every flow that uses it, with no flow edits" needs
+real runtime template resolution, which requires a change above `ApiModule` itself. Asked the
+owner via AskUserQuestion a second time; this time approved the engine change — a new, optional
+`FlowEngine` dependency (`IRequestTemplateRepository`, defaults to `null`, so every existing
+construction site keeps compiling unchanged) resolves a step's `templateId` against the real,
+current template on every run. A second AskUserQuestion scoped the spec's own "the UI shows which
+flows use a template" bullet: built the backend read model and API endpoint
+(`IRequestTemplateUsageQuery`/`GET /request-templates/{id}/usages`) that a UI would call, but not
+an actual new frontend page this week — logged as a follow-up, not silently dropped.
 
-- [ ] A **request template** is a versioned, tenant-scoped artifact holding a base URL, common headers, an auth spec and a default timeout.
-- [ ] A step references a template and overrides any field. Changing the template updates every flow that uses it, with no flow edits — proven with three flows and one base-URL change.
-- [ ] Publish validation fails naming the step when a referenced template is missing.
-- [ ] The UI shows which flows use a template, so the blast radius is visible before editing.
+- [x] A **request template** is a versioned, tenant-scoped artifact holding a base URL, common headers, an auth spec and a default timeout. ("Versioned" is a visible, incrementing counter on every edit, not Flow's heavier immutable-version-family branching — proportionate to a mutate-in-place config resource with no downstream history requirement; see `RequestTemplate`'s own doc comment.)
+- [x] A step references a template and overrides any field. Changing the template updates every flow that uses it, with no flow edits — proven with three flows and one base-URL change. (`RequestTemplateResolutionTests.Changing_the_template_updates_the_next_run_with_no_flow_edits` — same step params, only the template changed, between two `Execute` calls.) Merge rule: `headers` merges key-by-key; `auth`/`timeoutMs` are whole-value; `url` is special-cased so an absolute step URL wins outright and a relative one joins onto the template's `baseUrl`.
+- [x] Publish validation fails naming the step when a referenced template is missing. (New optional `IRequestTemplateExistsChecker` overload on `Flow.Publish` — defaults to skipping the check entirely when no real checker is supplied, same "optional, zero ripple" shape as the `FlowEngine` change.)
+- [x] The UI shows which flows use a template, so the blast radius is visible before editing. (Backend/API only — see above. `EfRequestTemplateUsageQuery` loads the tenant's flows and filters client-side for a `templateId` match; documented as a deliberate simplicity-over-efficiency tradeoff for a first version, not an oversight, since `Params` is a jsonb column EF Core can't filter by key server-side without raw SQL.)
 
 ✔ `dotnet test --filter "FullyQualifiedName~RequestTemplate"`
 

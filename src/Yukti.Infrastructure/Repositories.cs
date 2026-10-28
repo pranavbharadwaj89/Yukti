@@ -135,6 +135,33 @@ public sealed class EfApiCollectionRepository : IApiCollectionRepository
     }
 }
 
+public sealed class EfRequestTemplateRepository : IRequestTemplateRepository
+{
+    private readonly YuktiDbContext _context;
+    private readonly ITenantContextAccessor _tenant;
+
+    public EfRequestTemplateRepository(YuktiDbContext context, ITenantContextAccessor tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
+
+    public Task<RequestTemplate?> GetById(RequestTemplateId id, CancellationToken ct) =>
+        _context.RequestTemplates.FirstOrDefaultAsync(t => t.Id == id && t.TenantId == _tenant.CurrentTenantId, ct);
+
+    public async Task Save(RequestTemplate template, CancellationToken ct)
+    {
+        if (_context.Entry(template).State == EntityState.Detached)
+            await _context.AddAsync(template, ct);
+    }
+
+    public Task Delete(RequestTemplate template, CancellationToken ct)
+    {
+        _context.Remove(template);
+        return Task.CompletedTask;
+    }
+}
+
 public sealed class EfProjectRepository : IProjectRepository
 {
     private readonly YuktiDbContext _context;

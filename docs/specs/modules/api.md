@@ -286,12 +286,36 @@ upload-to-this-module mechanism yet to stage one per-run. Until one
 exists, treat this directory as shared, operator-managed test fixtures,
 not tenant data — a real gap, not a hidden one.
 
+## Request templates (API-T9)
+
+A step's `templateId` param (a `RequestTemplate` id, see
+`Yukti.Domain.ApiTesting.RequestTemplate`) is resolved **before** `ApiModule`
+ever sees the step's params — `FlowEngine.ResolveRequestTemplate`, not
+anything inside this module. By the time `ApiModule.Run` runs, `url`/
+`headers`/`auth`/`timeoutMs` are already merged, exactly the same "already
+resolved" shape `{{vars.x}}`/`{{secrets.x}}` interpolation already produces.
+This module has no idea a template was ever involved.
+
+- Resolved fresh on **every run**, never baked in at publish time — editing
+  a template updates every flow that references it, with no flow edits.
+- Merge rule: `headers` merges key-by-key (a step's own header overrides
+  just that one, the template's others still apply); `auth`/`timeoutMs` are
+  whole-value (the step's own value, if present, replaces the template's
+  entirely); `url` is special-cased — an absolute step URL is used as-is,
+  a relative one is joined onto the template's `baseUrl`.
+- A `templateId` that doesn't resolve (deleted after publish, or publish
+  ran without a template-existence checker) fails the step with
+  `RequestTemplateResolutionException`, naming the id — never a silent
+  fall-through to whatever raw params the step happened to have.
+- API endpoints (`POST`/`PUT`/`DELETE /api/v1/request-templates`,
+  `GET /api/v1/request-templates/{id}/usages`) exist; no new frontend page
+  does yet (DISC-20, `plan/PLAN.md`) — backend/API only this week, by
+  explicit scope decision, not an oversight.
+
 ## Known constraints
 
 - No retry/backoff of its own — retries are the Flow Engine's job
   (`RetryFlakeHandler`, uniform policy across all modules).
-- No auth helpers (bearer token, OAuth) beyond raw `headers` (API-T4/T5 —
-  blocked on the `{{secrets}}` pipeline, deferred to v0.2).
 - No response size limit — the whole body is buffered into memory.
 - The multipart file-parts directory is shared across tenants (see above)
   — not yet a security boundary, just a fixtures folder.

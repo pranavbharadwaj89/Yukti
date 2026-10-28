@@ -112,3 +112,9 @@ public readonly record struct TestEnvironmentId(Guid Value)
     public static TestEnvironmentId New() => new(Guid.NewGuid());
     public override string ToString() => Value.ToString();
 }
+
+public readonly record struct RequestTemplateId(Guid Value)
+{
+    public static RequestTemplateId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString();
+}

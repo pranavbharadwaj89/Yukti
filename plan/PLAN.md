@@ -1390,7 +1390,7 @@ work here, don't assume they still hold.
   progress and a new, larger initiative (owner's "Module Depth" program) arrived before the
   trial's own timing could be completed — picking this doc fix up is a small, safe follow-on,
   not blocking anything.
-- [ ] DISC-19 API-T9 (Request templates, `plan/specs/API-TESTING-MODULE.md`) needs real
+- [x] DISC-19 API-T9 (Request templates, `plan/specs/API-TESTING-MODULE.md`) needs real
   runtime template resolution — the spec's own checklist requires "changing the template updates
   every flow that uses it, with no flow edits," proven across three flows and one base-URL
   change. That can only hold if a step's `templateId` is resolved on every `FlowRun`, not baked
@@ -1407,6 +1407,22 @@ work here, don't assume they still hold.
   publish step and no runtime resolution into `Flow`/`FlowStep` at all; the Web module's "Object
   Repository," which the spec explicitly compares Request Templates to, doesn't exist anywhere
   in the code — only in the read-only architecture blueprint. Escalated via AskUserQuestion;
-  owner chose **defer to v0.2** over approving the engine-level change or building the weaker
-  publish-time-only version. Proceeding to API-T10 (importers), which stays entirely inside
-  `ApiModule` like T2/T3/T6/T8.
+  owner initially chose **defer to v0.2** over approving the engine-level change or building the
+  weaker publish-time-only version. Proceeding to API-T10 (importers), which stays entirely
+  inside `ApiModule` like T2/T3/T6/T8.
+  **Revisited and built 2026-10-28** (owner's explicit go-ahead, same session as DISC-16's own
+  revisit): added `IRequestTemplateRepository` as a new, optional (`= null`) `FlowEngine`
+  dependency — every pre-existing `FlowEngine` construction site (13 of them) keeps compiling
+  and behaving identically; only the real DI-wired API resolves one for real. Same optional-
+  overload shape on `Flow.Publish` for the "referenced template is missing" publish check
+  (`IRequestTemplateExistsChecker`). Full domain/migration/repository/API-endpoint stack built —
+  see DISC-20 for the one piece still out of scope (the actual new frontend page for "the UI
+  shows which flows use a template").
+- [ ] DISC-20 API-T9's own "the UI shows which flows use a template, so the blast radius is
+  visible before editing" checklist item is backend-only so far: `GET
+  /api/v1/request-templates/{id}/usages` (`IRequestTemplateUsageQuery`) returns exactly the read
+  model a template-management UI page would need, but no such page exists yet. Scoped
+  deliberately this way via AskUserQuestion (2026-10-28) — building a real new React page
+  (schema-driven UI conventions, TanStack Query) is meaningfully larger scope than the
+  domain/migration/engine-hook work the rest of API-T9 needed, closer to a full day's work by
+  itself. Not forgotten; a real follow-up, not a silent gap.

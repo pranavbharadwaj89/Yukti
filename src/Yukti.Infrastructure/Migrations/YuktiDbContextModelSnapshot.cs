@@ -95,6 +95,43 @@ namespace Yukti.Infrastructure.Migrations
                     b.ToTable("api_collections", (string)null);
                 });
 
+            modelBuilder.Entity("Yukti.Domain.ApiTesting.RequestTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Auth")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("auth");
+
+                    b.Property<string>("BaseUrl")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("DefaultTimeoutMs")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Headers")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("headers");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("request_templates", (string)null);
+                });
+
             modelBuilder.Entity("Yukti.Domain.Auditing.AuditEntry", b =>
                 {
                     b.Property<Guid>("Id")

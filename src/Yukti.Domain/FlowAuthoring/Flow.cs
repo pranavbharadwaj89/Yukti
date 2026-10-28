@@ -138,7 +138,14 @@ public sealed class Flow : AggregateRoot<FlowId>
     /// reference is an expected, reportable outcome, not exceptional
     /// program state (Architecture Principle 20.4).
     /// </summary>
-    public async Task<FlowPublishResult> Publish(IModuleActionResolver resolver, CancellationToken ct)
+    public Task<FlowPublishResult> Publish(IModuleActionResolver resolver, CancellationToken ct) =>
+        Publish(resolver, null, ct);
+
+    /// <summary>Overload taking an explicit (possibly null) template checker — kept separate
+    /// from the two-argument form above, rather than an optional trailing parameter, so
+    /// CancellationToken stays the last parameter on both (YUKTI003) without breaking every
+    /// existing two-argument call site.</summary>
+    public async Task<FlowPublishResult> Publish(IModuleActionResolver resolver, IRequestTemplateExistsChecker? templateChecker, CancellationToken ct)
     {
         if (Status != FlowStatus.Draft)
             return FlowPublishResult.Failure(new[]
@@ -169,6 +176,16 @@ public sealed class Flow : AggregateRoot<FlowId>
                     if (!step.Params.ContainsKey(param.Name))
                         errors.Add(new FlowPublishError($"steps[{i}].params.{param.Name}", "missing_required_param",
                             $"Step '{step.Name}' is missing required parameter '{param.Name}' for action '{step.Module}.{step.Action}'."));
+            }
+
+            // API-T9: only checked when a real checker is supplied (see IRequestTemplateExistsChecker's
+            // own doc comment) — every other caller skips this, never a false pass on a real check.
+            if (templateChecker is not null && step.Params.GetValueOrDefault("templateId") is string templateId)
+            {
+                var exists = await templateChecker.ExistsAsync(templateId, TenantId, ct);
+                if (!exists)
+                    errors.Add(new FlowPublishError($"steps[{i}].params.templateId", "unresolved_request_template",
+                        $"Step '{step.Name}' references request template '{templateId}', which was not found."));
             }
 
             // A later step's saveAs is deliberately not yet in
