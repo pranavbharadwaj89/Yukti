@@ -207,6 +207,8 @@ static int WriteImportResult(ImportResult result, FileInfo outputFile)
         return 1;
     }
 
+    if (outputFile.Directory is { Exists: false } outputDir)
+        outputDir.Create();
     File.WriteAllText(outputFile.FullName, JsonSerializer.Serialize(result.Flow, FlowFileJson.Options));
     Console.WriteLine($"Wrote {result.Flow.Steps.Count} step(s) to {outputFile.FullName}.");
     return 0;

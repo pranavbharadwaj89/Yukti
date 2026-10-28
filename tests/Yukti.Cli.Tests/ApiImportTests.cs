@@ -60,6 +60,24 @@ public sealed class ApiImportTests
     }
 
     [Fact]
+    public void OpenApi_server_url_with_a_trailing_slash_does_not_produce_a_double_slash()
+    {
+        const string spec = """
+        {
+          "openapi": "3.0.0",
+          "servers": [{ "url": "https://api.example.com/" }],
+          "paths": { "/orders": { "get": { "operationId": "listOrders", "responses": { "200": {} } } } }
+        }
+        """;
+
+        var result = OpenApiImporter.Import(spec);
+
+        Assert.NotNull(result.Flow);
+        var step = Assert.Single(result.Flow!.Steps);
+        Assert.Equal("https://api.example.com/orders", step.Params["url"]);
+    }
+
+    [Fact]
     public void OpenApi_requestBody_is_never_fabricated_and_is_reported_as_a_warning()
     {
         const string spec = """

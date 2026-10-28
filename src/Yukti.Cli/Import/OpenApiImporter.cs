@@ -112,7 +112,7 @@ public static class OpenApiImporter
 
         var parameters = new Dictionary<string, object?>
         {
-            ["url"] = baseUrl + pathTemplate,
+            ["url"] = string.IsNullOrEmpty(baseUrl) ? pathTemplate : $"{baseUrl.TrimEnd('/')}/{pathTemplate.TrimStart('/')}",
             ["method"] = method.ToUpperInvariant(),
         };
         if (pathParams.Count > 0) parameters["pathParams"] = pathParams;
