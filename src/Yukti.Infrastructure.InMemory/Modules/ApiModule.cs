@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Yukti.Application.Security;
 using Yukti.Contracts;
 using Yukti.Domain.Assertions;
@@ -122,7 +123,8 @@ public sealed class ApiModule : IAutomationModule
                 new ParamSpec { Name = "url", Type = ParamType.String, Required = true, Description = "Target URL." },
                 new ParamSpec { Name = "method", Type = ParamType.String, Required = false, DefaultValue = "GET", Description = "HTTP method." },
                 new ParamSpec { Name = "headers", Type = ParamType.Object, Required = false, Description = "Request headers as a flat string->string object." },
-                new ParamSpec { Name = "queryParams", Type = ParamType.Object, Required = false, Description = "Query params appended to the URL as a flat string->string object (last value wins on duplicate keys)." },
+                new ParamSpec { Name = "pathParams", Type = ParamType.Object, Required = false, Description = "Values for {placeholder} segments in the URL, e.g. {orderId} in '/orders/{orderId}'. Every placeholder needs a matching entry and every entry needs a matching placeholder, or the step fails before the request is sent, naming the mismatch. Values are URL-encoded so they can never add a path segment or query string of their own." },
+                new ParamSpec { Name = "queryParams", Type = ParamType.Object, Required = false, Description = "Query params appended to the URL. A scalar value ('page': '2') sends one pair; an array value ('tag': ['a','b']) sends the key repeated, in order. Replaces any value(s) the URL already has for that key." },
                 new ParamSpec { Name = "body", Type = ParamType.Object, Required = false, Description = "Request body — a JSON object/array is sent as application/json, a plain string is sent as text/plain (an explicit Content-Type header always wins)." },
                 new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = DefaultTimeoutMs, Description = "Request timeout in milliseconds." },
                 new ParamSpec { Name = "assert", Type = ParamType.Array, Required = false, Description = "Array of assertions (see docs/specs/modules/api.md for exact shapes): status, statusIn, pathEquals, pathContains, pathExists, pathCount, headerExists, headerEquals, headerContains, cookieExists, schema, responseTimeUnder, bodyMatchesPattern. All evaluated; failures collected, not fail-fast." },
@@ -144,7 +146,8 @@ public sealed class ApiModule : IAutomationModule
             var url = parameters.GetValueOrDefault("url") as string
                 ?? throw new ArgumentException("api.request requires a 'url' parameter.");
             var method = (parameters.GetValueOrDefault("method") as string ?? "GET").ToUpperInvariant();
-            var finalUrl = ApplyQueryParams(url, AsStringDictionary(parameters.GetValueOrDefault("queryParams")));
+            var urlWithPathParams = ResolvePathParams(url, AsParamDictionary(parameters.GetValueOrDefault("pathParams")));
+            var finalUrl = ApplyQueryParams(urlWithPathParams, AsParamDictionary(parameters.GetValueOrDefault("queryParams")));
             var assertions = BuildAssertions(parameters);
             var timeoutMs = parameters.TryGetValue("timeoutMs", out var timeoutRaw) && timeoutRaw is not null
                 ? Convert.ToInt32(timeoutRaw)
@@ -286,13 +289,70 @@ public sealed class ApiModule : IAutomationModule
         return dict.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? "");
     }
 
-    private static string ApplyQueryParams(string url, IReadOnlyDictionary<string, string> queryParams)
+    // API-T2: pathParams/queryParams need the raw object? values (an array
+    // for a repeated query key, a scalar otherwise) — unlike headers, which
+    // stay a flat string->string map, so AsStringDictionary's flattening
+    // would silently lose that distinction here.
+    private static IReadOnlyDictionary<string, object?> AsParamDictionary(object? value) =>
+        value as IReadOnlyDictionary<string, object?> ?? new Dictionary<string, object?>();
+
+    private static readonly Regex PathParamPattern = new(@"\{([a-zA-Z0-9_]+)\}", RegexOptions.None);
+
+    /// <summary>
+    /// API-T2: resolves {placeholder} segments against `pathParams` before
+    /// the query string is touched. Every value goes through
+    /// Uri.EscapeDataString, so a value of "../" or "?x=1" is encoded (not
+    /// left to become a literal path separator or query delimiter) and can
+    /// never add a segment or query string of its own. A template
+    /// placeholder with no matching entry, or an entry with no matching
+    /// placeholder, fails the step before any request is sent — almost
+    /// always a typo, never something to send as a literal "{orderId}".
+    /// </summary>
+    private static string ResolvePathParams(string urlTemplate, IReadOnlyDictionary<string, object?> pathParams)
+    {
+        if (pathParams.Count == 0 && !PathParamPattern.IsMatch(urlTemplate))
+            return urlTemplate;
+
+        var usedKeys = new HashSet<string>();
+        var missingPlaceholders = new List<string>();
+        var resolved = PathParamPattern.Replace(urlTemplate, m =>
+        {
+            var name = m.Groups[1].Value;
+            if (!pathParams.TryGetValue(name, out var value) || value is null)
+            {
+                missingPlaceholders.Add(name);
+                return m.Value;
+            }
+            usedKeys.Add(name);
+            return Uri.EscapeDataString(value.ToString() ?? "");
+        });
+
+        if (missingPlaceholders.Count > 0)
+            throw new ArgumentException(
+                $"api.request URL template has placeholder(s) {string.Join(", ", missingPlaceholders.Select(p => $"'{{{p}}}'"))} with no matching 'pathParams' entry.");
+
+        var unmatchedParams = pathParams.Keys.Where(k => !usedKeys.Contains(k)).ToList();
+        if (unmatchedParams.Count > 0)
+            throw new ArgumentException(
+                $"api.request 'pathParams' supplies {string.Join(", ", unmatchedParams.Select(k => $"'{k}'"))} with no matching {{placeholder}} in the URL — likely a typo.");
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// API-T2: a scalar value replaces every value the URL template's own
+    /// query string already has for that key (the pre-API-T2 "last value
+    /// wins" behavior); an array value appends one pair per entry, in
+    /// order, so repeated keys (?tag=a&amp;tag=b) can be expressed at all.
+    /// An empty-string value still appends a pair (?tag=), never dropped.
+    /// </summary>
+    private static string ApplyQueryParams(string url, IReadOnlyDictionary<string, object?> queryParams)
     {
         if (queryParams.Count == 0)
             return url;
 
         var uri = new Uri(url, UriKind.Absolute);
-        var merged = new Dictionary<string, string>();
+        var pairs = new List<KeyValuePair<string, string>>();
         if (!string.IsNullOrEmpty(uri.Query))
         {
             foreach (var pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
@@ -300,15 +360,30 @@ public sealed class ApiModule : IAutomationModule
                 var idx = pair.IndexOf('=');
                 var key = idx >= 0 ? Uri.UnescapeDataString(pair[..idx]) : Uri.UnescapeDataString(pair);
                 var value = idx >= 0 ? Uri.UnescapeDataString(pair[(idx + 1)..]) : "";
-                merged[key] = value;
+                pairs.Add(new(key, value));
             }
         }
-        foreach (var (key, value) in queryParams)
-            merged[key] = value; // last-value-wins on duplicate keys
 
-        var query = string.Join("&", merged.Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
+        foreach (var key in queryParams.Keys)
+            pairs.RemoveAll(p => p.Key == key);
+
+        foreach (var (key, raw) in queryParams)
+        {
+            foreach (var value in ToQueryValues(raw))
+                pairs.Add(new(key, value));
+        }
+
+        var query = string.Join("&", pairs.Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}"));
         return new UriBuilder(uri) { Query = query }.Uri.ToString();
     }
+
+    private static IEnumerable<string> ToQueryValues(object? raw) => raw switch
+    {
+        null => new[] { "" },
+        string s => new[] { s },
+        IEnumerable<object?> list => list.Select(v => v?.ToString() ?? ""),
+        _ => new[] { raw.ToString() ?? "" },
+    };
 
     private static void ApplyBody(HttpRequestMessage request, object? body)
     {
