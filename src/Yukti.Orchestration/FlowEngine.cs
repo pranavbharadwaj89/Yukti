@@ -93,7 +93,8 @@ public sealed class FlowEngine
             RunId = run.Id,
             Variables = run.Variables,
             Credentials = credentials,
-            RunCancellation = ct
+            RunCancellation = ct,
+            TenantId = run.TenantId,
         };
 
         try
@@ -171,7 +172,8 @@ public sealed class FlowEngine
                     RunId = run.Id,
                     Variables = run.Variables,
                     Credentials = credentials,
-                    RunCancellation = ct
+                    RunCancellation = ct,
+                    TenantId = run.TenantId,
                 };
 
                 var dispatchStopwatch = Stopwatch.StartNew();
