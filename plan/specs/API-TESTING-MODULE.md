@@ -113,14 +113,14 @@ public sealed record MatchesJsonSchema(string SchemaRefOrInline)    : ApiAsserti
 
 Time-box: 2 h.
 
-### API-T2 — Path and query parameters (P0)
+### API-T2 — Path and query parameters (P0) — ✅ done, merged
 
-- [ ] A URL template `/orders/{orderId}/items` with `PathParams: { orderId: "123" }` resolves to `/orders/123/items`.
-- [ ] Path parameter values are URL-encoded. A value containing `/` or `?` cannot break out of its segment — test this explicitly with `../` and `?x=1`.
-- [ ] A template placeholder with no matching parameter fails the step before the request is sent, naming the placeholder. It is never sent literally.
-- [ ] A supplied parameter with no matching placeholder is also an error, since it's almost always a typo.
-- [ ] Query parameters are appended and properly encoded, including repeated keys (`?tag=a&tag=b`) and empty values.
-- [ ] Both support `{{vars.…}}` interpolation, resolved before encoding.
+- [x] A URL template `/orders/{orderId}/items` with `PathParams: { orderId: "123" }` resolves to `/orders/123/items`.
+- [x] Path parameter values are URL-encoded. A value containing `/` or `?` cannot break out of its segment — test this explicitly with `../` and `?x=1`.
+- [x] A template placeholder with no matching parameter fails the step before the request is sent, naming the placeholder. It is never sent literally.
+- [x] A supplied parameter with no matching placeholder is also an error, since it's almost always a typo.
+- [x] Query parameters are appended and properly encoded, including repeated keys (`?tag=a&tag=b`) and empty values.
+- [x] Both support `{{vars.…}}` interpolation, resolved before encoding. (Resolved by `FlowEngine`/`VariableStore` before dispatch — `ApiModule` itself never re-implements interpolation; proven by `PathParams_and_queryParams_both_receive_already_resolved_vars_values`.)
 
 ✔ `dotnet test --filter "FullyQualifiedName~ApiParameters"`
 

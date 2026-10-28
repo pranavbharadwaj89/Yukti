@@ -528,7 +528,7 @@ public sealed class ApiModuleAssertionTests
         Assert.Equal(StepStatus.Passed, outcome.Status);
     }
 
-    private static async Task WriteBody(HttpListenerContext ctx, string json)
+    internal static async Task WriteBody(HttpListenerContext ctx, string json)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(json);
         ctx.Response.ContentLength64 = bytes.Length;
@@ -537,7 +537,7 @@ public sealed class ApiModuleAssertionTests
     }
 
     /// <summary>Small local HTTP server for exercising ApiModule against real requests/responses.</summary>
-    private sealed class TestHttpServer : IDisposable
+    internal sealed class TestHttpServer : IDisposable
     {
         private readonly HttpListener _listener;
         private readonly CancellationTokenSource _cts = new();

@@ -33,7 +33,8 @@ returns `Failed("Unknown api action '<action>'. Supported: 'request'.")`.
 | `url` | string | yes | - | done | done |
 | `method` | string | no | `GET` | done (`GET\|POST\|PUT\|PATCH\|DELETE`) | done (any string, upper-cased) |
 | `headers` | object | no | `{}` | done | done (flat string->string; `Content-Type` routed onto `Content.Headers`, other content headers fall back to `Content.Headers` if `HttpRequestMessage.Headers` rejects them) |
-| `queryParams` | object | no | `{}` | not present | done (flat string->string, merged onto the URL's existing query string, last value wins on duplicate keys) |
+| `pathParams` | object | no | `{}` | not present | done (API-T2) — resolves `{placeholder}` segments in `url`; every value is `Uri.EscapeDataString`-encoded so it can never add a path segment or query string of its own |
+| `queryParams` | object | no | `{}` | not present | done — a scalar value replaces the URL's own value(s) for that key (last-value-wins); an array value (API-T2) appends the key once per entry, in order, so repeated keys (`?tag=a&tag=b`) and empty values (`?tag=`) are both expressible |
 | `body` | any | no | - | done (JSON-serialized) | done (object/array -> `application/json`; plain string -> `text/plain`; an explicit `Content-Type` header always wins) |
 | `timeoutMs` | number | no | `10000` | done (via `AbortController`) | done (via a linked `CancellationTokenSource.CancelAfter`, since the module's shared static `HttpClient` can't safely take a per-request `.Timeout` under concurrent flows) |
 | `assert` | array | no | `[]` | done (see below) | done — full `Assertion` hierarchy (`Yukti.Domain.Assertions`), `type`-discriminated on the wire (see below) |
@@ -127,10 +128,9 @@ Both implementations:
 
 - No retry/backoff of its own — retries are the Flow Engine's job
   (`RetryFlakeHandler`, uniform policy across all modules).
-- No auth helpers (bearer token, OAuth) beyond raw `headers`.
+- No auth helpers (bearer token, OAuth) beyond raw `headers` (API-T4/T5 —
+  blocked on the `{{secrets}}` pipeline, deferred to v0.2).
 - No response size limit — the whole body is buffered into memory.
-- `queryParams` is a flat object — duplicate keys (`?tag=a&tag=b`) can't be
-  represented; the last value for a given key wins.
 - `body` supports JSON (object/array) and plain text only — no multipart or
   `application/x-www-form-urlencoded` support yet.
 - `JsonPathEvaluator`'s `path` syntax is dotted segments plus `[index]` array
