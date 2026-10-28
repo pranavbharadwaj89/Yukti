@@ -27,7 +27,7 @@ internal static class AssertionParamMapper
             "pathExists" => new PathExistsAssertion(RequireString(raw, "path", type)),
             "headerExists" => new HeaderExistsAssertion(RequireString(raw, "header", type)),
             "cookieExists" => new CookieExistsAssertion(RequireString(raw, "cookie", type)),
-            "schema" => new SchemaValidationAssertion(RequireAny(raw, "schema", type)),
+            "schema" => new SchemaValidationAssertion(ResolveSchema(RequireAny(raw, "schema", type))),
             "statusIn" => new StatusInAssertion(RequireIntList(raw, "expectedStatuses", type)),
             "pathCount" => new PathCountAssertion(RequireString(raw, "path", type), RequireInt(raw, "expectedCount", type)),
             "headerEquals" => new HeaderEqualsAssertion(RequireString(raw, "header", type), RequireString(raw, "equals", type)),
@@ -52,6 +52,12 @@ internal static class AssertionParamMapper
     private static object RequireAny(IReadOnlyDictionary<string, object?> raw, string key, string type) =>
         raw.GetValueOrDefault(key)
         ?? throw new ArgumentException($"assert type '{type}' requires a '{key}' field.");
+
+    /// <summary>API-T8: a 'schema' value that's a string names a reusable schema artifact
+    /// (ApiSchemaStore) rather than being the schema itself — resolved here so
+    /// AssertionEvaluator's own schema-validation path never needs to know the difference.</summary>
+    private static object ResolveSchema(object raw) =>
+        raw is string name ? ApiSchemaStore.LoadByName(name) : raw;
 
     private static IReadOnlyList<int> RequireIntList(IReadOnlyDictionary<string, object?> raw, string key, string type)
     {

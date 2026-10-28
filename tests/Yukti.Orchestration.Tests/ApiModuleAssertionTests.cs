@@ -203,7 +203,9 @@ public sealed class ApiModuleAssertionTests
         }, NewContext(), CancellationToken.None);
 
         Assert.Equal(StepStatus.Failed, outcome.Status);
-        Assert.Contains("missing required property 'missingField'", outcome.Error);
+        // API-T8 (ADR-0007): schema validation moved to JsonSchema.Net — exact wording is the
+        // library's own, so this checks the missing field is named, not an exact phrase.
+        Assert.Contains("missingField", outcome.Error);
     }
 
     [Fact]

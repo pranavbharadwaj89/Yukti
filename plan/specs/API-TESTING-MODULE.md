@@ -198,13 +198,13 @@ Time-box: 3 h.
 
 Time-box: 3 h.
 
-### API-T8 — JSON Schema validation (P0)
+### API-T8 — JSON Schema validation (P0) — ✅ done, merged
 
-- [ ] `MatchesJsonSchema` validates the whole response against a JSON Schema (draft 2020-12 or whichever the chosen library supports — record the choice in the PR).
-- [ ] A schema can be inline in the step, or a reference to a stored, reusable schema artifact.
-- [ ] A validation failure lists **every** violation with its path, not just the first.
-- [ ] One schema assertion replaces many field assertions, and catches shape changes a field-by-field test would miss — that's the reason it's P0 rather than a nicety.
-- [ ] Adding the schema library needs an ADR and your approval, per the dependency rule.
+- [x] `MatchesJsonSchema` validates the whole response against a JSON Schema (draft 2020-12 or whichever the chosen library supports — record the choice in the PR). (The existing `schema` assertion type — spec's illustrative `MatchesJsonSchema` name not literally introduced, per the fixed-vocabulary rule.) Library: `JsonSchema.Net` 9.5.0 — ADR-0007.
+- [x] A schema can be inline in the step, or a reference to a stored, reusable schema artifact. (A string `schema` value names a file in `ApiSchemaStore`'s configured directory — same shared-directory pattern as API-T3's `ApiFileStorage`, documented as a known, not-yet-tenant-scoped gap.)
+- [x] A validation failure lists **every** violation with its path, not just the first.
+- [x] One schema assertion replaces many field assertions, and catches shape changes a field-by-field test would miss — that's the reason it's P0 rather than a nicety.
+- [x] Adding the schema library needs an ADR and your approval, per the dependency rule. (Asked via AskUserQuestion; owner chose JsonSchema.Net over extending the in-tree validator — ADR-0007.)
 
 ✔ `dotnet test --filter "FullyQualifiedName~JsonSchema"`
 

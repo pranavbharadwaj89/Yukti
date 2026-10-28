@@ -81,7 +81,7 @@ internal static class AssertionEvaluator
                 {
                     if (context.Body is null)
                         return (false, "Schema validation failed: response body is not JSON");
-                    var (valid, error) = MinimalJsonSchemaValidator.Validate(context.Body.Value, a.Schema);
+                    var (valid, error) = JsonSchemaValidator.Validate(context.Body.Value, a.Schema);
                     return valid ? (true, null) : (false, $"Schema validation failed: {error}");
                 }
 
