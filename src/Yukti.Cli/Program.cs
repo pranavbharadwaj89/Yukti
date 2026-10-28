@@ -1,8 +1,10 @@
 using System.CommandLine;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Yukti.Application.Ai;
 using Yukti.Cli;
 using Yukti.Cli.Eval;
+using Yukti.Cli.Import;
 using Yukti.Domain.Events;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
@@ -158,6 +160,58 @@ runCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 });
 
+var sourceFileArgument = new Argument<FileInfo>("source-file") { Description = "Path to the OpenAPI/Postman document to import." };
+var outputOption = new Option<FileInfo>("--output", "-o") { Description = "Where to write the generated flow file.", Required = true };
+var operationOption = new Option<string[]>("--operation") { Description = "Import only this operationId. Repeatable. Default: every operation in the document." };
+
+var importOpenApiCommand = new Command("openapi", "Generate a flow file from an OpenAPI 3.x JSON document.");
+importOpenApiCommand.Arguments.Add(sourceFileArgument);
+importOpenApiCommand.Options.Add(outputOption);
+importOpenApiCommand.Options.Add(operationOption);
+importOpenApiCommand.SetAction(async (parseResult, ct) =>
+{
+    var sourceFile = parseResult.GetValue(sourceFileArgument)!;
+    var outputFile = parseResult.GetValue(outputOption)!;
+    var operationIds = parseResult.GetValue(operationOption) ?? Array.Empty<string>();
+
+    var json = await File.ReadAllTextAsync(sourceFile.FullName, ct);
+    var result = OpenApiImporter.Import(json, operationIds.Length > 0 ? operationIds : null);
+    return WriteImportResult(result, outputFile);
+});
+
+var importPostmanCommand = new Command("postman", "Generate a flow file from a Postman Collection v2.1 export.");
+importPostmanCommand.Arguments.Add(sourceFileArgument);
+importPostmanCommand.Options.Add(outputOption);
+importPostmanCommand.SetAction(async (parseResult, ct) =>
+{
+    var sourceFile = parseResult.GetValue(sourceFileArgument)!;
+    var outputFile = parseResult.GetValue(outputOption)!;
+
+    var json = await File.ReadAllTextAsync(sourceFile.FullName, ct);
+    var result = PostmanImporter.Import(json);
+    return WriteImportResult(result, outputFile);
+});
+
+var importCommand = new Command("import", "Generate a flow file from an external API specification.");
+importCommand.Subcommands.Add(importOpenApiCommand);
+importCommand.Subcommands.Add(importPostmanCommand);
+
+static int WriteImportResult(ImportResult result, FileInfo outputFile)
+{
+    foreach (var warning in result.Warnings)
+        Console.Error.WriteLine($"warning: {warning}");
+
+    if (result.Flow is null)
+    {
+        Console.Error.WriteLine("Import failed — no flow file was written.");
+        return 1;
+    }
+
+    File.WriteAllText(outputFile.FullName, JsonSerializer.Serialize(result.Flow, FlowFileJson.Options));
+    Console.WriteLine($"Wrote {result.Flow.Steps.Count} step(s) to {outputFile.FullName}.");
+    return 0;
+}
+
 var dryRunOption = new Option<bool>("--dry-run") { Description = "Print the worst-case cost estimate and exit. Makes no provider calls." };
 var forceOption = new Option<bool>("--force") { Description = "Re-run even if a stored result already exists for this prompt version + registry hash." };
 
@@ -270,6 +324,7 @@ evalCommand.Subcommands.Add(flowGenerationCommand);
 
 var rootCommand = new RootCommand("Yukti — author, validate and run automation flows.");
 rootCommand.Subcommands.Add(runCommand);
+rootCommand.Subcommands.Add(importCommand);
 rootCommand.Subcommands.Add(evalCommand);
 
 return await rootCommand.Parse(args).InvokeAsync();
