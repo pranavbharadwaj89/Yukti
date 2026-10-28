@@ -126,14 +126,14 @@ Time-box: 2 h.
 
 Time-box: 2 h.
 
-### API-T3 — Body types and cookies (P0)
+### API-T3 — Body types and cookies (P0) — ✅ done, merged
 
-- [ ] `JsonBody` sets `Content-Type: application/json` automatically unless a header overrides it.
-- [ ] `FormBody` encodes as `application/x-www-form-urlencoded`.
-- [ ] `MultipartBody` supports text parts and file parts. A file part reads from a path the flow supplies; a missing file fails the step with the path named.
-- [ ] Cookies set on a step are sent. A **cookie jar** persists cookies across steps within one flow run, so a login step's session cookie reaches the next step automatically.
-- [ ] The cookie jar is scoped to the flow run only — never shared between runs or tenants. A test proves two concurrent runs don't see each other's cookies.
-- [ ] Redirect policy is honoured, and **every redirect hop passes through the SSRF guard** (Day 6, T5). A redirect to a private address is blocked. Test this specifically.
+- [x] `JsonBody` sets `Content-Type: application/json` automatically unless a header overrides it.
+- [x] `FormBody` encodes as `application/x-www-form-urlencoded`. (Triggered by a flat object body + an explicit `Content-Type: application/x-www-form-urlencoded` header — see docs/specs/modules/api.md.)
+- [x] `MultipartBody` supports text parts and file parts. A file part reads from a path the flow supplies; a missing file fails the step with the path named. (Deliberately scoped to a configured directory, never an arbitrary filesystem path — a documented, narrower reading of "a path the flow supplies" than the spec's own illustrative wording, to avoid a real file-disclosure hole. See docs/specs/modules/api.md's "Multipart file parts" section.)
+- [x] Cookies set on a step are sent. A **cookie jar** persists cookies across steps within one flow run, so a login step's session cookie reaches the next step automatically.
+- [x] The cookie jar is scoped to the flow run only — never shared between runs or tenants. A test proves two concurrent runs don't see each other's cookies. (Found and fixed a real pre-existing bug along the way: `SocketsHttpHandler.UseCookies` defaulted to true with no explicit container, so the shared static `HttpClient` was silently using ONE implicit cookie store across every run that ever hit the same host — a real cross-run leak that predates this task.)
+- [x] Redirect policy is honoured, and **every redirect hop passes through the SSRF guard** (Day 6, T5). A redirect to a private address is blocked. Test this specifically.
 
 ✔ `dotnet test --filter "FullyQualifiedName~ApiBody|FullyQualifiedName~ApiCookie"`
 

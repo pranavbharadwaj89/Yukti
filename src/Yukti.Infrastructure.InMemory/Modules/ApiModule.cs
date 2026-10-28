@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
@@ -9,6 +10,7 @@ using Yukti.Contracts;
 using Yukti.Domain.Assertions;
 using Yukti.Domain.Execution;
 using Yukti.Domain.ModulePlugin;
+using Yukti.Domain.SharedKernel;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
 
 namespace Yukti.Infrastructure.InMemory.Modules;
@@ -41,6 +43,26 @@ public sealed class ApiModule : IAutomationModule
     /// instance still race on nothing, exactly as the contract requires.
     /// </summary>
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ApiModule, HttpClient> HttpClients = new();
+
+    /// <summary>
+    /// API-T3: one CookieContainer per (module instance, FlowRunId) — same
+    /// static-ConditionalWeakTable shape as HttpClients above, for the same
+    /// reason (FR-PLUGIN-07's zero-reflected-instance-fields contract test
+    /// names ApiModule specifically). Created in Setup, removed in Teardown,
+    /// exactly WebModule's own ConcurrentDictionary&lt;FlowRunId, WebSession&gt;
+    /// precedent — the inner dictionary is what actually gives per-run
+    /// isolation; nothing here is shared instance state a concurrent Run()
+    /// could race on.
+    ///
+    /// Real pre-existing bug this fixes as a side effect: SocketsHttpHandler's
+    /// UseCookies defaults to true, and since no CookieContainer was ever
+    /// explicitly assigned, the handler silently created and reused ONE
+    /// implicit container for every request the shared static HttpClient
+    /// ever sent — meaning cookies from one flow run could already leak into
+    /// a completely unrelated run hitting the same host. UseCookies is now
+    /// false below; every cookie is instead attached/captured here, per run.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ApiModule, ConcurrentDictionary<FlowRunId, CookieContainer>> CookieJars = new();
 
     /// <summary>
     /// Guard defaults to permissive so every pre-existing construction site
@@ -102,6 +124,14 @@ public sealed class ApiModule : IAutomationModule
                 throw lastFailure!;
             }
         };
+        // API-T3: see CookieJars' own doc comment — cookies are handled entirely through the
+        // per-run jar below, never through SocketsHttpHandler's own (handler-wide, cross-run) one.
+        handler.UseCookies = false;
+        // API-T3: redirects are followed manually in Run() (see SendOnceAsync's own doc comment)
+        // so a step's redirectPolicy can actually be honored, and so the loop controls which hop
+        // to re-attach cookies/headers to — the built-in auto-redirect would short-circuit all of
+        // that invisibly before Run() ever saw an intermediate response.
+        handler.AllowAutoRedirect = false;
         HttpClients.Add(this, new HttpClient(handler));
     }
 
@@ -125,16 +155,34 @@ public sealed class ApiModule : IAutomationModule
                 new ParamSpec { Name = "headers", Type = ParamType.Object, Required = false, Description = "Request headers as a flat string->string object." },
                 new ParamSpec { Name = "pathParams", Type = ParamType.Object, Required = false, Description = "Values for {placeholder} segments in the URL, e.g. {orderId} in '/orders/{orderId}'. Every placeholder needs a matching entry and every entry needs a matching placeholder, or the step fails before the request is sent, naming the mismatch. Values are URL-encoded so they can never add a path segment or query string of their own." },
                 new ParamSpec { Name = "queryParams", Type = ParamType.Object, Required = false, Description = "Query params appended to the URL. A scalar value ('page': '2') sends one pair; an array value ('tag': ['a','b']) sends the key repeated, in order. Replaces any value(s) the URL already has for that key." },
-                new ParamSpec { Name = "body", Type = ParamType.Object, Required = false, Description = "Request body — a JSON object/array is sent as application/json, a plain string is sent as text/plain (an explicit Content-Type header always wins)." },
-                new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = DefaultTimeoutMs, Description = "Request timeout in milliseconds." },
+                new ParamSpec { Name = "body", Type = ParamType.Object, Required = false, Description = "Request body (see docs/specs/modules/api.md). Default: object/array -> application/json, string -> text/plain. {parts:[...]} -> multipart/form-data (text or file parts; a file part names a file in the configured API files area, never an arbitrary path). A flat object + a 'Content-Type: application/x-www-form-urlencoded' header -> form-encoded." },
+                new ParamSpec { Name = "cookies", Type = ParamType.Object, Required = false, Description = "Cookies to send (name->value). Merged into the flow run's own cookie jar, so later steps and this response's Set-Cookie headers compose automatically; the jar never crosses flow runs." },
+                new ParamSpec { Name = "redirectPolicy", Type = ParamType.String, Required = false, DefaultValue = "follow", Description = "follow (default) | none | sameHost. Every redirect hop is still sent through the SSRF guard like any other request." },
+                new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = DefaultTimeoutMs, Description = "Request timeout in milliseconds, for the whole request including any redirects it follows." },
                 new ParamSpec { Name = "assert", Type = ParamType.Array, Required = false, Description = "Array of assertions (see docs/specs/modules/api.md for exact shapes): status, statusIn, pathEquals, pathContains, pathExists, pathCount, headerExists, headerEquals, headerContains, cookieExists, schema, responseTimeUnder, bodyMatchesPattern. All evaluated; failures collected, not fail-fast." },
                 new ParamSpec { Name = "expectedStatus", Type = ParamType.Number, Required = false, Description = "Convenience shorthand for a single {type:'status'} assertion; kept for backward compatibility." },
             }
         }
     };
 
-    public Task Setup(ExecutionContext ctx, CancellationToken ct) => Task.CompletedTask;
-    public Task Teardown(ExecutionContext ctx, CancellationToken ct) => Task.CompletedTask;
+    public Task Setup(ExecutionContext ctx, CancellationToken ct)
+    {
+        CookieJars.GetOrCreateValue(this)[ctx.RunId] = new CookieContainer();
+        return Task.CompletedTask;
+    }
+
+    public Task Teardown(ExecutionContext ctx, CancellationToken ct)
+    {
+        if (CookieJars.TryGetValue(this, out var jars))
+            jars.TryRemove(ctx.RunId, out _);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Falls back to a fresh, empty jar if Setup was never called (every test that
+    /// constructs ApiModule and calls Run directly, without going through FlowEngine) — never
+    /// throws, since a step with no prior cookie state is simply a step with no cookies yet.</summary>
+    private CookieContainer GetCookieJar(FlowRunId runId) =>
+        CookieJars.GetOrCreateValue(this).GetOrAdd(runId, static _ => new CookieContainer());
 
     public async Task<StepOutcome> Run(string action, IReadOnlyDictionary<string, object?> parameters, ExecutionContext ctx, CancellationToken ct)
     {
@@ -152,21 +200,86 @@ public sealed class ApiModule : IAutomationModule
             var timeoutMs = parameters.TryGetValue("timeoutMs", out var timeoutRaw) && timeoutRaw is not null
                 ? Convert.ToInt32(timeoutRaw)
                 : DefaultTimeoutMs;
-
-            using var request = new HttpRequestMessage(new HttpMethod(method), finalUrl);
-            ApplyBody(request, parameters.GetValueOrDefault("body"));
-            ApplyHeaders(request, AsStringDictionary(parameters.GetValueOrDefault("headers")));
+            var redirectPolicy = (parameters.GetValueOrDefault("redirectPolicy") as string ?? "follow").ToLowerInvariant();
+            var headersDict = AsStringDictionary(parameters.GetValueOrDefault("headers"));
+            var bodyParam = parameters.GetValueOrDefault("body");
+            var jar = GetCookieJar(ctx.RunId);
+            ApplyCookies(jar, new Uri(finalUrl, UriKind.Absolute), AsStringDictionary(parameters.GetValueOrDefault("cookies")));
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(timeoutMs);
 
-            var startedAt = DateTimeOffset.UtcNow;
+            // API-T3: rebuilds a fresh HttpRequestMessage per hop from the step's own
+            // declarative inputs (never by trying to resend an already-consumed HttpContent),
+            // so a 307/308 can safely carry the exact original body across a redirect. Every
+            // hop re-enters ApiModule's own ConnectCallback (a new connection, never reused
+            // across hosts), so the SSRF guard applies to every hop, not just the first.
+            async Task<(HttpResponseMessage Response, string Text)> SendOnceAsync(string hopMethod, Uri hopUri, bool includeBody)
+            {
+                using var hopRequest = new HttpRequestMessage(new HttpMethod(hopMethod), hopUri);
+                if (includeBody)
+                    ApplyBody(hopRequest, bodyParam, headersDict);
+                ApplyHeaders(hopRequest, headersDict);
+
+                var cookieHeader = jar.GetCookieHeader(hopUri);
+                if (!string.IsNullOrEmpty(cookieHeader))
+                    hopRequest.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+
+                var hopResponse = await Http.SendAsync(hopRequest, timeoutCts.Token);
+                var hopText = await hopResponse.Content.ReadAsStringAsync(timeoutCts.Token);
+                if (hopResponse.Headers.TryGetValues("Set-Cookie", out var hopSetCookies))
+                {
+                    foreach (var raw in hopSetCookies)
+                    {
+                        try { jar.SetCookies(hopUri, raw); }
+                        catch (CookieException) { /* malformed Set-Cookie from the server; never fails the step over it */ }
+                    }
+                }
+                return (hopResponse, hopText);
+            }
+
+            const int MaxRedirects = 10;
+            var currentUri = new Uri(finalUrl, UriKind.Absolute);
+            var currentMethod = method;
+            var carryBody = true;
+            var redirectCount = 0;
             HttpResponseMessage response;
             string text;
+            var startedAt = DateTimeOffset.UtcNow;
             try
             {
-                response = await Http.SendAsync(request, timeoutCts.Token);
-                text = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+                while (true)
+                {
+                    (response, text) = await SendOnceAsync(currentMethod, currentUri, carryBody);
+                    var hopStatus = (int)response.StatusCode;
+                    var isRedirect = hopStatus is 301 or 302 or 303 or 307 or 308;
+
+                    if (!isRedirect || redirectPolicy == "none" || response.Headers.Location is null)
+                        break;
+
+                    var nextUri = response.Headers.Location.IsAbsoluteUri
+                        ? response.Headers.Location
+                        : new Uri(currentUri, response.Headers.Location);
+
+                    if (redirectPolicy == "samehost" && !string.Equals(nextUri.Host, currentUri.Host, StringComparison.OrdinalIgnoreCase))
+                        break;
+
+                    if (++redirectCount > MaxRedirects)
+                        throw new InvalidOperationException($"api.request exceeded {MaxRedirects} redirects following {finalUrl}.");
+
+                    // 303 always drops to GET with no body; 301/302 do the same only when the
+                    // original request wasn't already GET/HEAD (the long-standing browser/curl
+                    // default, since most servers' 301/302 targets assume that); 307/308 are
+                    // the explicit "repeat exactly as-is" statuses and always carry method+body.
+                    if (hopStatus == 303 || (hopStatus is 301 or 302 && currentMethod is not "GET" and not "HEAD"))
+                    {
+                        currentMethod = "GET";
+                        carryBody = false;
+                    }
+
+                    response.Dispose();
+                    currentUri = nextUri;
+                }
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -234,7 +347,7 @@ public sealed class ApiModule : IAutomationModule
             if (failures.Count > 0)
                 return StepOutcome.Failed(string.Join("; ", failures), data);
 
-            return StepOutcome.Passed($"{method} {finalUrl} -> {statusCode}", data);
+            return StepOutcome.Passed($"{currentMethod} {currentUri} -> {statusCode}", data);
         }
         catch (Exception ex)
         {
@@ -390,7 +503,15 @@ public sealed class ApiModule : IAutomationModule
         _ => new[] { raw.ToString() ?? "" },
     };
 
-    private static void ApplyBody(HttpRequestMessage request, object? body)
+    /// <summary>
+    /// API-T3: a {parts:[...]} shape always means multipart, regardless of any Content-Type
+    /// header — the real header (with its boundary) only MultipartFormDataContent can produce
+    /// correctly, so a step's own header for it is never trusted. A flat object is form-encoded
+    /// only when the step's own header explicitly asks for it: unlike {parts:[...]}, a flat
+    /// object's shape alone is genuinely ambiguous with a plain JSON body, so the header is the
+    /// only signal that can disambiguate it.
+    /// </summary>
+    private static void ApplyBody(HttpRequestMessage request, object? body, IReadOnlyDictionary<string, string> headers)
     {
         switch (body)
         {
@@ -399,10 +520,68 @@ public sealed class ApiModule : IAutomationModule
             case string s:
                 request.Content = new StringContent(s, Encoding.UTF8, "text/plain");
                 return;
+            case IReadOnlyDictionary<string, object?> dict when dict.GetValueOrDefault("parts") is IEnumerable<object?> parts:
+                request.Content = BuildMultipartContent(parts);
+                return;
+            case IReadOnlyDictionary<string, object?> dict when HasContentType(headers, "application/x-www-form-urlencoded"):
+                request.Content = new FormUrlEncodedContent(dict.Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value?.ToString() ?? "")));
+                return;
             default:
                 request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
                 return;
         }
+    }
+
+    private static bool HasContentType(IReadOnlyDictionary<string, string> headers, string expected)
+    {
+        foreach (var (key, value) in headers)
+        {
+            if (string.Equals(key, "Content-Type", StringComparison.OrdinalIgnoreCase))
+                return value.Split(';')[0].Trim().Equals(expected, StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// API-T3: a file part names a bare file in ApiFileStorage's configured area — never an
+    /// arbitrary filesystem path. Letting a flow author read any file on the host by path would
+    /// be a real file-disclosure hole, not a hypothetical one, so this is deliberately narrower
+    /// than the spec's own illustrative "reads from a path the flow supplies" wording.
+    /// </summary>
+    private static MultipartFormDataContent BuildMultipartContent(IEnumerable<object?> parts)
+    {
+        var content = new MultipartFormDataContent();
+        foreach (var raw in parts)
+        {
+            if (raw is not IReadOnlyDictionary<string, object?> part)
+                throw new ArgumentException("Each 'body.parts' entry must be an object.");
+
+            var name = part.GetValueOrDefault("name") as string
+                ?? throw new ArgumentException("Each 'body.parts' entry requires a 'name'.");
+
+            if (part.GetValueOrDefault("fileName") is string requestedFileName)
+            {
+                var safePath = ApiFileStorage.ResolveSafePath(requestedFileName);
+                if (safePath is null || !File.Exists(safePath))
+                    throw new ArgumentException($"api.request multipart part '{name}' references file '{requestedFileName}', which was not found.");
+
+                var fileContent = new ByteArrayContent(File.ReadAllBytes(safePath));
+                var contentType = part.GetValueOrDefault("contentType") as string ?? "application/octet-stream";
+                fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+                content.Add(fileContent, name, Path.GetFileName(requestedFileName));
+            }
+            else
+            {
+                content.Add(new StringContent(part.GetValueOrDefault("value")?.ToString() ?? ""), name);
+            }
+        }
+        return content;
+    }
+
+    private static void ApplyCookies(CookieContainer jar, Uri uri, IReadOnlyDictionary<string, string> cookies)
+    {
+        foreach (var (name, value) in cookies)
+            jar.Add(uri, new Cookie(name, value));
     }
 
     private static void ApplyHeaders(HttpRequestMessage request, IReadOnlyDictionary<string, string> headers)
@@ -411,7 +590,11 @@ public sealed class ApiModule : IAutomationModule
         {
             if (string.Equals(key, "Content-Type", StringComparison.OrdinalIgnoreCase) && request.Content is not null)
             {
-                request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(value);
+                // A multipart body's real Content-Type (with its boundary) comes from
+                // MultipartFormDataContent itself — a step's own header for it would be wrong
+                // by construction (no boundary), so it's never allowed to overwrite that one.
+                if (request.Content is not MultipartFormDataContent)
+                    request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(value);
                 continue;
             }
 

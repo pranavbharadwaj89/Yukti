@@ -18,8 +18,12 @@ body so later flow steps can chain off it via `{{vars.<saveAs>.<field>}}`.
 
 ## Lifecycle
 
-- `Setup` / `Teardown`: no-ops in both implementations (stateless — a
-  single static `HttpClient` in C#, `fetch` per-call in TS).
+- `Setup` / `Teardown`: no-ops in the TS implementation. In C# (API-T3),
+  `Setup` creates a fresh per-`FlowRunId` cookie jar and `Teardown` removes
+  it — the only per-run state this module holds, kept off the module
+  instance itself (a static `ConditionalWeakTable`, same shape as the
+  shared `HttpClient`'s own), so `ModulePluginContractTests`'
+  zero-reflected-instance-fields check still holds.
 
 ## Actions
 
@@ -35,8 +39,10 @@ returns `Failed("Unknown api action '<action>'. Supported: 'request'.")`.
 | `headers` | object | no | `{}` | done | done (flat string->string; `Content-Type` routed onto `Content.Headers`, other content headers fall back to `Content.Headers` if `HttpRequestMessage.Headers` rejects them) |
 | `pathParams` | object | no | `{}` | not present | done (API-T2) — resolves `{placeholder}` segments in `url`; every value is `Uri.EscapeDataString`-encoded so it can never add a path segment or query string of its own |
 | `queryParams` | object | no | `{}` | not present | done — a scalar value replaces the URL's own value(s) for that key (last-value-wins); an array value (API-T2) appends the key once per entry, in order, so repeated keys (`?tag=a&tag=b`) and empty values (`?tag=`) are both expressible |
-| `body` | any | no | - | done (JSON-serialized) | done (object/array -> `application/json`; plain string -> `text/plain`; an explicit `Content-Type` header always wins) |
-| `timeoutMs` | number | no | `10000` | done (via `AbortController`) | done (via a linked `CancellationTokenSource.CancelAfter`, since the module's shared static `HttpClient` can't safely take a per-request `.Timeout` under concurrent flows) |
+| `body` | any | no | - | done (JSON-serialized) | done — object/array -> `application/json`, plain string -> `text/plain` (an explicit `Content-Type` header always wins for either). API-T3 adds `{parts:[...]}` -> `multipart/form-data` (shape-triggered, header ignored — see below) and a flat object + a `Content-Type: application/x-www-form-urlencoded` header -> form-encoded. |
+| `cookies` | object | no | `{}` | not present | done (API-T3) — name->value, merged into the flow run's own cookie jar (see Lifecycle); sent on this request and remembered for later steps in the same run |
+| `redirectPolicy` | string | no | `follow` | not present | done (API-T3) — `follow` \| `none` \| `sameHost`. Implemented as a manual redirect loop (`SocketsHttpHandler.AllowAutoRedirect = false`), so every hop re-enters `ApiModule`'s own `ConnectCallback` and thus the SSRF guard, and so cookies/headers are correctly re-applied per hop. |
+| `timeoutMs` | number | no | `10000` | done (via `AbortController`) | done (via a linked `CancellationTokenSource.CancelAfter`, since the module's shared static `HttpClient` can't safely take a per-request `.Timeout` under concurrent flows) — the budget covers the whole request including any redirects it follows |
 | `assert` | array | no | `[]` | done (see below) | done — full `Assertion` hierarchy (`Yukti.Domain.Assertions`), `type`-discriminated on the wire (see below) |
 | `expectedStatus` | number | no | - | not present (TS uses `assert: [{status}]` instead) | done — kept as backward-compatible shorthand, translated into an implicit `{type:"status"}` assertion prepended to the `assert` list |
 
@@ -124,6 +130,22 @@ Both implementations:
 - **Timeout**: `status: failed`, `error: "Request timed out after <timeoutMs>ms"`,
   no `data`.
 
+## Multipart file parts (API-T3)
+
+A `body.parts` entry with a `fileName` field reads that file from
+`ApiFileStorage`'s configured directory (`YUKTI_API_FILES_DIR` env var,
+default `<app base dir>/api-files`) — **never an arbitrary filesystem
+path**. Only the bare file name survives (`Path.GetFileName`), so a value
+like `../../secrets.txt` can't escape that directory; a missing file fails
+the step naming the file, before any request is sent. This directory is
+intentionally not per-run or per-tenant like `ScreenshotStorage`'s own
+directories: those are written by the system after a run starts (a RunId
+already exists to scope them by), but a multipart test fixture must exist
+*before* the run that references it even starts, and there is no
+upload-to-this-module mechanism yet to stage one per-run. Until one
+exists, treat this directory as shared, operator-managed test fixtures,
+not tenant data — a real gap, not a hidden one.
+
 ## Known constraints
 
 - No retry/backoff of its own — retries are the Flow Engine's job
@@ -131,8 +153,8 @@ Both implementations:
 - No auth helpers (bearer token, OAuth) beyond raw `headers` (API-T4/T5 —
   blocked on the `{{secrets}}` pipeline, deferred to v0.2).
 - No response size limit — the whole body is buffered into memory.
-- `body` supports JSON (object/array) and plain text only — no multipart or
-  `application/x-www-form-urlencoded` support yet.
+- The multipart file-parts directory is shared across tenants (see above)
+  — not yet a security boundary, just a fixtures folder.
 - `JsonPathEvaluator`'s `path` syntax is dotted segments plus `[index]` array
   access only — no JSONPath `$`, wildcards, or filter expressions.
 - `MinimalJsonSchemaValidator` (the `schema` assertion) supports only
