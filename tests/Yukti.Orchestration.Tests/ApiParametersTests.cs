@@ -126,6 +126,31 @@ public sealed class ApiParametersTests
     }
 
     [Fact]
+    public async Task QueryParams_support_repeated_keys_via_a_value_type_list_not_just_List_of_object()
+    {
+        // Regression: a generic IEnumerable<object?> pattern match does not satisfy
+        // a value-type collection like List<int> due to C#'s generic covariance rules,
+        // which would otherwise fall through to the wildcard arm and emit "id=System.Int32[]".
+        string? receivedQuery = null;
+        using var server = new ApiModuleAssertionTests.TestHttpServer(async ctx =>
+        {
+            receivedQuery = ctx.Request.Url!.Query.TrimStart('?');
+            ctx.Response.StatusCode = 200;
+            await ApiModuleAssertionTests.WriteBody(ctx, "{}");
+        });
+
+        var module = new ApiModule();
+        var outcome = await module.Run("request", new Dictionary<string, object?>
+        {
+            ["url"] = server.BaseUrl,
+            ["queryParams"] = new Dictionary<string, object?> { ["id"] = new List<int> { 1, 2 } },
+        }, NewContext(), CancellationToken.None);
+
+        Assert.Equal(StepStatus.Passed, outcome.Status);
+        Assert.Equal("id=1&id=2", receivedQuery);
+    }
+
+    [Fact]
     public async Task QueryParams_support_empty_values()
     {
         string? receivedQuery = null;

@@ -377,11 +377,16 @@ public sealed class ApiModule : IAutomationModule
         return new UriBuilder(uri) { Query = query }.Uri.ToString();
     }
 
+    // Matches plain System.Collections.IEnumerable, not IEnumerable<object?> --
+    // a generic-interface pattern match doesn't satisfy value-type collections
+    // like List<int> or int[] (the same covariance gap AssertionParamMapper's
+    // RequireIntList had, API-T7), which would otherwise fall through to the
+    // wildcard arm and emit a query value like "System.Int32[]".
     private static IEnumerable<string> ToQueryValues(object? raw) => raw switch
     {
         null => new[] { "" },
         string s => new[] { s },
-        IEnumerable<object?> list => list.Select(v => v?.ToString() ?? ""),
+        System.Collections.IEnumerable list => list.Cast<object?>().Select(v => v?.ToString() ?? ""),
         _ => new[] { raw.ToString() ?? "" },
     };
 
