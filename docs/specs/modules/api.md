@@ -40,20 +40,33 @@ returns `Failed("Unknown api action '<action>'. Supported: 'request'.")`.
 | `expectedStatus` | number | no | - | not present (TS uses `assert: [{status}]` instead) | done — kept as backward-compatible shorthand, translated into an implicit `{type:"status"}` assertion prepended to the `assert` list |
 
 **Assertion wire shape (C#)** — `type`-discriminated JSON objects, mapped
-1:1 onto `Yukti.Domain.Assertions.Assertion`'s four record types via
+1:1 onto `Yukti.Domain.Assertions.Assertion`'s record types via
 `AssertionParamMapper`:
 
 ```json
 { "assert": [
   { "type": "status", "expectedStatus": 200 },
+  { "type": "statusIn", "expectedStatuses": [200, 201, 202] },
   { "type": "pathEquals", "path": "data.id", "equals": 42 },
   { "type": "pathContains", "path": "data.items", "contains": "abc" },
   { "type": "pathExists", "path": "data.token" },
+  { "type": "pathCount", "path": "data.items", "expectedCount": 3 },
   { "type": "headerExists", "header": "X-Request-Id" },
+  { "type": "headerEquals", "header": "Content-Type", "equals": "application/json" },
+  { "type": "headerContains", "header": "Content-Disposition", "contains": "report.pdf" },
   { "type": "cookieExists", "cookie": "session" },
-  { "type": "schema", "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "number" } } } }
+  { "type": "schema", "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "number" } } } },
+  { "type": "responseTimeUnder", "maxMs": 2000 },
+  { "type": "bodyMatchesPattern", "pattern": "^order-\\d+$" }
 ]}
 ```
+
+API Testing Module Spec, API-T7 additions: `statusIn` (status in an allowed set), `pathCount`
+(an array's length, or 1 for a present scalar/object), `headerEquals`/`headerContains` (exact/
+substring header value match, as distinct from `headerExists`'s presence-only check),
+`responseTimeUnder` (the request's own measured duration, excluding Yukti's overhead) and
+`bodyMatchesPattern` (a regex against the raw response text — a 2s match timeout and a clean
+failure on an invalid pattern, never an unhandled exception).
 
 `path` is dot-notation (with optional `[index]` array segments, e.g.
 `items[0].id`) into the parsed JSON response body, evaluated by
