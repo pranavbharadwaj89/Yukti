@@ -15,4 +15,15 @@ public sealed class SelectorNotFoundException : Exception
     {
         Selector = selector;
     }
+
+    /// <summary>Web UI Testing Module Spec, WEB-T3/T4: a Locator-based resolution failure
+    /// carries richer diagnostics (every strategy tried, how many elements each matched) than
+    /// the fixed "Selector not found: 'X'" template above can hold — this overload uses the
+    /// caller's own detail as the full message instead, so PlaywrightLocatorResolver's
+    /// FailureDetail reaches the step's reported error verbatim, not just the entry's name.</summary>
+    public SelectorNotFoundException(string selector, string detail)
+        : base(detail)
+    {
+        Selector = selector;
+    }
 }

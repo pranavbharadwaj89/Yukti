@@ -1464,7 +1464,22 @@ work here, don't assume they still hold.
   directly, not `PlaywrightException` like the methods `WebModule.WithSelectorNotFound` already
   catches — noted in the spec file for WEB-T4's awareness, not a bug anywhere today (nothing
   existing calls `WaitForAsync`).
-  Next: WEB-T4 (migrate the existing module).
+  **WEB-T4 (migrate the existing module) closed 2026-10-29:** every Web action that takes a
+  `selector` (`click`, `fill`, `select`, `assertText`, `getText`, `assertVisible`,
+  `waitForSelector`) now accepts a `Locator`/inline-locator-object/repository-reference, through
+  the new `LocatorParamMapper`, on top of WEB-T3's resolver — the pre-existing `string` path is
+  the unmodified original code, verified unchanged by the pre-existing `WebModuleTests` (6/6).
+  New `WebModuleLocatorMigrationTests` (5/5) proves the Locator path end to end, including a
+  real `ObjectRepository` entry resolving and clicking through `FlowEngine`+`WebModule` together.
+  ✔ `dotnet test --filter "FullyQualifiedName~WebModule"` → 14/14 passed.
+  ✔ `dotnet <built Cli.dll> run demo/uc1_flow.json` → Passed, 7/7 — run against the built
+  binaries directly from the repo root; `dotnet run --project X` changes CWD to X's own folder,
+  which broke the Logs step's relative `app.log` path when FixtureApp and the CLI were started
+  via two separate `dotnet run --project` invocations in this session — a session-invocation
+  artifact, not a regression, resolved by invoking the built DLLs directly instead.
+  **Not executed:** the spec's own 50-run flake benchmark (`scripts/flake_run.py`) needs a Python
+  interpreter, unavailable in this environment.
+  Next: WEB-T5 (waits).
 - [ ] DISC-22 `RequestTemplate` (API-T9, `plan/specs/API-TESTING-MODULE.md`) has **no database-
   level RLS at all** — `AddRequestTemplates`'s migration creates the table and
   `GrantYuktiAppRequestTemplatesPrivileges` grants the app role read/write, but neither applies

@@ -33,8 +33,8 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
 
 ## Web UI Testing Module (`plan/specs/WEB-TESTING-MODULE.md`)
 
-WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resolution) closed
-2026-10-29. WEB-T4 (migrate the existing module) next.
+WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resolution), WEB-T4
+(migrate the existing module) closed 2026-10-29. WEB-T5 (waits) next.
 
 1. 🟡 **"Confirm Playwright stays" (the spec's own blocking question).** Treating this as already
    settled, not re-asking: `CLAUDE.md` §4 already names `Microsoft.Playwright (.NET)` as the web
@@ -80,6 +80,11 @@ WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resoluti
    default (case-insensitive substring/partial match); exact-text matching isn't independently
    selectable. *Tell me if you want `LocatorSpec` to carry an `Exact: bool?` (a small addition to
    an already-shipped WEB-T1 type) rather than leaving `Text` partial-only.*
+9. 🔵 **Not executed, flagged:** WEB-T4's 50-run flake benchmark (`scripts/flake_run.py`) needs a
+   Python interpreter, which isn't available in this environment (`python3`/`python` both fail to
+   launch). Everything else on the task's own checklist ran and passed for real. *Needs: either a
+   Python interpreter in this environment, or you run the benchmark yourself and report the
+   number back.*
 
 ---
 

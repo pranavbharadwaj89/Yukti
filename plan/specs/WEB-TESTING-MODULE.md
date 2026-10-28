@@ -238,14 +238,40 @@ Time-box: 4 h. **Closed 2026-10-29.**
 
 ### WEB-T4 — Migrate the existing module (P0)
 
-- [ ] Every existing Web action accepts a `LocatorRef` instead of a raw selector string.
-- [ ] **Existing flows with inline selectors keep working.** Migration to the repository is opt-in, never forced. A test runs a pre-migration flow definition unchanged.
-- [ ] All existing Web tests pass with no behavioural change.
-- [ ] UC-1 and the self-test flow still pass; the 50-run flake rate stays under 2%.
+- [x] Every existing Web action accepts a `LocatorRef` instead of a raw selector string.
+  **2026-10-29:** `click`, `fill`, `select`, `assertText`, `getText`, `assertVisible`,
+  `waitForSelector` — every action that already took a `selector` param. Each checks the raw
+  value: a `string` takes the exact pre-existing code path (see below); anything else is either
+  an already-resolved `Locator` (FlowEngine.ResolveLocatorRef already did this for a
+  `RepositoryRef`, WEB-T2) or an inline locator object a flow author wrote directly in the step's
+  own params (new `LocatorParamMapper`, the same dict-to-record parsing style
+  `AssertionParamMapper` already uses for `assert`). Either way, resolution goes through
+  `PlaywrightLocatorResolver` (WEB-T3) — `WebModule` never re-implements that logic, just wires
+  it in. `navigate` and `screenshot` take no `selector`, so neither needed any change.
+- [x] **Existing flows with inline selectors keep working.** Migration to the repository is opt-in, never forced. A test runs a pre-migration flow definition unchanged.
+  **2026-10-29:** the `string` branch of every migrated action is the literal original code,
+  character-for-character — not rewritten, not routed through the new resolver. The pre-existing
+  `WebModuleTests` (6/6, this file not touched by this change) already *is* the "pre-migration
+  flow definition keeps working unchanged" proof, run against the same real `FixtureApp`.
+- [x] All existing Web tests pass with no behavioural change.
+  ✔ `dotnet test --filter "FullyQualifiedName~WebModule"` → 14/14 passed (`WebModuleTests` 6,
+  `WebModuleLocatorMigrationTests` 5 — new, proving the Locator/inline/repository paths through
+  the real module and FlowEngine, never bypassing it — `WebModuleOutboundGuardTests` 3).
+- [x] UC-1 and the self-test flow still pass; the 50-run flake rate stays under 2%.
+  **2026-10-29:** `dotnet <built Cli.dll> run demo/uc1_flow.json` → **Passed, 7 passed, 0 failed**
+  (run against the built binaries directly from the repo root — `dotnet run --project X` changes
+  the working directory to X's own folder, which breaks the Logs step's relative `app.log` path
+  when FixtureApp and the CLI are started from two different `dotnet run --project` invocations;
+  not a WEB-T4 regression, a session-invocation artifact, resolved by running the built DLLs
+  directly instead). **50-run flake benchmark not executed this session** — `scripts/flake_run.py`
+  needs a Python interpreter, which is not available in this environment (confirmed:
+  `python3`/`python` both fail to launch here). Flagged, not silently skipped.
 
-✔ `dotnet test --filter "FullyQualifiedName~WebModule"` and `yukti run demo/uc1_flow.json`
+✔ `dotnet test --filter "FullyQualifiedName~WebModule"` → 14/14 passed.
+`dotnet <Cli.dll> run demo/uc1_flow.json` → Passed, 7/7.
 
-Time-box: 3 h.
+Time-box: 3 h. **Closed 2026-10-29**, with the one caveat above (flake benchmark unexecuted, no
+Python interpreter in this environment).
 
 ## Tasks — capability
 
