@@ -43,6 +43,7 @@ returns `Failed("Unknown api action '<action>'. Supported: 'request'.")`.
 | `cookies` | object | no | `{}` | not present | done (API-T3) — name->value, merged into the flow run's own cookie jar (see Lifecycle); sent on this request and remembered for later steps in the same run |
 | `redirectPolicy` | string | no | `follow` | not present | done (API-T3) — `follow` \| `none` \| `sameHost`. Implemented as a manual redirect loop (`SocketsHttpHandler.AllowAutoRedirect = false`), so every hop re-enters `ApiModule`'s own `ConnectCallback` and thus the SSRF guard, and so cookies/headers are correctly re-applied per hop. |
 | `timeoutMs` | number | no | `10000` | done (via `AbortController`) | done (via a linked `CancellationTokenSource.CancelAfter`, since the module's shared static `HttpClient` can't safely take a per-request `.Timeout` under concurrent flows) — the budget covers the whole request including any redirects it follows |
+| `auth` | object | no | - | not present | done (API-T4) — see "Authentication" below |
 | `assert` | array | no | `[]` | done (see below) | done — full `Assertion` hierarchy (`Yukti.Domain.Assertions`), `type`-discriminated on the wire (see below) |
 | `expectedStatus` | number | no | - | not present (TS uses `assert: [{status}]` instead) | done — kept as backward-compatible shorthand, translated into an implicit `{type:"status"}` assertion prepended to the `assert` list |
 | `extract` | array | no | `[]` | not present | done (API-T6) — see "Extraction" below |
@@ -158,6 +159,44 @@ Both implementations:
   `error: <exception message>`, no `data`.
 - **Timeout**: `status: failed`, `error: "Request timed out after <timeoutMs>ms"`,
   no `data`.
+
+## Authentication (API-T4)
+
+`auth` is `{type, ...}`. Every credential value comes through `{{secrets.name}}`
+(VariableStore, resolved via `ExecutionContext`'s `ICredentialResolver` —
+Vault in production, `InMemoryCredentialResolver` for tests/CLI), **never
+a plain string literal** — by the time `ApiModule.Run` sees `auth`,
+FlowEngine has already resolved it, exactly the same already-resolved
+shape `{{vars.x}}` has always arrived in. `ApiModule` itself never touches
+Vault or `ICredentialResolver` directly.
+
+```json
+{ "auth": { "type": "basic", "username": "{{secrets.dbUser}}", "password": "{{secrets.dbPass}}" } }
+{ "auth": { "type": "bearer", "token": "{{secrets.apiToken}}" } }
+{ "auth": { "type": "apiKey", "name": "X-Api-Key", "value": "{{secrets.apiKey}}", "in": "header" } }
+```
+
+- `basic` → `Authorization: Basic <base64(username:password)>`.
+- `bearer` → `Authorization: Bearer <token>`.
+- `apiKey` → `name`/`value` placed per `in`: `header` (default), `query`, or
+  `cookie`.
+- An explicit `headers`/`queryParams`/`cookies` entry of the **same name**
+  always overrides what `auth` would otherwise set — `auth` only fills in
+  what isn't already there.
+- A credential that fails to resolve (`{{secrets.x}}` with no such secret)
+  raises `SecretResolutionException` — the step fails naming the secret's
+  *name*, never falling back to sending the request without it. See
+  `VariableStore`'s own doc comment for the `{{secrets.name}}` mechanism
+  itself, and `SecretRedactionTests` (Yukti.Infrastructure.Tests) for the
+  leak proof across the JSON report, JUnit report, application logs, the
+  flow's own authored params, and audit entries — reusing Day 6's sentinel
+  scan, not a second one.
+- A custom auth scheme Yukti doesn't implement (OAuth authorization code,
+  a signed-request scheme, ...) has an escape hatch requiring no new code
+  at all: a step that calls the auth endpoint, extracts the resulting
+  token with `extract` (API-T6), and later steps reference it via
+  `{{vars.<step>.extracted.<name>}}` — ordinary flow authoring, nothing
+  module-specific.
 
 ## Extraction (API-T6)
 

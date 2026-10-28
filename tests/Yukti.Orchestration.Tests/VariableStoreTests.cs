@@ -59,79 +59,81 @@ public sealed class VariableStoreTests
         },
     };
 
+    private static readonly ICredentialResolver NoCredentials = new InMemoryCredentialResolver();
+
     [Fact]
-    public void A_top_level_reference_resolves()
+    public async Task A_top_level_reference_resolves()
     {
         var store = new VariableStore();
-        var result = store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.a}}" }, Vars);
+        var result = await store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.a}}" }, Vars, NoCredentials, CancellationToken.None);
         Assert.Equal("top-level", result["x"]);
     }
 
     [Fact]
-    public void A_nested_reference_resolves()
+    public async Task A_nested_reference_resolves()
     {
         var store = new VariableStore();
-        var result = store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.b.c}}" }, Vars);
+        var result = await store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.b.c}}" }, Vars, NoCredentials, CancellationToken.None);
         Assert.Equal("deeply-nested", result["x"]);
     }
 
     [Fact]
-    public void A_reference_to_a_missing_path_fails_the_step_naming_the_path_never_as_an_empty_string()
+    public async Task A_reference_to_a_missing_path_fails_the_step_naming_the_path_never_as_an_empty_string()
     {
         var store = new VariableStore();
 
-        var ex = Assert.Throws<VariableResolutionException>(() =>
-            store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.doesNotExist}}" }, Vars));
+        var ex = await Assert.ThrowsAsync<VariableResolutionException>(() =>
+            store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.doesNotExist}}" }, Vars, NoCredentials, CancellationToken.None));
 
         Assert.Equal("vars.orgInfo.doesNotExist", ex.Path);
         Assert.Contains("vars.orgInfo.doesNotExist", ex.Message);
     }
 
     [Fact]
-    public void A_missing_path_embedded_in_a_larger_string_also_fails_rather_than_becoming_an_empty_string()
+    public async Task A_missing_path_embedded_in_a_larger_string_also_fails_rather_than_becoming_an_empty_string()
     {
         var store = new VariableStore();
 
-        var ex = Assert.Throws<VariableResolutionException>(() =>
-            store.Interpolate(new Dictionary<string, object?> { ["x"] = "prefix-{{vars.nope}}-suffix" }, Vars));
+        var ex = await Assert.ThrowsAsync<VariableResolutionException>(() =>
+            store.Interpolate(new Dictionary<string, object?> { ["x"] = "prefix-{{vars.nope}}-suffix" }, Vars, NoCredentials, CancellationToken.None));
 
         Assert.Equal("vars.nope", ex.Path);
     }
 
     [Fact]
-    public void A_parameter_with_no_template_passes_through_unchanged()
+    public async Task A_parameter_with_no_template_passes_through_unchanged()
     {
         var store = new VariableStore();
-        var result = store.Interpolate(new Dictionary<string, object?> { ["x"] = "plain string, no braces" }, Vars);
+        var result = await store.Interpolate(new Dictionary<string, object?> { ["x"] = "plain string, no braces" }, Vars, NoCredentials, CancellationToken.None);
         Assert.Equal("plain string, no braces", result["x"]);
     }
 
     [Fact]
-    public void A_whole_parameter_template_keeps_the_resolved_values_real_type_not_just_its_string_form()
+    public async Task A_whole_parameter_template_keeps_the_resolved_values_real_type_not_just_its_string_form()
     {
         var store = new VariableStore();
-        var result = store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.count}}" }, Vars);
+        var result = await store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.count}}" }, Vars, NoCredentials, CancellationToken.None);
         Assert.Equal(42, result["x"]);
         Assert.IsType<int>(result["x"]);
     }
 
     [Fact]
-    public void A_whole_parameter_template_resolving_to_an_object_keeps_its_object_type()
+    public async Task A_whole_parameter_template_resolving_to_an_object_keeps_its_object_type()
     {
         var store = new VariableStore();
-        var result = store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.b}}" }, Vars);
+        var result = await store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.b}}" }, Vars, NoCredentials, CancellationToken.None);
         Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(result["x"]);
     }
 
     [Fact]
-    public void A_path_that_resolves_to_a_genuinely_null_value_is_not_treated_as_missing()
+    public async Task A_path_that_resolves_to_a_genuinely_null_value_is_not_treated_as_missing()
     {
         // Distinct from "not found": a prior step legitimately saved null.
         // Only the *last* segment may be null; an *earlier* segment being
         // null (nothing to walk further into) is still "missing" for a
         // longer path, exercised separately above via doesNotExist.
         var store = new VariableStore();
-        var result = store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.legitimatelyNull}}" }, Vars);
+        var result = await store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.orgInfo.legitimatelyNull}}" }, Vars, NoCredentials, CancellationToken.None);
         Assert.Null(result["x"]);
     }
 
@@ -142,15 +144,55 @@ public sealed class VariableStoreTests
         var varsA = new Dictionary<string, object?> { ["x"] = "A" };
         var varsB = new Dictionary<string, object?> { ["x"] = "B" };
 
-        var tasks = Enumerable.Range(0, 50).Select(i => Task.Run(() =>
+        var tasks = Enumerable.Range(0, 50).Select(i => Task.Run(async () =>
         {
             var vars = i % 2 == 0 ? varsA : varsB;
             var expected = i % 2 == 0 ? "A" : "B";
-            var result = store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.x}}" }, vars);
+            var result = await store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{vars.x}}" }, vars, NoCredentials, CancellationToken.None);
             Assert.Equal(expected, result["x"]);
         }));
 
         await Task.WhenAll(tasks);
+    }
+
+    [Fact]
+    public async Task A_secrets_reference_resolves_through_the_credential_resolver()
+    {
+        var store = new VariableStore();
+        var credentials = new InMemoryCredentialResolver(new Dictionary<string, string> { ["apiToken"] = "s3cr3t-value" });
+
+        var result = await store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{secrets.apiToken}}" }, Vars, credentials, CancellationToken.None);
+
+        Assert.Equal("s3cr3t-value", result["x"]);
+    }
+
+    [Fact]
+    public async Task A_secrets_reference_that_fails_to_resolve_fails_the_step_naming_the_secret_never_its_value()
+    {
+        var store = new VariableStore();
+        var credentials = new InMemoryCredentialResolver(); // empty -- "missingSecret" resolves to null
+
+        var ex = await Assert.ThrowsAsync<SecretResolutionException>(() =>
+            store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{secrets.missingSecret}}" }, Vars, credentials, CancellationToken.None));
+
+        Assert.Contains("missingSecret", ex.Message);
+    }
+
+    [Fact]
+    public async Task A_resolved_secret_is_never_written_back_into_the_runs_own_variables()
+    {
+        // The whole point of resolving per-dispatch rather than storing: Interpolate's return
+        // value is what the module receives, but it must never feed back into `vars` itself --
+        // proven here by interpolating twice against the SAME `vars` dictionary and confirming
+        // the second call sees no trace of the first call's resolved secret.
+        var store = new VariableStore();
+        var vars = new Dictionary<string, object?>();
+        var credentials = new InMemoryCredentialResolver(new Dictionary<string, string> { ["apiToken"] = "s3cr3t-value" });
+
+        await store.Interpolate(new Dictionary<string, object?> { ["x"] = "{{secrets.apiToken}}" }, vars, credentials, CancellationToken.None);
+
+        Assert.DoesNotContain("apiToken", vars.Keys);
+        Assert.DoesNotContain("s3cr3t-value", vars.Values);
     }
 
     private static FlowEngine BuildEngine()

@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.RegularExpressions;
+using Yukti.Contracts;
 
 namespace Yukti.Orchestration;
 
@@ -8,55 +10,98 @@ namespace Yukti.Orchestration;
 /// already-parsed VariableExpression paths at the domain layer for publish-
 /// time validation; this runtime component performs the actual per-execution
 /// substitution against a FlowRun's live variable scope. (Volume 1 Part III §19.4)
+///
+/// API Testing Module Spec, API-T4: also resolves {{secrets.name}}, through
+/// the credential resolver FlowEngine already has for exactly this (ADR: no
+/// new dependency, no new Vault code — ICredentialResolver/VaultCredentialResolver
+/// already existed; this is the one piece that was missing, the {{secrets}}
+/// syntax itself). A resolved secret is returned only in the per-dispatch
+/// parameter set handed to the module — never written into the run's own
+/// Variables — so it can never leak back out through a later {{vars...}}
+/// reference or a saveAs.
 /// </summary>
 public sealed partial class VariableStore : IVariableStore
 {
     [GeneratedRegex(@"\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}")]
     private static partial Regex TemplatePattern();
 
-    public IReadOnlyDictionary<string, object?> Interpolate(
-        IReadOnlyDictionary<string, object?> parameters, IReadOnlyDictionary<string, object?> vars)
+    public async Task<IReadOnlyDictionary<string, object?>> Interpolate(
+        IReadOnlyDictionary<string, object?> parameters, IReadOnlyDictionary<string, object?> vars,
+        ICredentialResolver credentials, CancellationToken ct)
     {
         var result = new Dictionary<string, object?>();
         foreach (var (key, value) in parameters)
-            result[key] = InterpolateValue(value, vars);
+            result[key] = await InterpolateValue(value, vars, credentials, ct);
         return result;
     }
 
-    private object? InterpolateValue(object? value, IReadOnlyDictionary<string, object?> vars)
+    private async Task<object?> InterpolateValue(
+        object? value, IReadOnlyDictionary<string, object?> vars, ICredentialResolver credentials, CancellationToken ct)
     {
         switch (value)
         {
             case string s:
                 var wholeMatch = Regex.Match(s, @"^\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}$");
                 if (wholeMatch.Success)
-                {
-                    var path = wholeMatch.Groups[1].Value;
-                    if (!TryResolvePath(path, vars, out var wholeValue))
-                        throw new VariableResolutionException(path);
-                    return wholeValue;
-                }
+                    return await ResolveReference(wholeMatch.Groups[1].Value, vars, credentials, ct);
 
-                return TemplatePattern().Replace(s, m =>
+                var matches = TemplatePattern().Matches(s);
+                if (matches.Count == 0)
+                    return s;
+
+                // A MatchEvaluator (Regex.Replace's callback) can't await, since {{secrets.name}}
+                // resolution is genuinely async (a real Vault call) -- so embedded references are
+                // substituted manually, one at a time, in the order they appear.
+                var sb = new StringBuilder();
+                var lastIndex = 0;
+                foreach (Match m in matches)
                 {
-                    var path = m.Groups[1].Value;
-                    if (!TryResolvePath(path, vars, out var resolved))
-                        throw new VariableResolutionException(path);
-                    return resolved?.ToString() ?? string.Empty;
-                });
+                    sb.Append(s, lastIndex, m.Index - lastIndex);
+                    var resolved = await ResolveReference(m.Groups[1].Value, vars, credentials, ct);
+                    sb.Append(resolved?.ToString() ?? string.Empty);
+                    lastIndex = m.Index + m.Length;
+                }
+                sb.Append(s, lastIndex, s.Length - lastIndex);
+                return sb.ToString();
 
             case IReadOnlyDictionary<string, object?> nested:
                 var nestedResult = new Dictionary<string, object?>();
                 foreach (var (k, v) in nested)
-                    nestedResult[k] = InterpolateValue(v, vars);
+                    nestedResult[k] = await InterpolateValue(v, vars, credentials, ct);
                 return nestedResult;
 
             case IEnumerable<object?> list when value is not string:
-                return list.Select(v => InterpolateValue(v, vars)).ToList();
+                var listResult = new List<object?>();
+                foreach (var v in list)
+                    listResult.Add(await InterpolateValue(v, vars, credentials, ct));
+                return listResult;
 
             default:
                 return value;
         }
+    }
+
+    private static async Task<object?> ResolveReference(
+        string path, IReadOnlyDictionary<string, object?> vars, ICredentialResolver credentials, CancellationToken ct)
+    {
+        var segments = path.Split('.');
+        if (segments.Length > 0 && segments[0] == "secrets")
+        {
+            // Secrets are flat string values, never nested objects -- "secrets.name" is the only
+            // valid shape; "secrets.name.sub" has nothing to walk into and is simply unresolved.
+            if (segments.Length != 2)
+                throw new VariableResolutionException(path);
+
+            var name = segments[1];
+            var resolved = await credentials.ResolveAsync(name, ct);
+            if (resolved is null)
+                throw new SecretResolutionException(name);
+            return resolved;
+        }
+
+        if (!TryResolvePath(path, vars, out var value))
+            throw new VariableResolutionException(path);
+        return value;
     }
 
     /// <summary>
