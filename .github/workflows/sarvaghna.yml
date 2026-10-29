@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [ "main" ]
     types: [ opened, synchronize, reopened ]
+  workflow_dispatch: {} # lets Bravitas (job below) be run on demand, independent of a merge
 
 permissions:
   contents: read
@@ -73,3 +74,145 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
         run: python sarvaghna/reporting/send_email.py /tmp/sarvaghna-report.json
+
+  # Bravitas (UI Auditor, working name) — auto-triggers on every merge to
+  # main (push event), the owner's own request: "auto trigger as and when
+  # the merge happens in the git". Also workflow_dispatch-able on its own,
+  # independent of a merge, since Bravitas is meant to be callable by
+  # itself, not only as a side effect of sarvaghna-analyze above. Skipped
+  # on plain pull_request events — a PR's frontend hasn't landed yet, and
+  # auditing every push to every open PR would multiply this job's real
+  # cost (full stack boot + browser) for no corresponding benefit.
+  bravitas-ui-audit:
+    name: BRAVITAS UI Audit
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: yukti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Same reason as ci.yml's e2e/ai-off jobs: the rate limiter needs a real Redis for login to answer.
+      redis:
+        image: redis:7
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build the API
+        run: dotnet build src/Yukti.Api -c Release
+
+      - name: Install dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 8.0.11
+
+      - name: Apply EF migrations to the throwaway database
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGDATABASE: yukti
+          PGUSERNAME: postgres
+          PGPASSWORD_: password
+        run: |
+          CONN="Host=$PGHOST"
+          CONN="$CONN;Port=$PGPORT"
+          CONN="$CONN;Database=$PGDATABASE"
+          CONN="$CONN;Username=$PGUSERNAME"
+          CONN="$CONN;Password=$PGPASSWORD_"
+          export ConnectionStrings__Yukti="$CONN"
+          dotnet ef database update --project src/Yukti.Infrastructure --startup-project src/Yukti.Api --connection "$CONN"
+
+      # Same fixture-AI / Permissive-outbound setup as ci.yml's e2e job — Bravitas
+      # needs a real answering API behind the UI, not a live AI call (§R7).
+      - name: Start the API with the fixture AI provider
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          Outbound__Mode: Permissive
+          Ai__Enabled: "true"
+          Ai__Provider: fixture
+          PGHOST: localhost
+          PGPORT: 5432
+          PGDATABASE: yukti
+          PGUSERNAME: postgres
+          PGPASSWORD_: password
+        run: |
+          CONN="Host=$PGHOST"
+          CONN="$CONN;Port=$PGPORT"
+          CONN="$CONN;Database=$PGDATABASE"
+          CONN="$CONN;Username=$PGUSERNAME"
+          CONN="$CONN;Password=$PGPASSWORD_"
+          export ConnectionStrings__Yukti="$CONN"
+          export Ai__FixtureDirectory="$GITHUB_WORKSPACE/apps/yukti-gui/e2e/fixtures/ai"
+          cd src/Yukti.Api/bin/Release/net8.0
+          nohup dotnet Yukti.Api.dll > /tmp/yukti-api-bravitas.log 2>&1 &
+          cd "$GITHUB_WORKSPACE"
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:5000/swagger/v1/swagger.json; then exit 0; fi
+            sleep 1
+          done
+          echo "API never served swagger.json within 30s:"; cat /tmp/yukti-api-bravitas.log; exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: apps/yukti-gui/package-lock.json
+
+      - name: Install frontend dependencies and Playwright's Chromium
+        working-directory: apps/yukti-gui
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build and serve the frontend
+        working-directory: apps/yukti-gui
+        run: |
+          npm run build
+          nohup npm run preview -- --port 5173 --strictPort > /tmp/yukti-gui-preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:5173/login; then exit 0; fi
+            sleep 1
+          done
+          echo "Frontend preview never came up within 30s:"; cat /tmp/yukti-gui-preview.log; exit 1
+
+      - name: Run BRAVITAS UI audit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node sarvaghna/sarvaghna.mjs --bravitas
+
+      - name: Upload Bravitas screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bravitas-screenshots
+          path: sarvaghna/ledger/bravitas-screenshots
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          cat /tmp/yukti-api-bravitas.log || true
+          cat /tmp/yukti-gui-preview.log || true
