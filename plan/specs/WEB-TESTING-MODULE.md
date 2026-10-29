@@ -430,16 +430,76 @@ referenced with the API module's own pending soft-assertion work).
 
 ### WEB-T8 — Browser and context (P0)
 
-- [ ] Browser engine per flow: Chromium, Firefox, WebKit. Default Chromium.
-- [ ] Viewport size, device emulation presets, user agent, locale, timezone, colour scheme.
-- [ ] **Storage-state reuse:** a flow can save its logged-in state and later flows can start from it, skipping login. For a 200-flow suite this is the difference between minutes and hours.
-- [ ] Storage state is tenant-scoped, stored like any other artifact, and **scanned for secrets** before storage — a session token in a saved state is a credential.
-- [ ] Trace and video capture on failure, attached to the report as artifacts.
-- [ ] **The SSRF guard applies unchanged.** A flow cannot navigate to a private address in hosted mode, including via redirect. Re-run Day 6's T5 adversarial set against the new action surface — especially `navigate` and any new window-opening path.
+- [x] Browser engine per flow: Chromium, Firefox, WebKit. Default Chromium.
+  **2026-10-29:** new `Flow.BrowserConfig` (a bundled value object, not seven scalar properties
+  — matches the spec's own grouping), merged into `ExecutionContext` by `FlowEngine` exactly
+  like `TenantId` already is (a plain value snapshot, never a reference to the Flow aggregate —
+  `ModulePluginContractTests`' own contract-pinning test was consciously updated from "five" to
+  "six" properties, not silently left stale). **Known, flagged limitation:** Firefox/WebKit are
+  fully wired (engine selection genuinely dispatches to the right `IBrowserType`, proven by a
+  test expecting Playwright's own "Executable doesn't exist" error) but this environment only
+  has the Chromium binary installed, so an actual Firefox/WebKit *launch* couldn't be proven
+  here — matches the default already recorded in `plan/OPEN-QUESTIONS.md` ("only exercising
+  Chromium in CI/mutation checks for now").
+- [x] Viewport size, device emulation presets, user agent, locale, timezone, colour scheme.
+  **2026-10-29:** all six proven together against a real page reading back
+  `window.innerWidth/innerHeight`, `navigator.userAgent`, `navigator.language`,
+  `Intl.DateTimeFormat().resolvedOptions().timeZone`, and `matchMedia('(prefers-color-scheme:
+  dark)')`. A device preset (`playwright.Devices["iPhone 13"]`) supplies its own full default
+  set; any of the other fields set explicitly overrides just that one field on top of the preset,
+  never the whole thing.
+- [x] **Storage-state reuse:** a flow can save its logged-in state and later flows can start from it, skipping login. For a 200-flow suite this is the difference between minutes and hours.
+  **2026-10-29:** new `saveStorageState` action + `BrowserConfig.StorageStateName` (loaded fresh
+  at every `Setup`, same "resolved on every run, never baked into the Flow" rule every other
+  named reference in this codebase follows). Proven with a real login through `FixtureApp`'s own
+  form (a real session cookie), then a second, independent flow run that never touches `/login`
+  at all and is still recognized as logged in.
+  **Design correction found while building this:** storage state was originally built as a
+  tenant-scoped EF aggregate + repository, matching every other named-reference artifact this
+  session (`RequestTemplate`, `ObjectRepository`). That's wrong for *this* module specifically —
+  `WebModule` is registered as a DI **Singleton** (one instance handles every concurrent flow
+  run, see its own doc comment), and a DB-backed repository needs a **Scoped** `DbContext` — a
+  captive-dependency bug, not a style preference. `dotnet ef migrations remove` itself surfaced
+  the exact error ("Cannot consume scoped service... from singleton") the moment the DI container
+  tried to validate it, before any test could have caught it (every test here constructs
+  `WebModule` manually, bypassing container validation entirely). Rebuilt as tenant-scoped
+  **files** (`BrowserStorageStateStorage`, mirroring `ScreenshotStorage`'s own already-established
+  shape) instead — consistent with how this module's screenshot/trace/video artifacts already
+  work, and the reason `CLAUDE.md` says "modules get only `ExecutionContext`... never `DbContext`"
+  in the first place.
+- [x] Storage state is tenant-scoped, stored like any other artifact, and **scanned for secrets** before storage — a session token in a saved state is a credential.
+  **2026-10-29, interpretation call, flagged not silently decided:** a session/auth token is the
+  *entire point* of storage state (stripping it would defeat "skip login" outright), so this
+  deliberately does NOT reuse `SecretRedactor`'s broad token/secret/key/auth fragment list, which
+  would catch exactly those. It only redacts a cookie/localStorage entry whose own name contains
+  "password" — the one pattern that's never legitimate to persist regardless of purpose. Proven
+  against real `Set-Cookie` headers (`FixtureApp`'s new, additive `/set-test-cookies` endpoint):
+  a `password` cookie's value is redacted, an `authToken` cookie's value survives untouched. See
+  `plan/OPEN-QUESTIONS.md` for the broader-vs-narrower tradeoff.
+- [x] Trace and video capture on failure, attached to the report as artifacts.
+  **2026-10-29:** every run records a trace and video unconditionally (`Setup`) — Playwright can
+  only turn video recording on at context-creation time, before any step (and therefore any
+  failure) exists yet — and `Teardown` keeps the files only when `WebSession.AnyStepFailed` was
+  set (by the same centralized points that already attach a failure screenshot: the exception
+  catches and `AssertionFailed`), deleting a passing run's video to avoid paying the storage cost
+  for the common case. **Known, flagged limitation:** "attached to the report" means written to
+  a predictable per-run path (`trace.zip` beside the run's screenshots) — `FlowRun`/`StepResult`
+  have no "run-level artifact" field to wire a path into, so this is proven on disk, not yet
+  surfaced through the API/report model. Same shape as WEB-T3's own screenshot-on-resolution-
+  failure gap (closed in WEB-T6 once a real consumer existed) — flagged for the same kind of
+  follow-up, not fixed here.
+- [x] **The SSRF guard applies unchanged.** A flow cannot navigate to a private address in hosted mode, including via redirect. Re-run Day 6's T5 adversarial set against the new action surface — especially `navigate` and any new window-opening path.
+  **2026-10-29:** proven, not assumed — a new test opens a `window.open` popup, `switchToWindow`s
+  into it, then navigates *that* page to the metadata endpoint and confirms it's still blocked.
+  Playwright's own context-level `RouteAsync` (registered once in `Setup`) already covers every
+  page in the context, including ones opened later, so no per-page re-registration was needed
+  when WEB-T6 added popup tracking — this test is the proof of that, not a restatement of it.
 
-✔ `dotnet test --filter "FullyQualifiedName~BrowserContext|FullyQualifiedName~OutboundGuard"`
+✔ `dotnet test --filter "FullyQualifiedName~WebBrowserContextTests|FullyQualifiedName~WebModuleOutboundGuardTests"` → 14/14 passed (10 + 4).
 
-Time-box: 4 h.
+Time-box: 4 h. **Closed 2026-10-29** — the last P0 task in this module. Two P0 gates remain:
+Gate 1 (already provable from WEB-T4's own work) and Gate 2 (blocked on the owner supplying a
+real Selenium/Playwright suite — `plan/OPEN-QUESTIONS.md` item 2).
 
 ## Safety and escalation
 
@@ -487,9 +547,13 @@ Roughly **31 hours of P0 work**, about 4 working days.
 
 ### The two gates
 
-**Gate 1 — maintenance leverage (after WEB-T4).** Three flows reference one repository entry. Change that entry's primary locator. All three now use the new locator, **with zero flow edits**. Proven by an automated test, not a manual check.
+**Gate 1 — maintenance leverage (after WEB-T4). ✅ Closed, proven at WEB-T2.** Three flows reference one repository entry. Change that entry's primary locator. All three now use the new locator, **with zero flow edits**. Proven by an automated test, not a manual check.
+`ObjectRepositoryTests.Three_flows_pick_up_a_renamed_locator_with_zero_flow_edits` — built before
+WEB-T4 even started (the resolution mechanism had to exist before any action could use it), but
+it's the exact test this gate asks for, so this gate was already satisfied once WEB-T4 wired real
+actions on top of it.
 
-**Gate 2 — suite portability (after WEB-T8).** Port a **real** existing Selenium or Playwright suite of at least 10 tests into Yukti flows, with no capability gaps. Every gap found is recorded; zero gaps means the module is genuinely Selenium-class.
+**Gate 2 — suite portability (after WEB-T8). ⏳ Blocked on the owner, `plan/OPEN-QUESTIONS.md` item 2.** Port a **real** existing Selenium or Playwright suite of at least 10 tests into Yukti flows, with no capability gaps. Every gap found is recorded; zero gaps means the module is genuinely Selenium-class.
 
 This second gate is the only honest measure of "works like Selenium", and it needs a real suite. An invented one proves nothing, because it will only ever use the capabilities this spec already lists.
 

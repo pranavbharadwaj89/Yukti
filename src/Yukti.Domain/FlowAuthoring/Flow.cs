@@ -48,6 +48,11 @@ public sealed class Flow : AggregateRoot<FlowId>
     /// existing flow has no default and sees zero behavior change).</summary>
     public int? DefaultTimeoutMs { get; private set; }
 
+    /// <summary>Web UI Testing Module Spec, WEB-T8: null means "WebModule's own default"
+    /// (Chromium, no viewport/device/locale override) -- every flow before this task, and every
+    /// flow that never calls SetBrowserConfig, sees zero behavior change.</summary>
+    public BrowserConfig? BrowserConfig { get; private set; }
+
     public TenantId TenantId { get; private set; }
     public UserId CreatedBy { get; private set; }
 
@@ -94,7 +99,8 @@ public sealed class Flow : AggregateRoot<FlowId>
         {
             ProjectId = ProjectId,
             Description = Description,
-            DefaultTimeoutMs = DefaultTimeoutMs
+            DefaultTimeoutMs = DefaultTimeoutMs,
+            BrowserConfig = BrowserConfig
         };
         foreach (var step in _steps)
             next._steps.Add(step);
@@ -146,6 +152,13 @@ public sealed class Flow : AggregateRoot<FlowId>
         if (value is < 0)
             throw new DomainException("DefaultTimeoutMs cannot be negative.");
         DefaultTimeoutMs = value;
+    }
+
+    public void SetBrowserConfig(BrowserConfig? value)
+    {
+        if (Status != FlowStatus.Draft)
+            throw new DomainException("Cannot modify a non-draft Flow. Create a new version instead.");
+        BrowserConfig = value;
     }
 
     /// <summary>
