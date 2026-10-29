@@ -34,7 +34,8 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
 ## Web UI Testing Module (`plan/specs/WEB-TESTING-MODULE.md`)
 
 WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resolution), WEB-T4
-(migrate the existing module), WEB-T5 (waits) closed 2026-10-29. WEB-T6 (full action set) next.
+(migrate the existing module), WEB-T5 (waits), WEB-T6 (full action set) closed 2026-10-29.
+WEB-T7 (assertions) next.
 
 1. 🟡 **"Confirm Playwright stays" (the spec's own blocking question).** Treating this as already
    settled, not re-asking: `CLAUDE.md` §4 already names `Microsoft.Playwright (.NET)` as the web
@@ -96,6 +97,18 @@ WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resoluti
     `Flow.CreateNewVersion` never copied `ContinueOnFailure` forward to the new Draft version (only
     `ProjectId`/`Description` were). A pre-existing, unrelated gap, not fixed here — flagged for
     you to say whether it's intentional or a real bug.
+12. 🟡 **`switchToFrame` only takes a plain CSS selector, not a full `LocatorRef`,** and nothing
+    the richer Locator-object path resolves (an inline locator object, or an Object Repository
+    reference) is frame-aware once you've switched into one — `IFrame` and `IPage` don't share a
+    common locator-building interface in Playwright's own public API, so extending
+    `PlaywrightLocatorResolver`/`ResolveLocatorTarget` to work against either would need a real
+    abstraction layer, not a small patch. *Default, already built:* frame-awareness only covers
+    the legacy plain-string selector path. *Tell me if frame-scoped Object-Repository references
+    are something you actually need soon — it changes how big a job this is.*
+13. 🔵 **Resolved, not asked:** a locator-resolution failure now attaches a screenshot too
+    (`WebModule.Run`'s `SelectorNotFoundException` catch, best-effort via `ScreenshotStorage`) —
+    closed the same session it was flagged, since it directly matched WEB-T6's own checklist
+    wording and was a contained addition.
 
 ---
 
