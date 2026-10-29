@@ -26,6 +26,9 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
    genuine behavior change (hard assertions stop evaluation at the first hard failure; soft ones
    never do), since that's what your spec's test explicitly asks for — but flagging it here since
    it changes existing, tested behavior rather than purely adding something new.*
+   **2026-10-29:** the Web module's own WEB-T7 also has a deferred "soft assertions (P1)" item
+   with the same corrected semantics. Worth building both from one shared design when either gets
+   picked up, not two independent ones — "soft assertion" means the same thing in both modules.
 3. 🔵 DISC-20 (Request Templates frontend page) — known, scoped, not yet built. Not a question,
    just listed here so it's visible alongside everything else rather than only in `PLAN.md`.
 
@@ -34,8 +37,8 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
 ## Web UI Testing Module (`plan/specs/WEB-TESTING-MODULE.md`)
 
 WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resolution), WEB-T4
-(migrate the existing module), WEB-T5 (waits), WEB-T6 (full action set) closed 2026-10-29.
-WEB-T7 (assertions) next.
+(migrate the existing module), WEB-T5 (waits), WEB-T6 (full action set), WEB-T7 (assertions)
+closed 2026-10-29. WEB-T8 (browser and context) next — the last P0 task before Gate 2.
 
 1. 🟡 **"Confirm Playwright stays" (the spec's own blocking question).** Treating this as already
    settled, not re-asking: `CLAUDE.md` §4 already names `Microsoft.Playwright (.NET)` as the web

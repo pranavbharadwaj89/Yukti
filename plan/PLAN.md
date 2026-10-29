@@ -1511,7 +1511,19 @@ work here, don't assume they still hold.
   **Also closed:** the screenshot-on-resolution-failure gap noted when WEB-T3 closed —
   `WebModule.Run`'s `SelectorNotFoundException` catch now attaches a best-effort screenshot,
   proven by a real file-exists assertion.
-  Next: WEB-T7 (assertions).
+  **WEB-T7 (assertions) closed 2026-10-29:** `assertText`/`assertVisible` extended, plus new
+  `assertValue`, `assertAttribute`, `assertHidden`, `assertEnabled`, `assertDisabled`,
+  `assertChecked`, `assertCount`, `assertUrl`, `assertTitle` — all eleven sharing one
+  `TextMatches` (equals/contains/matches-regex) and one `AssertionFailed` (every assertion
+  failure now attaches a best-effort screenshot, the same mechanism WEB-T6 added for
+  `SelectorNotFoundException`). `assertCount` reuses WEB-T5's "bypass single-element resolution"
+  fix for Playwright's strict mode rather than re-deriving it; `assertHidden` is merged into
+  `assertVisible`'s own switch case since only the target boolean differs.
+  ✔ `dotnet test --filter "FullyQualifiedName~WebAssertionTests"` → 21/21 passed.
+  **Soft assertions (P1) deferred**, same pattern as `executeScript` — cross-referenced with the
+  API module's own already-specified soft-assertion design (`plan/OPEN-QUESTIONS.md` item 2) so
+  whoever builds either builds both from one shared design.
+  Next: WEB-T8 (browser and context) — the last P0 task before Gate 2.
 - [ ] DISC-22 `RequestTemplate` (API-T9, `plan/specs/API-TESTING-MODULE.md`) has **no database-
   level RLS at all** — `AddRequestTemplates`'s migration creates the table and
   `GrantYuktiAppRequestTemplatesPrivileges` grants the app role read/write, but neither applies

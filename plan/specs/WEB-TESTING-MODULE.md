@@ -391,14 +391,42 @@ Time-box: 6 h. **Closed 2026-10-29**, with `executeScript` deferred (by prior de
 
 ### WEB-T7 — Assertions (P0)
 
-- [ ] `assertText` (equals, contains, matches a pattern), `assertValue`, `assertAttribute`, `assertVisible`, `assertHidden`, `assertEnabled`, `assertDisabled`, `assertChecked`, `assertCount`, `assertUrl`, `assertTitle`.
-- [ ] Every failure reports **expected, actual, the locator used, and a screenshot**.
-- [ ] Text assertions normalize whitespace by default, with an exact-match option. Unnormalized text comparison is a classic source of false failures.
+- [x] `assertText` (equals, contains, matches a pattern), `assertValue`, `assertAttribute`, `assertVisible`, `assertHidden`, `assertEnabled`, `assertDisabled`, `assertChecked`, `assertCount`, `assertUrl`, `assertTitle`.
+  **2026-10-29:** `assertText`/`assertVisible` extended, every other action new. All eleven share
+  two helpers: `TextMatches` (equals/contains/matches-regex — one convention across
+  `assertText`/`assertValue`/`assertAttribute`/`assertUrl`/`assertTitle`, not reinvented per
+  action) and `AssertionFailed` (the screenshot, below). `assertCount` reuses WEB-T5's own
+  "bypass single-element resolution" fix for `CountEquals` (Playwright's strict mode rejects a
+  multi-match locator on most other calls) rather than re-deriving it. `assertHidden` mirrors
+  `assertVisible`'s existing "missing or hidden both count, never an exception" semantics exactly
+  — merged into the same switch case (`case "assertVisible": case "assertHidden":`) rather than
+  duplicated, since the only difference is which boolean they're asserting against.
+- [x] Every failure reports **expected, actual, the locator used, and a screenshot**.
+  **2026-10-29:** expected/actual/locator are each action's own failure message (unchanged shape
+  from before this task); the screenshot is new — `AssertionFailed` (shared by every assertion
+  action) takes a best-effort screenshot via `ScreenshotStorage` and attaches it under
+  `Data["screenshotPath"]`, the same mechanism WEB-T6 added for `SelectorNotFoundException`,
+  now also covering assertion failures that return `StepOutcome.Failed` directly rather than
+  throwing.
+- [x] Text assertions normalize whitespace by default, with an exact-match option. Unnormalized text comparison is a classic source of false failures.
+  **2026-10-29:** `NormalizeText` — collapses whitespace runs (including newlines) and trims,
+  applied to the value read from the page; an `exact: true` param opts out. Applied only to the
+  side read from the DOM, never to the author's own `expected` (a `matches`-mode regex must stay
+  literal).
 - [ ] **Soft assertions (P1):** a non-fatal assertion collects its failure and lets the step continue, reporting all failures together. The report model already supports several failures per step.
+  **Not built — deferred, P1, consistent with this module's own pattern** (`executeScript` also
+  deferred in WEB-T6). Note for whoever picks this up: the **API Testing Module Spec** has its
+  own separate, already-specified `soft: true` design for assertions (corrected semantics: a soft
+  failure doesn't stop evaluation, but the step still fails if any soft assertion failed) — see
+  `plan/OPEN-QUESTIONS.md` item 2. Worth building both from one shared design rather than two
+  independent ones, since "soft assertion" means the same thing in both modules.
 
-✔ `dotnet test --filter "FullyQualifiedName~WebAssertion"`
+✔ `dotnet test --filter "FullyQualifiedName~WebAssertionTests"` → 21/21 passed, through the real
+`WebModule` + `FlowEngine` against a real headless Chromium page (never a direct Playwright call
+bypassing the module).
 
-Time-box: 3 h.
+Time-box: 3 h. **Closed 2026-10-29**, with soft assertions deferred (P1, by design, cross-
+referenced with the API module's own pending soft-assertion work).
 
 ### WEB-T8 — Browser and context (P0)
 
