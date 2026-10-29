@@ -40,6 +40,14 @@ public sealed class Flow : AggregateRoot<FlowId>
     public FlowStatus Status { get; private set; }
     public DateTimeOffset? PublishedAt { get; private set; }
     public bool ContinueOnFailure { get; private set; }
+
+    /// <summary>Web UI Testing Module Spec, WEB-T5: the implicit-wait equivalent — merged into
+    /// every step's own params as "timeoutMs" by FlowEngine (ApplyDefaultTimeout) when the step
+    /// doesn't already set one, exactly the same "resolved fresh every run, step's own value
+    /// always wins" shape RequestTemplate resolution already uses. Null changes nothing (every
+    /// existing flow has no default and sees zero behavior change).</summary>
+    public int? DefaultTimeoutMs { get; private set; }
+
     public TenantId TenantId { get; private set; }
     public UserId CreatedBy { get; private set; }
 
@@ -85,7 +93,8 @@ public sealed class Flow : AggregateRoot<FlowId>
         var next = new Flow(FlowId.New(), FamilyId, Version + 1, Name, TenantId, createdBy)
         {
             ProjectId = ProjectId,
-            Description = Description
+            Description = Description,
+            DefaultTimeoutMs = DefaultTimeoutMs
         };
         foreach (var step in _steps)
             next._steps.Add(step);
@@ -128,6 +137,15 @@ public sealed class Flow : AggregateRoot<FlowId>
         if (Status != FlowStatus.Draft)
             throw new DomainException("Cannot modify a non-draft Flow. Create a new version instead.");
         ContinueOnFailure = value;
+    }
+
+    public void SetDefaultTimeoutMs(int? value)
+    {
+        if (Status != FlowStatus.Draft)
+            throw new DomainException("Cannot modify a non-draft Flow. Create a new version instead.");
+        if (value is < 0)
+            throw new DomainException("DefaultTimeoutMs cannot be negative.");
+        DefaultTimeoutMs = value;
     }
 
     /// <summary>

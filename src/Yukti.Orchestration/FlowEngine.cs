@@ -116,6 +116,23 @@ public sealed class FlowEngine
     }
 
     /// <summary>
+    /// Web UI Testing Module Spec, WEB-T5: the implicit-wait equivalent — a Flow's own
+    /// DefaultTimeoutMs becomes each step's "timeoutMs" param, but only when the step doesn't
+    /// already set one of its own ("overridable per step" — a step's own value always wins,
+    /// same precedence rule as every other resolution in this method). A Flow with no default
+    /// (every one before WEB-T5, and every one that never calls SetDefaultTimeoutMs) changes
+    /// nothing here.
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> ApplyDefaultTimeout(Flow flow, IReadOnlyDictionary<string, object?> stepParams)
+    {
+        if (flow.DefaultTimeoutMs is null || stepParams.ContainsKey("timeoutMs"))
+            return stepParams;
+
+        var merged = new Dictionary<string, object?>(stepParams) { ["timeoutMs"] = flow.DefaultTimeoutMs };
+        return merged;
+    }
+
+    /// <summary>
     /// Web UI Testing Module Spec, WEB-T2: the run-time half of "editing a repository entry
     /// reaches every flow referencing it with zero flow edits" — the same resolved-fresh-every-
     /// run rule ResolveRequestTemplate already applies, never baked in at publish time.
@@ -136,21 +153,62 @@ public sealed class FlowEngine
         Dictionary<string, object?>? merged = null;
         foreach (var (paramName, paramValue) in stepParams)
         {
-            if (paramValue is not IReadOnlyDictionary<string, object?> dict
-                || dict.Count != 2
-                || dict.GetValueOrDefault("repositoryPage") is not string page
-                || dict.GetValueOrDefault("repositoryElement") is not string element)
+            var resolvedValue = await ResolveLocatorRefValue(paramValue, tenantId, ct);
+            if (ReferenceEquals(resolvedValue, paramValue))
                 continue;
 
-            var locator = await _repositoryElements.FindElement(page, element, tenantId, ct);
-            if (locator is null)
-                throw new RepositoryEntryResolutionException(page, element);
-
             merged ??= new Dictionary<string, object?>(stepParams);
-            merged[paramName] = locator;
+            merged[paramName] = resolvedValue;
         }
 
         return merged ?? stepParams;
+    }
+
+    /// <summary>Recurses into nested dicts/lists, not just a step's own top-level param values —
+    /// WEB-T5's `waitFor` carries a `{"locator": {...}}` nested inside its `condition` param, so
+    /// a RepositoryRef there needs the exact same resolution a top-level one already gets.
+    /// Returns the SAME reference when nothing inside changed, so callers can cheaply detect
+    /// "nothing to merge" via ReferenceEquals instead of always reallocating.</summary>
+    private async Task<object?> ResolveLocatorRefValue(object? value, TenantId tenantId, CancellationToken ct)
+    {
+        if (value is IReadOnlyDictionary<string, object?> dict)
+        {
+            if (dict.Count == 2 && dict.GetValueOrDefault("repositoryPage") is string page && dict.GetValueOrDefault("repositoryElement") is string element)
+            {
+                var locator = await _repositoryElements!.FindElement(page, element, tenantId, ct);
+                if (locator is null)
+                    throw new RepositoryEntryResolutionException(page, element);
+                return locator;
+            }
+
+            Dictionary<string, object?>? merged = null;
+            foreach (var (key, nested) in dict)
+            {
+                var resolvedNested = await ResolveLocatorRefValue(nested, tenantId, ct);
+                if (ReferenceEquals(resolvedNested, nested))
+                    continue;
+                merged ??= new Dictionary<string, object?>(dict);
+                merged[key] = resolvedNested;
+            }
+            return merged ?? value;
+        }
+
+        if (value is IEnumerable<object?> list)
+        {
+            var items = list.ToList();
+            List<object?>? merged = null;
+            for (var i = 0; i < items.Count; i++)
+            {
+                var resolvedItem = await ResolveLocatorRefValue(items[i], tenantId, ct);
+                if (ReferenceEquals(resolvedItem, items[i]))
+                    continue;
+                merged ??= new List<object?>(items);
+                merged[i] = resolvedItem;
+            }
+            return merged ?? value;
+        }
+
+        return value;
     }
 
     public async Task<FlowRun> Execute(Flow flow, FlowRun run, ICredentialResolver credentials, CancellationToken ct)
@@ -246,7 +304,8 @@ public sealed class FlowEngine
                 IReadOnlyDictionary<string, object?> interpolatedParams;
                 try
                 {
-                    var resolvedParams = await ResolveRequestTemplate(step.Params, ct);
+                    var resolvedParams = ApplyDefaultTimeout(flow, step.Params);
+                    resolvedParams = await ResolveRequestTemplate(resolvedParams, ct);
                     resolvedParams = await ResolveLocatorRef(resolvedParams, run.TenantId, ct);
                     interpolatedParams = await _variables.Interpolate(resolvedParams, run.Variables, credentials, ct);
                 }

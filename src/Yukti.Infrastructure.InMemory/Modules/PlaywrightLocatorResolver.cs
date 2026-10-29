@@ -96,7 +96,12 @@ public static class PlaywrightLocatorResolver
 
     private static string FirstLine(string message) => message.Split('\n')[0].Trim();
 
-    private static ILocator Build(ILocator? scope, IPage page, LocatorSpec spec) => spec.Strategy switch
+    /// <summary>Internal, not private: WEB-T5's CountEquals needs the bare built locator
+    /// (potentially matching several elements, by design) without ResolveAsync's own single-
+    /// element "strict mode" semantics above -- Playwright's WaitForAsync throws a strict-mode
+    /// violation on a locator with more than one match, which is exactly CountEquals' own normal
+    /// case, not a failure.</summary>
+    internal static ILocator Build(ILocator? scope, IPage page, LocatorSpec spec) => spec.Strategy switch
     {
         LocatorStrategy.TestId => scope is null ? page.GetByTestId(spec.Value) : scope.GetByTestId(spec.Value),
         LocatorStrategy.Role => BuildRole(scope, page, spec),

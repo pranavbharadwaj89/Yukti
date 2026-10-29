@@ -138,6 +138,22 @@ public sealed class WebModule : IAutomationModule
         },
         new ActionSchema
         {
+            ActionName = "waitFor",
+            Description = "Waits for an explicit condition to become true (WEB-T5) -- Selenium's explicit-wait " +
+                "equivalent, expressed as data. There is deliberately no 'sleep' action; this is the one escape " +
+                "hatch, via the 'customPredicate' condition type.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "condition", Type = ParamType.Object, Required = true, Description =
+                    "{type, ...}. type is one of: visible, hidden, enabled, disabled, textEquals, textContains, " +
+                    "attributeEquals, countEquals, urlEquals, urlContains, titleContains, networkIdle, customPredicate. " +
+                    "Every type except urlEquals/urlContains/titleContains/networkIdle/customPredicate also requires a " +
+                    "'locator' field (an inline locator object or an Object Repository reference)." },
+                new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = 10000, Description = "Milliseconds to wait before failing, naming the condition, the last observed state, and how long it waited." },
+            }
+        },
+        new ActionSchema
+        {
             ActionName = "assertVisible",
             Description = "Asserts an element matching a selector is displayed. A missing or hidden element both read as not-visible, never an exception.",
             Parameters = new[]
@@ -382,6 +398,18 @@ public sealed class WebModule : IAutomationModule
                         // so the Locator path needs no separate wait call.
                         var (_, info, name) = await ResolveLocatorTarget(page, raw, timeoutMs, ct);
                         return StepOutcome.Passed($"{name} appeared.", locatorResolution: info);
+                    }
+                case "waitFor":
+                    {
+                        var rawCondition = parameters.GetValueOrDefault("condition")
+                            ?? throw new ArgumentException("web.waitFor requires a 'condition' parameter.");
+                        var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 10000f;
+
+                        var condition = WaitConditionParamMapper.Parse(rawCondition);
+                        var result = await PlaywrightWaitResolver.EvaluateAsync(page, condition, timeoutMs, ct);
+                        return result.Succeeded
+                            ? StepOutcome.Passed($"Condition met: {result.ConditionDescription} ({result.LastObservedState}).")
+                            : StepOutcome.Failed(result.FailureDetail);
                     }
                 default:
                     return StepOutcome.Failed($"Unknown web action \"{action}\".");
