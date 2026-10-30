@@ -87,6 +87,17 @@ public static class FixtureAppHost
             return Results.Json(new { id, status = "confirmed" });
         });
 
+        // Web UI Testing Module Spec, WEB-T8's own "scanned for secrets before storage" test --
+        // sets real cookies (Set-Cookie, no JavaScript/executeScript needed) including one
+        // literally named "password", so a real WebModule.saveStorageState run has something
+        // genuine to redact. Additive only; no existing route touched.
+        app.MapGet("/set-test-cookies", (HttpContext context) =>
+        {
+            context.Response.Cookies.Append("password", "plaintext-secret");
+            context.Response.Cookies.Append("authToken", "keep-this-session-token");
+            return Results.Content("cookies set", "text/plain");
+        });
+
         // The demo/api_oauth_chain.json gate flow's own backend: an OAuth2
         // client-credentials token endpoint plus a tiny items resource, so
         // that flow can fetch a token, create with a JSON body, extract the

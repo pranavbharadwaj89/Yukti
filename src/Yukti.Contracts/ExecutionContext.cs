@@ -1,3 +1,4 @@
+using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.SharedKernel;
 
 namespace Yukti.Contracts;
@@ -34,4 +35,11 @@ public sealed class ExecutionContext
     /// compiling unchanged; only FlowEngine, the one real populator, sets it from the FlowRun.
     /// </summary>
     public TenantId? TenantId { get; init; }
+
+    /// <summary>Web UI Testing Module Spec, WEB-T8: a plain value snapshot of the Flow's own
+    /// browser/context settings (engine, viewport, device preset, locale, ...) -- not a
+    /// reference to the Flow aggregate itself, same category as TenantId above. Optional and
+    /// not `required`, same reasoning: every pre-existing construction site keeps compiling
+    /// unchanged; only FlowEngine sets it from the real Flow, and only WebModule reads it.</summary>
+    public BrowserConfig? BrowserConfig { get; init; }
 }

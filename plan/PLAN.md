@@ -1523,7 +1523,26 @@ work here, don't assume they still hold.
   **Soft assertions (P1) deferred**, same pattern as `executeScript` — cross-referenced with the
   API module's own already-specified soft-assertion design (`plan/OPEN-QUESTIONS.md` item 2) so
   whoever builds either builds both from one shared design.
-  Next: WEB-T8 (browser and context) — the last P0 task before Gate 2.
+  **WEB-T8 (browser and context) closed 2026-10-29 — the last P0 task in this module.**
+  `Flow.BrowserConfig` (engine/viewport/device-preset/user-agent/locale/timezone/colour-scheme),
+  merged into `ExecutionContext` exactly like `TenantId` (`ModulePluginContractTests` consciously
+  updated "five" → "six" properties). New `saveStorageState` action + `BrowserConfig.
+  StorageStateName`; real trace/video capture, kept on failure via `WebSession.AnyStepFailed`,
+  discarded on a pass. SSRF guard re-proven to cover a `window.open` popup, not just the
+  original page (WEB-T6's new action surface).
+  ✔ `dotnet test --filter "FullyQualifiedName~WebBrowserContextTests|FullyQualifiedName~WebModuleOutboundGuardTests"` → 14/14 passed.
+  **Real design correction found and fixed while building this:** storage state was first built
+  as a DB-backed EF aggregate + repository (matching `RequestTemplate`/`ObjectRepository`) — a
+  genuine captive-dependency bug, since `WebModule` is a DI Singleton and a repository needs a
+  Scoped `DbContext`. `dotnet ef migrations remove` surfaced the exact "cannot consume scoped
+  service from singleton" error itself before any test could have caught it (every test here
+  constructs `WebModule` manually, bypassing DI container validation). Rebuilt as tenant-scoped
+  files (`BrowserStorageStateStorage`), matching this module's own screenshot/trace/video
+  pattern — exactly why `CLAUDE.md`'s "modules get only `ExecutionContext`, never `DbContext`"
+  rule exists.
+  **Gate 1 is already closed** (proven at WEB-T2, confirmed above). **Gate 2 remains blocked**
+  on the owner supplying a real Selenium/Playwright suite (`plan/OPEN-QUESTIONS.md` item 2) —
+  the only remaining item before the Web UI Testing Module is complete end to end.
 - [ ] DISC-22 `RequestTemplate` (API-T9, `plan/specs/API-TESTING-MODULE.md`) has **no database-
   level RLS at all** — `AddRequestTemplates`'s migration creates the table and
   `GrantYuktiAppRequestTemplatesPrivileges` grants the app role read/write, but neither applies

@@ -37,8 +37,10 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
 ## Web UI Testing Module (`plan/specs/WEB-TESTING-MODULE.md`)
 
 WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resolution), WEB-T4
-(migrate the existing module), WEB-T5 (waits), WEB-T6 (full action set), WEB-T7 (assertions)
-closed 2026-10-29. WEB-T8 (browser and context) next — the last P0 task before Gate 2.
+(migrate the existing module), WEB-T5 (waits), WEB-T6 (full action set), WEB-T7 (assertions),
+WEB-T8 (browser and context) all closed 2026-10-29. **That's the whole P0 scope.** Gate 1 is
+already proven (WEB-T2's own test). Gate 2 (item 2 below) is the only thing left before this
+module is done end to end.
 
 1. 🟡 **"Confirm Playwright stays" (the spec's own blocking question).** Treating this as already
    settled, not re-asking: `CLAUDE.md` §4 already names `Microsoft.Playwright (.NET)` as the web
@@ -47,19 +49,20 @@ closed 2026-10-29. WEB-T8 (browser and context) next — the last P0 task before
    reconsidered — I'll treat silence as confirmation.*
 2. 🔴 **Gate 2 needs a real Selenium or Playwright suite (10+ tests) to port.** This is the only
    honest measure of "Selenium-class" per the spec's own words — an invented suite proves nothing.
-   Not needed until WEB-T8 is done (roughly 4 tasks away), but the earlier you can point me at one
-   (yours, open-source, anything real), the less likely this stalls the module right at the finish
-   line. *Needs: a real test suite to port, or a decision to skip/weaken Gate 2.*
+   **This is now the only thing blocking the Web UI Testing Module's completion** — WEB-T1 through
+   WEB-T8 (all P0) are closed. *Needs: a real test suite to port, or a decision to skip/weaken
+   Gate 2.*
 3. 🟡 **`executeScript` (WEB-T6) — build now or defer?** Defaulting to the spec's own
    recommendation: **defer**. It's marked P1, it's the one genuinely dangerous action (arbitrary
    JS in the page context, a possible SSRF bypass via in-page `fetch`), and the spec explicitly
    says "ship the module without it first and see whether anyone actually needs it." *Tell me if
    you want it built in this pass anyway.*
-4. 🟡 **Firefox and WebKit (WEB-T8) — actually needed, or Chromium enough for now?** Defaulting to
-   building the config surface so a flow *can* request any of the three, but only exercising
-   Chromium in CI/mutation checks for now — each extra engine run in CI is real time and a real
-   flake surface, and nothing today asks for cross-browser coverage. *Tell me if Firefox/WebKit
-   need real CI coverage now, not just a config option.*
+4. 🟡 **Firefox and WebKit (WEB-T8) — actually needed, or Chromium enough for now?** Built as
+   defaulted: `BrowserConfig.Engine` lets a flow request any of the three, `WebModule.Setup`
+   switches on it for real (`IPlaywright.Firefox`/`.Webkit`/`.Chromium`), but only Chromium is
+   exercised in `WebBrowserContextTests` and CI — this environment has no proof the other two
+   engines' browser binaries are even installed, so claiming "tested" for them would be dishonest.
+   *Tell me if Firefox/WebKit need real CI coverage (and binaries) now, not just a config option.*
 5. 🔵 **Resolved, not asked:** the existing artifact-storage machinery reuses cleanly for a
    second artifact kind — `ObjectRepository` uses the exact same EF patterns (`OwnsMany`/jsonb,
    `FamilyId`+`Version`+`Status`+`TenantId`) `Flow` already does. No storage work was needed
@@ -112,6 +115,28 @@ closed 2026-10-29. WEB-T8 (browser and context) next — the last P0 task before
     (`WebModule.Run`'s `SelectorNotFoundException` catch, best-effort via `ScreenshotStorage`) —
     closed the same session it was flagged, since it directly matched WEB-T6's own checklist
     wording and was a contained addition.
+14. 🔵 **Caught and corrected, not asked:** WEB-T8's storage-state reuse (`saveStorageState`/
+    `loadStorageState`) was first built as a DB-backed EF aggregate injected straight into
+    `WebModule`'s constructor. `WebModule` is `AddSingleton` in `Program.cs`; anything depending on
+    `YuktiDbContext` is `AddDbContext` = Scoped — a real captive-dependency bug that `dotnet ef
+    migrations remove` itself flagged ("Cannot consume scoped service... from singleton..."), not
+    something a test caught (every test constructs `WebModule` by hand, bypassing DI validation).
+    Reverted the DB aggregate/repository/migration entirely and rebuilt storage-state persistence
+    as tenant-scoped files (`BrowserStorageStateStorage.cs`), mirroring the already-shipped
+    `ScreenshotStorage` pattern — no DI-scoped dependency needed at all. No behavior change from
+    what WEB-T8's checklist asks for; flagged here only because it's a real bug that nearly shipped.
+15. 🟡 **Storage-state redaction only scans for a literal cookie/field named `password`,** not the
+    broader fragment list `SecretRedactor` (used elsewhere for logs) matches against. *Default,
+    already built:* narrow, name-exact match — storage state is cookies/origin-storage key-value
+    pairs, not free text, so a fragment scan risks false positives on legitimate non-secret values
+    that happen to contain a matched substring. *Tell me if you want the broader `SecretRedactor`
+    fragment list applied here too.*
+16. 🔵 **Not surfaced, flagged:** WEB-T8's trace/video capture-on-failure (`Tracing.StartAsync`/
+    `StopAsync`, context-level video recording) writes files to disk via `ScreenshotStorage`'s
+    sibling layout, but nothing in `StepResult`/the unified report model carries a path/URL to
+    them yet — they're on disk, provably produced (`WebBrowserContextTests` checks for the files),
+    but not yet wired into anything a user would actually open from the report UI. Out of WEB-T8's
+    own scope (which only asked for capture-on-failure to exist); flagged as a real follow-up gap.
 
 ---
 

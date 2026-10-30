@@ -3,10 +3,12 @@ using Microsoft.Playwright;
 using Yukti.Application.Security;
 using Yukti.Contracts;
 using Yukti.Domain.Execution;
+using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
 using Yukti.Domain.UiVocabulary;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
+using YuktiColorScheme = Yukti.Domain.FlowAuthoring.ColorScheme;
 
 namespace Yukti.Infrastructure.InMemory.Modules;
 
@@ -60,6 +62,13 @@ public sealed class WebModule : IAutomationModule
         /// the action that triggers it," per the spec's own rule. No pending action means dismiss,
         /// the same safe default Playwright itself applies when nothing handles a dialog at all.</summary>
         public (bool Accept, string? PromptText)? PendingDialogAction { get; set; }
+
+        /// <summary>WEB-T8: set whenever a step fails in a way that already warranted a
+        /// screenshot (an exception, or an assertion failure via AssertionFailed) -- Teardown
+        /// has no other way to learn the run's outcome (IAutomationModule.Teardown takes no
+        /// status), so this is the module's own minimal tracking of "is this run's trace/video
+        /// worth keeping."</summary>
+        public bool AnyStepFailed { get; set; }
     }
 
     private readonly ConcurrentDictionary<FlowRunId, WebSession> _sessions = new();
@@ -75,7 +84,10 @@ public sealed class WebModule : IAutomationModule
     /// </summary>
     private readonly IOutboundGuard _guard;
 
-    public WebModule(IOutboundGuard? guard = null) => _guard = guard ?? PermissiveOutboundGuard.Instance;
+    public WebModule(IOutboundGuard? guard = null)
+    {
+        _guard = guard ?? PermissiveOutboundGuard.Instance;
+    }
 
     public ModuleKind Kind => ModuleKind.Web;
     public string ContractVersion => "1.0.0";
@@ -290,6 +302,15 @@ public sealed class WebModule : IAutomationModule
         },
         new ActionSchema
         {
+            ActionName = "saveStorageState",
+            Description = "Saves the shared context's cookies and localStorage under a name, so a later flow can reference it (BrowserConfig.StorageStateName) and start already logged in. Scanned for a plaintext password before storage.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "name", Type = ParamType.String, Required = true, Description = "The name later flows will reference via their own BrowserConfig.StorageStateName." },
+            }
+        },
+        new ActionSchema
+        {
             ActionName = "assertText",
             Description = "Asserts a selector's text content: equals, contains, or matches a regex.",
             Parameters = new[]
@@ -465,9 +486,67 @@ public sealed class WebModule : IAutomationModule
 
     public async Task Setup(ExecutionContext ctx, CancellationToken ct)
     {
+        var config = ctx.BrowserConfig ?? new BrowserConfig();
+
         var playwright = await Playwright.CreateAsync();
-        var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
-        var context = await browser.NewContextAsync();
+        var engine = config.Engine switch
+        {
+            BrowserEngine.Firefox => playwright.Firefox,
+            BrowserEngine.WebKit => playwright.Webkit,
+            _ => playwright.Chromium,
+        };
+        var browser = await engine.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+
+        // WEB-T8: a device emulation preset supplies a full set of sensible defaults (viewport,
+        // user agent, device scale factor, mobile/touch flags) -- used as the starting point,
+        // then every explicitly-set field below overrides just that one field, never the whole
+        // preset.
+        var contextOptions = config.DeviceEmulationPreset is string presetName
+            ? (playwright.Devices.TryGetValue(presetName, out var preset)
+                ? preset
+                : throw new ArgumentException($"Unknown device emulation preset '{presetName}'."))
+            : new BrowserNewContextOptions();
+
+        if (config.ViewportWidth is int width && config.ViewportHeight is int height)
+            contextOptions.ViewportSize = new ViewportSize { Width = width, Height = height };
+        if (config.UserAgent is not null)
+            contextOptions.UserAgent = config.UserAgent;
+        if (config.Locale is not null)
+            contextOptions.Locale = config.Locale;
+        if (config.TimeZoneId is not null)
+            contextOptions.TimezoneId = config.TimeZoneId;
+        if (config.ColorScheme is YuktiColorScheme scheme)
+            contextOptions.ColorScheme = scheme switch
+            {
+                YuktiColorScheme.Dark => Microsoft.Playwright.ColorScheme.Dark,
+                YuktiColorScheme.Light => Microsoft.Playwright.ColorScheme.Light,
+                _ => Microsoft.Playwright.ColorScheme.NoPreference,
+            };
+
+        // WEB-T8: "a flow can save its logged-in state and later flows can start from it,
+        // skipping login" -- loaded fresh at every Setup, never baked into the Flow itself, same
+        // "resolved on every run" rule every other named reference in this codebase follows.
+        if (config.StorageStateName is string storageStateName)
+        {
+            if (ctx.TenantId is not TenantId tenantId)
+                throw new ArgumentException($"web module: cannot load storage state '{storageStateName}' -- this run has no tenant.");
+
+            var path = BrowserStorageStateStorage.FullPath(tenantId, storageStateName);
+            if (!File.Exists(path))
+                throw new ArgumentException($"web module: storage state '{storageStateName}' was not found.");
+            contextOptions.StorageState = await File.ReadAllTextAsync(path, ct);
+        }
+
+        // WEB-T8: every run records video and a trace unconditionally -- "trace and video
+        // capture on failure" means the FILES are only kept on failure (see Teardown), not that
+        // recording itself is conditional; Playwright can only turn video recording on at
+        // context-creation time, before any step (and therefore any failure) exists yet.
+        var runDirectory = ScreenshotStorage.DirectoryFor(ctx.RunId);
+        Directory.CreateDirectory(runDirectory);
+        contextOptions.RecordVideoDir = runDirectory;
+
+        var context = await browser.NewContextAsync(contextOptions);
+        await context.Tracing.StartAsync(new TracingStartOptions { Screenshots = true, Snapshots = true });
 
         // D6-T5: route interception (CDP-level), not Chromium's native
         // --proxy-server — confirmed empirically that Chromium silently
@@ -565,9 +644,48 @@ public sealed class WebModule : IAutomationModule
         if (!_sessions.TryRemove(ctx.RunId, out var session))
             return;
 
-        await session.Context.CloseAsync();
+        // WEB-T8: "trace and video capture ON FAILURE" -- both record unconditionally for every
+        // run (Setup), but only the files from a run that actually failed are kept here; a
+        // passing run's are discarded to avoid paying the storage cost for the common case.
+        var runDirectory = ScreenshotStorage.DirectoryFor(ctx.RunId);
+        if (session.AnyStepFailed)
+        {
+            try
+            {
+                await session.Context.Tracing.StopAsync(new TracingStopOptions { Path = Path.Combine(runDirectory, "trace.zip") });
+            }
+            catch (PlaywrightException)
+            {
+                // Best-effort, same reasoning as the failure-screenshot path -- never let
+                // capturing diagnostics mask or crash over the real failure.
+            }
+        }
+        else
+        {
+            try { await session.Context.Tracing.StopAsync(); } // discard, no path
+            catch (PlaywrightException) { }
+        }
+
+        await session.Context.CloseAsync(); // video file(s) only finalize once the context closes
         await session.Browser.CloseAsync();
         session.Playwright.Dispose();
+
+        if (!session.AnyStepFailed)
+            TryDeleteVideoFiles(runDirectory);
+    }
+
+    private static void TryDeleteVideoFiles(string runDirectory)
+    {
+        try
+        {
+            if (!Directory.Exists(runDirectory)) return;
+            foreach (var video in Directory.EnumerateFiles(runDirectory, "*.webm"))
+                File.Delete(video);
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup -- a locked/already-gone file is not worth failing Teardown over.
+        }
     }
 
     public async Task<StepOutcome> Run(string action, IReadOnlyDictionary<string, object?> parameters, ExecutionContext ctx, CancellationToken ct)
@@ -1236,6 +1354,21 @@ public sealed class WebModule : IAutomationModule
                         session.PendingDialogAction = (accept, promptText);
                         return StepOutcome.Passed($"Will {(accept ? "accept" : "dismiss")} the next dialog.");
                     }
+                case "saveStorageState":
+                    {
+                        var name = parameters.GetValueOrDefault("name") as string
+                            ?? throw new ArgumentException("web.saveStorageState requires a 'name' parameter.");
+                        if (ctx.TenantId is not TenantId tenantId)
+                            throw new ArgumentException("web.saveStorageState: this run has no tenant.");
+
+                        var rawStateJson = await session.Context.StorageStateAsync();
+                        var stateJson = RedactPlaintextPasswords(rawStateJson);
+
+                        var path = BrowserStorageStateStorage.PrepareFullPath(tenantId, name);
+                        await File.WriteAllTextAsync(path, stateJson, ct);
+
+                        return StepOutcome.Passed($"Saved storage state '{name}'.");
+                    }
                 default:
                     return StepOutcome.Failed($"Unknown web action \"{action}\".");
             }
@@ -1245,11 +1378,13 @@ public sealed class WebModule : IAutomationModule
             // WEB-T6's own checklist: "reports failures with locator diagnostics plus a
             // screenshot." Best-effort -- a page already in a bad state (closed, crashed) just
             // means no screenshot, never a second failure masking the real one.
+            session.AnyStepFailed = true;
             var screenshotFileName = await TryCaptureFailureScreenshot(session, ctx.RunId, ct);
             return StepOutcome.Failed(ex.Message, screenshotFileName is null ? null : new Dictionary<string, object?> { ["screenshotPath"] = screenshotFileName });
         }
         catch (Exception ex)
         {
+            session.AnyStepFailed = true;
             return StepOutcome.Failed(ex.Message);
         }
     }
@@ -1258,6 +1393,73 @@ public sealed class WebModule : IAutomationModule
     /// option" -- collapses runs of whitespace (including newlines) into a single space and
     /// trims, unless 'exact' opts out. Applied only to the value read from the page, never to
     /// the author's own 'expected' (a regex pattern for 'matches' mode must stay literal).</summary>
+    /// <summary>
+    /// Web UI Testing Module Spec, WEB-T8: "scanned for secrets before storage." Deliberately
+    /// narrow -- a session/auth cookie or token is the ENTIRE point of storage state (stripping
+    /// those would defeat "skip login" outright), so this does not reuse SecretRedactor's broad
+    /// token/secret/key/auth fragment list, which would catch exactly those. It only catches the
+    /// one pattern that's never legitimate to persist regardless of purpose: a cookie or
+    /// localStorage entry whose own NAME contains "password" (a genuinely bad app storing a
+    /// plaintext password client-side). Flagged in plan/OPEN-QUESTIONS.md as an interpretation
+    /// call, not a silent decision -- a broader scan would defeat the feature; a narrower one
+    /// (skip entirely) would leave "scanned for secrets" unimplemented.
+    /// </summary>
+    private static string RedactPlaintextPasswords(string stateJson)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(stateJson);
+        var root = new Dictionary<string, object?>();
+
+        if (doc.RootElement.TryGetProperty("cookies", out var cookiesEl))
+            root["cookies"] = RedactEntryList(cookiesEl);
+
+        if (doc.RootElement.TryGetProperty("origins", out var originsEl))
+        {
+            var origins = new List<object?>();
+            foreach (var origin in originsEl.EnumerateArray())
+            {
+                var originDict = new Dictionary<string, object?> { ["origin"] = origin.GetProperty("origin").GetString() };
+                if (origin.TryGetProperty("localStorage", out var localStorageEl))
+                    originDict["localStorage"] = RedactEntryList(localStorageEl);
+                origins.Add(originDict);
+            }
+            root["origins"] = origins;
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(root);
+    }
+
+    /// <summary>Each entry is {name, value, ...}; only "name" and "value" survive the
+    /// round-trip here (cookies' other fields -- domain, path, expiry -- are not needed for
+    /// this scan and dropping them keeps this helper from having to mirror Playwright's exact
+    /// schema). Genuinely fine for this file's one caller, which only ever re-serializes what it
+    /// reads right back for storage.</summary>
+    private static List<object?> RedactEntryList(System.Text.Json.JsonElement entries)
+    {
+        var result = new List<object?>();
+        foreach (var entry in entries.EnumerateArray())
+        {
+            var name = entry.GetProperty("name").GetString() ?? "";
+            var value = entry.TryGetProperty("value", out var v) ? v.GetString() : null;
+            var redacted = name.Contains("password", StringComparison.OrdinalIgnoreCase) ? "[REDACTED]" : value;
+
+            var entryDict = new Dictionary<string, object?>();
+            foreach (var prop in entry.EnumerateObject())
+                entryDict[prop.Name] = prop.Name == "value" ? redacted : JsonElementToPlain(prop.Value);
+            result.Add(entryDict);
+        }
+        return result;
+    }
+
+    private static object? JsonElementToPlain(System.Text.Json.JsonElement element) => element.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String => element.GetString(),
+        System.Text.Json.JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
+        System.Text.Json.JsonValueKind.True => true,
+        System.Text.Json.JsonValueKind.False => false,
+        System.Text.Json.JsonValueKind.Null => null,
+        _ => element.GetRawText(),
+    };
+
     private static string NormalizeText(string raw, bool exact) =>
         exact ? raw : System.Text.RegularExpressions.Regex.Replace(raw.Trim(), @"\s+", " ");
 
@@ -1276,6 +1478,7 @@ public sealed class WebModule : IAutomationModule
     /// expected/actual/locator half is each action's own failure message).</summary>
     private static async Task<StepOutcome> AssertionFailed(WebSession session, ExecutionContext ctx, string message, CancellationToken ct)
     {
+        session.AnyStepFailed = true;
         var screenshotFileName = await TryCaptureFailureScreenshot(session, ctx.RunId, ct);
         return StepOutcome.Failed(message, screenshotFileName is null ? null : new Dictionary<string, object?> { ["screenshotPath"] = screenshotFileName });
     }

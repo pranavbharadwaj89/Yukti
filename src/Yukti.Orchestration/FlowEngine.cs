@@ -254,6 +254,7 @@ public sealed class FlowEngine
             Credentials = credentials,
             RunCancellation = ct,
             TenantId = run.TenantId,
+            BrowserConfig = flow.BrowserConfig,
         };
 
         try

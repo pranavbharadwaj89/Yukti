@@ -24,6 +24,18 @@ public sealed class FlowConfiguration : IEntityTypeConfiguration<Flow>
         builder.Property(f => f.Status).HasConversion<string>();
         builder.Property(f => f.ContinueOnFailure);
         builder.Property(f => f.DefaultTimeoutMs);
+
+        // WEB-T8: same "one nullable jsonb column, not a child table" shape AiAttribution and
+        // LocatorResolutionInfo already use -- BrowserConfig is a fixed, strongly-typed shape
+        // (not genuinely dynamic JSON), so a dedicated JsonSerializer round-trip, not the
+        // Dictionary/NullableObject converters reserved for truly dynamic param/data values.
+        builder.Property(f => f.BrowserConfig)
+            .HasConversion(
+                config => config == null ? null : JsonSerializer.Serialize(config, (JsonSerializerOptions?)null),
+                json => json == null ? null : JsonSerializer.Deserialize<BrowserConfig>(json, (JsonSerializerOptions?)null))
+            .HasColumnName("browser_config")
+            .HasColumnType("jsonb");
+
         builder.Property(f => f.TenantId).HasConversion(id => id.Value, v => new TenantId(v));
         builder.Property(f => f.CreatedBy).HasConversion(id => id.Value, v => new UserId(v));
         builder.Property(f => f.ProjectId).HasConversion(

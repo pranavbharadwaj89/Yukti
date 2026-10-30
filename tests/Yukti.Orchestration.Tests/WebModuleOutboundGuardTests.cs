@@ -146,4 +146,44 @@ public sealed class WebModuleOutboundGuardTests : IAsyncLifetime
             await permissiveModule.Teardown(permissiveCtx, default);
         }
     }
+
+    /// <summary>
+    /// Web UI Testing Module Spec, WEB-T8's own instruction: "re-run Day 6's T5 adversarial set
+    /// against the new action surface -- especially navigate and any new window-opening path."
+    /// WEB-T6 added switchToWindow/popup tracking; this proves the guard registered on the
+    /// BrowserContext (Setup) covers a window.open-created popup too, not just the original
+    /// page -- Playwright's own context-level RouteAsync applies to every page in the context,
+    /// including ones opened later, so no per-page re-registration was needed when WEB-T6 added
+    /// popup tracking. This test is the proof, not an assumption.
+    /// </summary>
+    [Fact]
+    public async Task A_restricted_guard_also_blocks_navigation_from_a_window_open_popup()
+    {
+        var module = new WebModule(new BlockingGuard());
+        var ctx = FakeContext();
+        await module.Setup(ctx, default);
+        try
+        {
+            var openPopup = await module.Run("navigate",
+                new Dictionary<string, object?> { ["url"] = "data:text/html,<button id=openBtn onclick=\"window.open('about:blank','_blank')\">Open</button>" },
+                ctx, default);
+            Assert.Equal(StepStatus.Passed, openPopup.Status);
+
+            var click = await module.Run("click", new Dictionary<string, object?> { ["selector"] = "#openBtn" }, ctx, default);
+            Assert.Equal(StepStatus.Passed, click.Status);
+
+            var switched = await module.Run("switchToWindow", new Dictionary<string, object?> { ["index"] = 1 }, ctx, default);
+            Assert.Equal(StepStatus.Passed, switched.Status);
+
+            // The popup's own navigation -- not the original page's -- must still be guarded.
+            var blocked = await module.Run("navigate",
+                new Dictionary<string, object?> { ["url"] = "http://169.254.169.254/latest/meta-data/" },
+                ctx, default);
+            Assert.Equal(StepStatus.Failed, blocked.Status);
+        }
+        finally
+        {
+            await module.Teardown(ctx, default);
+        }
+    }
 }

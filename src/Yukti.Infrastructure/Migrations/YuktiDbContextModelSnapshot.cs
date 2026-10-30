@@ -205,6 +205,10 @@ namespace Yukti.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BrowserConfig")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("browser_config");
+
                     b.Property<bool>("ContinueOnFailure")
                         .HasColumnType("boolean");
 
@@ -579,7 +583,7 @@ namespace Yukti.Infrastructure.Migrations
 
             modelBuilder.Entity("Yukti.Domain.ApiTesting.ApiCollection", b =>
                 {
-                    b.OwnsMany("Yukti.Domain.ApiTesting.ApiRequest", "Requests", b1 =>
+                    b.OwnsMany("Yukti.Domain.ApiTesting.ApiCollection.Requests#Yukti.Domain.ApiTesting.ApiRequest", "Requests", b1 =>
                         {
                             b1.Property<Guid>("Id")
                                 .HasColumnType("uuid");
@@ -636,7 +640,7 @@ namespace Yukti.Infrastructure.Migrations
 
             modelBuilder.Entity("Yukti.Domain.Execution.FlowRun", b =>
                 {
-                    b.OwnsMany("Yukti.Domain.Execution.StepResult", "Results", b1 =>
+                    b.OwnsMany("Yukti.Domain.Execution.FlowRun.Results#Yukti.Domain.Execution.StepResult", "Results", b1 =>
                         {
                             b1.Property<Guid>("Id")
                                 .HasColumnType("uuid");
@@ -698,7 +702,7 @@ namespace Yukti.Infrastructure.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("FlowRunId");
 
-                            b1.OwnsMany("Yukti.Domain.Execution.RetryAttempt", "RetryHistory", b2 =>
+                            b1.OwnsMany("Yukti.Domain.Execution.FlowRun.Results#Yukti.Domain.Execution.StepResult.RetryHistory#Yukti.Domain.Execution.RetryAttempt", "RetryHistory", b2 =>
                                 {
                                     b2.Property<Guid>("Id")
                                         .HasColumnType("uuid");
@@ -740,7 +744,7 @@ namespace Yukti.Infrastructure.Migrations
 
             modelBuilder.Entity("Yukti.Domain.FlowAuthoring.Flow", b =>
                 {
-                    b.OwnsMany("Yukti.Domain.FlowAuthoring.FlowStep", "Steps", b1 =>
+                    b.OwnsMany("Yukti.Domain.FlowAuthoring.Flow.Steps#Yukti.Domain.FlowAuthoring.FlowStep", "Steps", b1 =>
                         {
                             b1.Property<Guid>("Id")
                                 .HasColumnType("uuid");
@@ -795,7 +799,7 @@ namespace Yukti.Infrastructure.Migrations
 
             modelBuilder.Entity("Yukti.Domain.ModulePlugin.ModuleRegistration", b =>
                 {
-                    b.OwnsMany("Yukti.Domain.ModulePlugin.ModuleActionEntry", "Actions", b1 =>
+                    b.OwnsMany("Yukti.Domain.ModulePlugin.ModuleRegistration.Actions#Yukti.Domain.ModulePlugin.ModuleActionEntry", "Actions", b1 =>
                         {
                             b1.Property<Guid>("Id")
                                 .HasColumnType("uuid");
