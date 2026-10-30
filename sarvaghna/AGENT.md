@@ -47,9 +47,9 @@ A dumb linter blindly counts lines and flags words. **SARVAGHNA is an agent with
 
 ---
 
-## 3. The 6-Agent Specialist Crew
+## 3. The 5-Agent Specialist Crew
 
-Inside SARVAGHNA sits a specialized crew of 6 autonomous agents collaborating to analyze specifications, generate tests, execute suites, score quality, and audit the rendered UI:
+Inside SARVAGHNA sits a specialized crew of 5 autonomous agents collaborating to analyze specifications, generate tests, execute suites, and score quality:
 
 ```
                             ┌───────────────────────────────────┐
@@ -70,13 +70,6 @@ Inside SARVAGHNA sits a specialized crew of 6 autonomous agents collaborating to
                                                                    │ Scores quality &  │
                                                                    │ gives feedback    │
                                                                    └───────────────────┘
-
-     ┌────────────────────────────────────────────────────────────────────────────────┐
-     │                          BRAVITAS (#2BB3A3) — stands apart                      │
-     │       Drives a real browser against the real running UI, not a git diff.       │
-     │   Not part of the Orchestrator's pipeline above — invoked on its own, either   │
-     │     via `--bravitas` or the merge-triggered job in sarvaghna.yml (below).      │
-     └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 | Agent | Color | Tagline | Capabilities |
@@ -86,19 +79,17 @@ Inside SARVAGHNA sits a specialized crew of 6 autonomous agents collaborating to
 | **Coder** | `#378ADD` | *Writes and runs real code* | Synthesizes Playwright / API / .NET test code, generates resilient selectors (`data-testid`, `aria-label`), auto-fixes syntax errors. |
 | **Tester** | `#EF9F27` | *Runs tests and reports results* | Triggers `dotnet test` / Playwright / vitest, parses test telemetry, writes plain-English failure summaries, diagnoses flakiness. |
 | **Reviewer** | `#D85A30` | *Scores quality and gives feedback* | Scores test coverage against requirements, audits zero-dependency domain constraints, detects secrets, delivers actionable code reviews. |
-| **Bravitas** *(working name)* | `#2BB3A3` | *Audits the rendered UI for accessibility and broken pages* | Signs in as the seeded admin, visits every route `src/app/router.tsx` serves, runs a real-browser WCAG 2.1 A/AA scan (axe-core — the same tag set `e2e/ai-generation.spec.ts` already uses) plus HTTP-status and console-error checks, and screenshots every page as evidence. |
 
 Run the full crew anytime:
 ```bash
 node sarvaghna/sarvaghna.mjs --crew
 ```
 
-Run Bravitas on its own (needs `apps/yukti-gui` already built and served — see `sarvaghna/agents/bravitas.mjs`'s own doc comment, or just let CI do it):
-```bash
-node sarvaghna/sarvaghna.mjs --bravitas
-# or, from inside sarvaghna/:
-npm run bravitas
-```
+## 3a. The Git Agent — merge-triggered, not part of the crew above
 
-Bravitas also runs automatically whenever a merge lands on `main` (the `bravitas-ui-audit` job in `.github/workflows/sarvaghna.yml`, triggered on `push`), and can be fired on demand via that workflow's `workflow_dispatch` trigger in the GitHub Actions UI — independent of any merge.
+`sarvaghna/agents/git-agent.mjs` is a separate automation, deliberately **not** registered in the crew roster above and with **no CLI flag, no npm script, and no manual dispatch trigger**. Per the owner's own instruction: *"it will only have to be active whenever there is a code merged."*
+
+It drives a real Chromium browser (via `apps/yukti-gui`'s own `@playwright/test`) against the real running frontend: signs in as the seeded admin, visits every route `src/app/router.tsx` serves, runs a real-browser WCAG 2.1 A/AA scan (`axe-core` — the same tag set `e2e/ai-generation.spec.ts` already uses) plus HTTP-status and console-error checks, and screenshots every page as evidence. It reports through Sarvaghna's own existing finding/decision/formatter pipeline.
+
+The only thing that ever invokes it is `sarvaghna/run-git-agent.mjs`, and the only thing that calls *that* is the `git-agent-ui-audit` job in `.github/workflows/sarvaghna.yml`, gated `if: github.event_name == 'push'` — i.e. it runs if and only if a merge lands on `main`. There is intentionally no other way to trigger it.
 
