@@ -128,16 +128,59 @@ Time-box: 3 h. **Closed 2026-10-29.**
 
 ### WEB-T2 — Object Repository artifact (P0)
 
-- [ ] A first-class versioned artifact: Draft and Published states, tenant-scoped, stored and validated like a Flow. Reuse the existing artifact machinery; do not invent a parallel one.
-- [ ] An entry holds a primary locator, an ordered fallback list, and a human-readable description. Entries are grouped into pages or screens — the Page Object Model grouping, without the code.
-- [ ] Publishing a **flow** validates that every referenced repository entry exists, failing with the existing 422-naming-the-step behaviour. Reuse the existing publish validator.
-- [ ] Publishing a **repository** validates that every entry has a primary locator and a non-empty description.
-- [ ] Editing an entry affects every flow referencing it with **no flow edits**. Prove with three flows and one rename — this is the module's headline gate.
-- [ ] Tenant isolation holds: a repository in tenant A is invisible and unreferenceable from tenant B. Test at the API and the raw-SQL level, as in Day 6's T1.
+- [x] A first-class versioned artifact: Draft and Published states, tenant-scoped, stored and validated like a Flow. Reuse the existing artifact machinery; do not invent a parallel one.
+  **2026-10-29:** `Yukti.Domain.UiVocabulary.ObjectRepository` — mutable in place with a visible,
+  incrementing `Version` counter, deliberately **not** Flow's heavier immutable-version-family
+  model (same reasoning `RequestTemplate`'s own doc comment already gives: nothing downstream
+  needs an old version of a locator to keep resolving). `RepositoryStatus` (Draft/Published/
+  Archived) gates `Publish()`'s own validation, not mutability — editing after Publish is
+  allowed and does not revert Status, which is the only way "zero flow edits" can hold for an
+  edit made after publishing. Persistence mirrors `Flow`/`RequestTemplate` exactly: EF
+  configuration, migration (`AddObjectRepository`, with real RLS — see below), `IObjectRepositoryRepository` (GetById/Save/Delete only), InMemory test double.
+- [x] An entry holds a primary locator, an ordered fallback list, and a human-readable description. Entries are grouped into pages or screens — the Page Object Model grouping, without the code.
+  **2026-10-29:** `RepositoryPage(string Name, IReadOnlyDictionary<string, Locator> Elements)` —
+  `Locator` itself (WEB-T1) already carries Primary/Fallbacks/Description.
+- [x] Publishing a **flow** validates that every referenced repository entry exists, failing with the existing 422-naming-the-step behaviour. Reuse the existing publish validator.
+  **2026-10-29:** a fourth `Flow.Publish` overload (`IRepositoryEntryExistsChecker?`, same optional
+  shape as API-T9's `IRequestTemplateExistsChecker`), scanning every step param value (not one
+  fixed key — no action has been migrated to `LocatorRef` yet) for the shape
+  `{repositoryPage, repositoryElement}`. **Also found and fixed while wiring this:** API-T9's own
+  `IRequestTemplateExistsChecker` was built and unit-tested but was **never actually passed into
+  the real `PublishFlowCommandHandler`** — the real `POST /flows/{id}/publish` endpoint has never
+  enforced "the referenced request template exists" in production. Closed for both checks
+  together (`src/Yukti.Application/FlowAuthoring/Commands.cs`), not left open a second time.
+- [x] Publishing a **repository** validates that every entry has a primary locator and a non-empty description.
+  **2026-10-29:** `ObjectRepository.Publish()` — primary locator is non-nullable by construction
+  (always present); description is checked, every failing entry named
+  (`pages.<page>.<element>`), re-runnable.
+- [x] Editing an entry affects every flow referencing it with **no flow edits**. Prove with three flows and one rename — this is the module's headline gate.
+  **2026-10-29:** `FlowEngine.ResolveLocatorRef`, same "resolved fresh on every run, never baked
+  in at publish time" mechanism as `ResolveRequestTemplate`. Proven by
+  `Three_flows_pick_up_a_renamed_locator_with_zero_flow_edits` (3 flows run against v1, one
+  rename, same 3 flows re-run against v2 — zero flow edits).
+  **Open design call, not in the spec's own domain model:** `RepositoryRef(Page, Element)` carries
+  no `RepositoryId` — a step names "Checkout › submitButton," never which Object Repository
+  artifact that page lives in. Resolution and the existence check both search every repository
+  the tenant owns for a matching page/element. Flagged in `plan/OPEN-QUESTIONS.md`, not a silent
+  assumption.
+- [x] Tenant isolation holds: a repository in tenant A is invisible and unreferenceable from tenant B. Test at the API and the raw-SQL level, as in Day 6's T1.
+  **2026-10-29:** real RLS (`ENABLE`/`FORCE ROW LEVEL SECURITY` + `CREATE POLICY`) on
+  `object_repositories`, same as `api_collections`/`flows` — **not** copied from `RequestTemplate`,
+  whose own migration has no RLS at all (app-level `TenantId` filter only). That gap is real and
+  separate (DISC-22); this task needed the stronger pattern because its own checklist explicitly
+  asks for a raw-SQL-level proof, which only means something against a real DB policy. Written as
+  `TenantIsolationTests.cs` additions (same skip-if-no-live-DB pattern as the existing Flow tests)
+  — **not executed against a real Postgres in this session**: Docker Desktop is not running on
+  this machine right now (see DISC-21's own PR for the same finding against the API module's
+  work). Needs a real run before this box is trusted beyond "compiles and matches the proven
+  pattern."
 
-✔ `dotnet test --filter "FullyQualifiedName~ObjectRepository"`
+✔ `dotnet test --filter "FullyQualifiedName~ObjectRepository"` → 13/13 passed (domain + resolution
++ Flow.Publish checker, all InMemory — no DB needed). Tenant-isolation tests live under
+`TenantIsolationTests` (not matched by this filter name — same fixed-vocabulary mismatch pattern
+as the API module's gate) and could not be run against a real Postgres this session.
 
-Time-box: 5 h.
+Time-box: 5 h. **Closed 2026-10-29**, with the one caveat above (RLS tests unexecuted, Docker down).
 
 ### WEB-T3 — Locator strategies and resolution (P0)
 

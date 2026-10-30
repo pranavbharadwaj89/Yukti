@@ -39,11 +39,13 @@ public sealed class FlowEngine
     private readonly RetryPolicy _defaultRetryPolicy;
     private readonly ILogger<FlowEngine> _logger;
     private readonly IRequestTemplateRepository? _requestTemplates;
+    private readonly IObjectRepositoryElementQuery? _repositoryElements;
 
     public FlowEngine(
         IModuleDispatcher dispatcher, IModuleRegistry registry, IVariableStore variables, IRetryFlakeHandler retryHandler,
         IFlowRunRepository runRepository, IUnitOfWorkFactory uowFactory, ILogger<FlowEngine> logger,
-        RetryPolicy? defaultRetryPolicy = null, IRequestTemplateRepository? requestTemplates = null)
+        RetryPolicy? defaultRetryPolicy = null, IRequestTemplateRepository? requestTemplates = null,
+        IObjectRepositoryElementQuery? repositoryElements = null)
     {
         _dispatcher = dispatcher;
         _registry = registry;
@@ -54,6 +56,7 @@ public sealed class FlowEngine
         _logger = logger;
         _defaultRetryPolicy = defaultRetryPolicy ?? new RetryPolicy(MaxAttempts: 2, InitialBackoff: TimeSpan.FromMilliseconds(200), BackoffMultiplier: 2.0);
         _requestTemplates = requestTemplates;
+        _repositoryElements = repositoryElements;
     }
 
     /// <summary>
@@ -110,6 +113,44 @@ public sealed class FlowEngine
         }
 
         return merged;
+    }
+
+    /// <summary>
+    /// Web UI Testing Module Spec, WEB-T2: the run-time half of "editing a repository entry
+    /// reaches every flow referencing it with zero flow edits" — the same resolved-fresh-every-
+    /// run rule ResolveRequestTemplate already applies, never baked in at publish time.
+    /// `_repositoryElements` is null for every caller that doesn't configure one (every
+    /// test/CLI construction site, unchanged); resolution is then simply skipped.
+    ///
+    /// Scans every param value (not one fixed key — WEB-T4 hasn't migrated any real action to
+    /// LocatorRef yet, so this only matches a param already shaped like a RepositoryRef, exactly
+    /// mirroring Flow.Publish's own existence check) and replaces a match with the resolved
+    /// Locator itself, not a re-serialized dict — a future module consumes it as a real
+    /// Yukti.Domain.UiVocabulary.Locator, the same type WEB-T3's resolution logic works with.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, object?>> ResolveLocatorRef(IReadOnlyDictionary<string, object?> stepParams, TenantId tenantId, CancellationToken ct)
+    {
+        if (_repositoryElements is null)
+            return stepParams;
+
+        Dictionary<string, object?>? merged = null;
+        foreach (var (paramName, paramValue) in stepParams)
+        {
+            if (paramValue is not IReadOnlyDictionary<string, object?> dict
+                || dict.Count != 2
+                || dict.GetValueOrDefault("repositoryPage") is not string page
+                || dict.GetValueOrDefault("repositoryElement") is not string element)
+                continue;
+
+            var locator = await _repositoryElements.FindElement(page, element, tenantId, ct);
+            if (locator is null)
+                throw new RepositoryEntryResolutionException(page, element);
+
+            merged ??= new Dictionary<string, object?>(stepParams);
+            merged[paramName] = locator;
+        }
+
+        return merged ?? stepParams;
     }
 
     public async Task<FlowRun> Execute(Flow flow, FlowRun run, ICredentialResolver credentials, CancellationToken ct)
@@ -206,6 +247,7 @@ public sealed class FlowEngine
                 try
                 {
                     var resolvedParams = await ResolveRequestTemplate(step.Params, ct);
+                    resolvedParams = await ResolveLocatorRef(resolvedParams, run.TenantId, ct);
                     interpolatedParams = await _variables.Interpolate(resolvedParams, run.Variables, credentials, ct);
                 }
                 catch (VariableResolutionException ex)

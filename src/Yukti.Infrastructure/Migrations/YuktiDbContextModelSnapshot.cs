@@ -436,6 +436,37 @@ namespace Yukti.Infrastructure.Migrations
                     b.ToTable("triggers", (string)null);
                 });
 
+            modelBuilder.Entity("Yukti.Domain.UiVocabulary.ObjectRepository", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Pages")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("pages");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("object_repositories", (string)null);
+                });
+
             modelBuilder.Entity("Yukti.Infrastructure.IdempotencyRecord", b =>
                 {
                     b.Property<Guid>("TenantId")

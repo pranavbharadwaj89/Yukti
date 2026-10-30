@@ -10,6 +10,7 @@ using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.Scheduling;
 using Yukti.Domain.SharedKernel;
+using Yukti.Domain.UiVocabulary;
 using Yukti.Infrastructure.ReadModels;
 
 namespace Yukti.Infrastructure;
@@ -32,6 +33,63 @@ namespace Yukti.Infrastructure;
 // were never the actual gap (a caller already has to know/supply the
 // tenant); GetById(id) was, since any authenticated caller could
 // previously fetch any row by guessing its Guid with zero scoping at all.
+
+public sealed class EfObjectRepositoryRepository : IObjectRepositoryRepository
+{
+    private readonly YuktiDbContext _context;
+    private readonly ITenantContextAccessor _tenant;
+
+    public EfObjectRepositoryRepository(YuktiDbContext context, ITenantContextAccessor tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
+
+    public Task<ObjectRepository?> GetById(RepositoryId id, CancellationToken ct) =>
+        _context.ObjectRepositories.FirstOrDefaultAsync(r => r.Id == id && r.TenantId == _tenant.CurrentTenantId, ct);
+
+    public async Task Save(ObjectRepository repository, CancellationToken ct)
+    {
+        if (_context.Entry(repository).State == EntityState.Detached)
+            await _context.AddAsync(repository, ct);
+    }
+
+    public Task Delete(ObjectRepository repository, CancellationToken ct)
+    {
+        _context.Remove(repository);
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>WEB-T2: a RepositoryRef names a page/element pair, never which ObjectRepository it
+/// lives in, so this searches every repository the tenant owns -- the reason this is a Query
+/// (IObjectRepositoryRepository has no such method) rather than something on the repository
+/// itself. Same "EF-backed Query class, direct DbContext access" shape as
+/// EfRequestTemplateUsageQuery; Flow's own IRepositoryEntryExistsChecker port is a thin
+/// Application-layer adapter built on top of this (RepositoryEntryExistsChecker), same as
+/// RequestTemplateExistsChecker is built on IRequestTemplateRepository rather than reading EF
+/// directly -- so Application still never references Infrastructure.</summary>
+public sealed class EfObjectRepositoryElementQuery : IObjectRepositoryElementQuery
+{
+    private readonly YuktiDbContext _context;
+
+    public EfObjectRepositoryElementQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<Locator?> FindElement(string page, string element, TenantId tenantId, CancellationToken ct)
+    {
+        var repositories = await _context.ObjectRepositories
+            .Where(r => r.TenantId == tenantId)
+            .ToListAsync(ct);
+
+        foreach (var repository in repositories)
+        {
+            var locator = repository.FindElement(page, element);
+            if (locator is not null)
+                return locator;
+        }
+        return null;
+    }
+}
 
 public sealed class EfFlowRepository : IFlowRepository
 {

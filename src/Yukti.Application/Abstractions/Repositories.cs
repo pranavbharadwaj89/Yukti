@@ -4,6 +4,7 @@ using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.SharedKernel;
+using Yukti.Domain.UiVocabulary;
 
 namespace Yukti.Application.Abstractions;
 
@@ -70,6 +71,13 @@ public interface IRequestTemplateRepository
     Task<RequestTemplate?> GetById(RequestTemplateId id, CancellationToken ct);
     Task Save(RequestTemplate template, CancellationToken ct);
     Task Delete(RequestTemplate template, CancellationToken ct);
+}
+
+public interface IObjectRepositoryRepository
+{
+    Task<ObjectRepository?> GetById(RepositoryId id, CancellationToken ct);
+    Task Save(ObjectRepository repository, CancellationToken ct);
+    Task Delete(ObjectRepository repository, CancellationToken ct);
 }
 
 public interface ITestEnvironmentRepository

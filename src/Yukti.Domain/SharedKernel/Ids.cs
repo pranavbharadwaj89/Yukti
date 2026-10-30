@@ -118,3 +118,9 @@ public readonly record struct RequestTemplateId(Guid Value)
     public static RequestTemplateId New() => new(Guid.NewGuid());
     public override string ToString() => Value.ToString();
 }
+
+public readonly record struct RepositoryId(Guid Value)
+{
+    public static RepositoryId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString();
+}

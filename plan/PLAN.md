@@ -1443,4 +1443,36 @@ work here, don't assume they still hold.
   **Open per the spec's own "Open questions":** Gate 2 (port a real 10+ test Selenium/Playwright
   suite) needs the owner to supply one — tracked, not resolved, in `plan/OPEN-QUESTIONS.md`.
   `executeScript` deferred by default per the spec's own recommendation (P1, non-blocking).
-  Next: WEB-T2 (Object Repository artifact).
+  **WEB-T2 (Object Repository artifact) closed 2026-10-29:** `ObjectRepository` aggregate
+  (mutate-in-place + version counter, `RequestTemplate`'s shape, not Flow's immutable-version-
+  family — see the spec file's own note on why), full EF persistence + migration with real RLS,
+  `FlowEngine.ResolveLocatorRef` (the run-time resolution that makes "zero flow edits" literally
+  true), and a fourth `Flow.Publish` overload for the repository-entry existence check.
+  ✔ `dotnet test --filter "FullyQualifiedName~ObjectRepository"` → 13/13 passed.
+  Two real gaps found and fixed while building this, both pre-existing (not introduced by WEB-T2):
+  see DISC-22 and DISC-23.
+  Next: WEB-T3 (locator strategies and resolution).
+- [ ] DISC-22 `RequestTemplate` (API-T9, `plan/specs/API-TESTING-MODULE.md`) has **no database-
+  level RLS at all** — `AddRequestTemplates`'s migration creates the table and
+  `GrantYuktiAppRequestTemplatesPrivileges` grants the app role read/write, but neither applies
+  `ENABLE`/`FORCE ROW LEVEL SECURITY` or a `CREATE POLICY`, unlike `flows`/`api_collections`
+  (`AddRowLevelSecurity`/`AddApiCollectionsAndRequests`). Tenant isolation today is Layer 1 only
+  (`EfRequestTemplateRepository`'s own `WHERE TenantId = ...`) — a real gap against CLAUDE.md §2
+  rule 9 ("PostgreSQL row-level security multi-tenancy... never weaken") if a future repository
+  method or a raw query ever skips that filter. Found while building WEB-T2's own
+  `object_repositories` table, which got the full RLS treatment because its own checklist
+  explicitly requires a raw-SQL-level tenant-isolation proof. Not fixed here — a different
+  table/migration, genuinely out of WEB-T2's scope — flagging for an explicit owner decision
+  (fix now in its own PR, or accept Layer-1-only for `RequestTemplate` and say why).
+- [ ] DISC-23 API-T9's `IRequestTemplateExistsChecker` was built and unit-tested
+  (`RequestTemplateResolutionTests`) but was **never actually passed into the real
+  `PublishFlowCommandHandler`** — the handler called `flow.Publish(_resolver, ct)` (the 2-arg
+  overload), so the real `POST /flows/{id}/publish` endpoint has never enforced "the referenced
+  request template exists" in production, despite the capability existing and passing tests
+  since API-T9. Found and fixed 2026-10-29 while wiring WEB-T2's own
+  `IRepositoryEntryExistsChecker` into the same handler — both checkers are now optional
+  constructor parameters (default null, so every existing direct-construction site — Yukti.Host,
+  Yukti.Cli, the authorization/audit tests — keeps compiling unchanged) resolved for real only by
+  the DI-wired Api process, which has both registered.
+  ✔ `dotnet build -warnaserror` → 0/0 with every existing `PublishFlowCommandHandler`
+  construction site unchanged; `dotnet test --filter "FullyQualifiedName~RequestTemplateResolutionTests"` → 9/9 still passing.

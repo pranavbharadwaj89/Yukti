@@ -206,4 +206,81 @@ public sealed class TenantIsolationTests
         Assert.NotNull(pgEx);
         Assert.Equal("42501", pgEx!.SqlState); // insufficient_privilege — the RLS policy rejected the write
     }
+
+    /// <summary>Web UI Testing Module Spec, WEB-T2's own checklist: "a repository in tenant A is
+    /// invisible and unreferenceable from tenant B. Test at the API and the raw-SQL level, as in
+    /// Day 6's T1" — same shape as the Flow tests above, against object_repositories instead.</summary>
+    [Fact]
+    public async Task Tenant_B_cannot_read_tenant_As_object_repository_through_the_real_repository()
+    {
+        var connectionString = GetConnectionString();
+        if (connectionString is null) return; // Skip: no live DB configured in this environment.
+
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var ct = CancellationToken.None;
+
+        Yukti.Domain.SharedKernel.RepositoryId repositoryId;
+        await using (var asA = await OpenSessionAs(connectionString, tenantA, ct))
+        {
+            var repository = Yukti.Domain.UiVocabulary.ObjectRepository.Create("WEB-T2 tenant A's repository", tenantA);
+            repositoryId = repository.Id;
+            asA.Add(repository);
+            await asA.SaveChangesAsync(ct);
+        }
+
+        await using var asB = await OpenSessionAs(connectionString, tenantB, ct);
+        var repo = new EfObjectRepositoryRepository(asB, new FixedTenantContextAccessor(tenantB));
+
+        var result = await repo.GetById(repositoryId, ct);
+
+        Assert.Null(result); // not "forbidden" — genuinely invisible, same as it not existing
+    }
+
+    [Fact]
+    public async Task Tenant_B_cannot_see_tenant_As_object_repository_even_with_no_application_level_filter_at_all()
+    {
+        // Layer 2 alone: a raw, unparameterized-by-tenant query — proves the database itself
+        // refuses the row, independent of whether the C# repository's own WHERE is even present.
+        var connectionString = GetConnectionString();
+        if (connectionString is null) return;
+
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var ct = CancellationToken.None;
+
+        Yukti.Domain.SharedKernel.RepositoryId repositoryId;
+        await using (var asA = await OpenSessionAs(connectionString, tenantA, ct))
+        {
+            var repository = Yukti.Domain.UiVocabulary.ObjectRepository.Create("WEB-T2 tenant A's repository (raw query proof)", tenantA);
+            repositoryId = repository.Id;
+            asA.Add(repository);
+            await asA.SaveChangesAsync(ct);
+        }
+
+        await using var asB = await OpenSessionAs(connectionString, tenantB, ct);
+        var rawMatch = await RawCountAsync(asB, "SELECT count(*) FROM object_repositories WHERE \"Id\" = @id", repositoryId.Value, ct);
+
+        Assert.Equal(0, rawMatch);
+    }
+
+    [Fact]
+    public async Task Tenant_A_cannot_illegally_tag_a_new_object_repository_as_tenant_Bs()
+    {
+        var connectionString = GetConnectionString();
+        if (connectionString is null) return;
+
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var ct = CancellationToken.None;
+
+        await using var asA = await OpenSessionAs(connectionString, tenantA, ct);
+        var repositoryIllegallyTaggedForB = Yukti.Domain.UiVocabulary.ObjectRepository.Create("WEB-T2 illegally tagged for tenant B", tenantB);
+        asA.Add(repositoryIllegallyTaggedForB);
+
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => asA.SaveChangesAsync(ct));
+        var pgEx = FindPostgresException(ex);
+        Assert.NotNull(pgEx);
+        Assert.Equal("42501", pgEx!.SqlState); // insufficient_privilege — the RLS policy rejected the write
+    }
 }
