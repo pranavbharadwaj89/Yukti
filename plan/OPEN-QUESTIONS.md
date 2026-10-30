@@ -34,7 +34,7 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
 ## Web UI Testing Module (`plan/specs/WEB-TESTING-MODULE.md`)
 
 WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resolution), WEB-T4
-(migrate the existing module) closed 2026-10-29. WEB-T5 (waits) next.
+(migrate the existing module), WEB-T5 (waits) closed 2026-10-29. WEB-T6 (full action set) next.
 
 1. 🟡 **"Confirm Playwright stays" (the spec's own blocking question).** Treating this as already
    settled, not re-asking: `CLAUDE.md` §4 already names `Microsoft.Playwright (.NET)` as the web
@@ -85,6 +85,17 @@ WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resoluti
    launch). Everything else on the task's own checklist ran and passed for real. *Needs: either a
    Python interpreter in this environment, or you run the benchmark yourself and report the
    number back.*
+10. 🟡 **`NetworkIdle`'s quiet period isn't actually tunable.** The domain type (WEB-T1) carries
+    a `Quiet: TimeSpan`, but Playwright's own `WaitForLoadStateAsync(NetworkIdle)` — the real
+    mechanism `PlaywrightWaitResolver` uses — has a fixed ~500ms threshold with no way to
+    configure it. *Default, already built:* `Quiet` is silently ignored; the condition's own
+    `timeoutMs` param (from `waitFor`) is used as the overall wait budget instead. *Tell me if
+    you want this to actually fail loudly when `Quiet` is set to something other than the
+    implicit default, rather than quietly ignoring the field.*
+11. 🔵 DISC-24 (`plan/PLAN.md`) — found while building WEB-T5, unrelated to it:
+    `Flow.CreateNewVersion` never copied `ContinueOnFailure` forward to the new Draft version (only
+    `ProjectId`/`Description` were). A pre-existing, unrelated gap, not fixed here — flagged for
+    you to say whether it's intentional or a real bug.
 
 ---
 

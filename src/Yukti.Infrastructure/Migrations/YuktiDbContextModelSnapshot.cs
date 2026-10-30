@@ -216,6 +216,9 @@ namespace Yukti.Infrastructure.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("declared_variables");
 
+                    b.Property<int?>("DefaultTimeoutMs")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Description")
                         .HasColumnType("text");
 

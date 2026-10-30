@@ -23,6 +23,7 @@ public sealed class FlowConfiguration : IEntityTypeConfiguration<Flow>
         builder.Property(f => f.Description);
         builder.Property(f => f.Status).HasConversion<string>();
         builder.Property(f => f.ContinueOnFailure);
+        builder.Property(f => f.DefaultTimeoutMs);
         builder.Property(f => f.TenantId).HasConversion(id => id.Value, v => new TenantId(v));
         builder.Property(f => f.CreatedBy).HasConversion(id => id.Value, v => new UserId(v));
         builder.Property(f => f.ProjectId).HasConversion(

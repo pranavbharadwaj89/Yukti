@@ -1479,7 +1479,20 @@ work here, don't assume they still hold.
   artifact, not a regression, resolved by invoking the built DLLs directly instead.
   **Not executed:** the spec's own 50-run flake benchmark (`scripts/flake_run.py`) needs a Python
   interpreter, unavailable in this environment.
-  Next: WEB-T5 (waits).
+  **WEB-T5 (waits) closed 2026-10-29:** `Flow.DefaultTimeoutMs` (implicit-wait equivalent, merged
+  into a step's own params by `FlowEngine.ApplyDefaultTimeout` only when the step sets none) +
+  new `waitFor` action (`WaitConditionParamMapper` + `PlaywrightWaitResolver`), all 13
+  `WaitCondition` subtypes, every timeout naming the condition/last-observed-state/elapsed time,
+  confirmed `sleep` reads as unknown (never added). **Found while building this:**
+  `CountEquals` needs several matches by design, but Playwright's `WaitForAsync` enforces strict
+  mode (exactly one match) — caught by a real test failure (`strict mode violation`), fixed by
+  giving `CountEquals` its own path onto the bare built locator + `CountAsync()`, bypassing
+  single-element resolution entirely.
+  ✔ `dotnet test --filter "FullyQualifiedName~WebWaitTests"` → 16/16 passed.
+  **Known simplification, flagged:** `NetworkIdle`'s quiet-period threshold comes from
+  Playwright's own fixed ~500ms, not from the domain's own configurable `Quiet` field — see
+  `plan/OPEN-QUESTIONS.md`.
+  Next: WEB-T6 (full action set) — the largest remaining task (6h time-box).
 - [ ] DISC-22 `RequestTemplate` (API-T9, `plan/specs/API-TESTING-MODULE.md`) has **no database-
   level RLS at all** — `AddRequestTemplates`'s migration creates the table and
   `GrantYuktiAppRequestTemplatesPrivileges` grants the app role read/write, but neither applies
@@ -1504,3 +1517,11 @@ work here, don't assume they still hold.
   the DI-wired Api process, which has both registered.
   ✔ `dotnet build -warnaserror` → 0/0 with every existing `PublishFlowCommandHandler`
   construction site unchanged; `dotnet test --filter "FullyQualifiedName~RequestTemplateResolutionTests"` → 9/9 still passing.
+- [ ] DISC-24 `Flow.CreateNewVersion` does not copy `ContinueOnFailure` forward to the new Draft
+  version — only `ProjectId`/`Description` are copied; `ContinueOnFailure` silently resets to its
+  default (`false`) on every new version of a Published flow that had previously set it `true`.
+  Found 2026-10-29 while adding `DefaultTimeoutMs` to the same constructor-initializer list for
+  WEB-T5 (deliberately copied `DefaultTimeoutMs` forward there, which is what made the existing
+  gap next to it visible) — not fixed here, since it's a pre-existing, unrelated behavior this
+  session didn't introduce and wasn't asked to audit. Flagging for an explicit decision: is this
+  intentional ("a new version starts fresh and must explicitly re-opt-in") or a real bug?

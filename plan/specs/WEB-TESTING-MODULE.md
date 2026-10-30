@@ -279,16 +279,49 @@ Python interpreter in this environment).
 
 Selenium's implicit and explicit waits, expressed as data.
 
-- [ ] **Flow-level default timeout**, overridable per step: the implicit-wait equivalent.
-- [ ] **`waitFor` with conditions**: every `WaitCondition` from the domain model, the explicit-wait equivalent.
-- [ ] A timeout reports **which condition never became true, what the actual state was, and how long it waited**. "Timed out after 30s" with no further detail is an incomplete implementation.
-- [ ] **No `sleep` action exists.** This is deliberate: fixed sleeps are the single largest cause of slow, flaky suites. If someone genuinely needs one, they use `CustomPredicate`. Adding a `sleep` action requires an ADR and your approval.
-- [ ] Playwright's built-in auto-waiting is preserved on every action — these conditions are for waiting on things you are *not* about to interact with.
-- [ ] `NetworkIdle` waits for a quiet period with no in-flight requests, which is the reliable way to wait for an asynchronous page to settle.
+- [x] **Flow-level default timeout**, overridable per step: the implicit-wait equivalent.
+  **2026-10-29:** `Flow.DefaultTimeoutMs` (new, same settable-while-Draft shape as
+  `ContinueOnFailure`) merged into every step's own params as `"timeoutMs"` by
+  `FlowEngine.ApplyDefaultTimeout` — only when the step doesn't already set one, so a step's own
+  value always wins ("overridable per step," literally). Null (every flow before WEB-T5) changes
+  nothing.
+- [x] **`waitFor` with conditions**: every `WaitCondition` from the domain model, the explicit-wait equivalent.
+  **2026-10-29:** new `waitFor` action on `WebModule`, parsed by `WaitConditionParamMapper` (same
+  dict-to-record style as `AssertionParamMapper`/`LocatorParamMapper`) and evaluated by
+  `PlaywrightWaitResolver` — all 13 `WaitCondition` subtypes (`Visible`/`Hidden` via Playwright's
+  own built-in state wait on top of WEB-T3's resolver; `Enabled`/`Disabled`/`TextEquals`/
+  `TextContains`/`AttributeEquals`/`UrlEquals`/`UrlContains`/`TitleContains` via a generic poll
+  loop; `CountEquals` via a dedicated path, below; `NetworkIdle` via Playwright's own
+  `WaitForLoadStateAsync`; `CustomPredicate` via `WaitForFunctionAsync`).
+  **Found while building this:** `CountEquals` legitimately expects several matches — the
+  opposite of every other condition, which all target "the" one element — and Playwright's own
+  `WaitForAsync` enforces strict mode (exactly one match, or a thrown error) on anything it waits
+  on. `CountEquals` therefore builds the bare Playwright locator directly (`PlaywrightLocatorResolver.Build`, now `internal`) and polls `CountAsync()`, never going through the
+  single-element resolver at all. A real test caught this on the first run (`strict mode
+  violation: ... resolved to 2 elements`), not a design walkthrough.
+- [x] A timeout reports **which condition never became true, what the actual state was, and how long it waited**. "Timed out after 30s" with no further detail is an incomplete implementation.
+  **2026-10-29:** `PlaywrightWaitResolver.Result.FailureDetail` — e.g. *"Timed out after 312ms
+  waiting for: msg text to equal 'ready'. Last observed: text was 'old'."* — all three required
+  pieces, every time.
+- [x] **No `sleep` action exists.** This is deliberate: fixed sleeps are the single largest cause of slow, flaky suites. If someone genuinely needs one, they use `CustomPredicate`. Adding a `sleep` action requires an ADR and your approval.
+  **2026-10-29:** confirmed by test — `web.sleep` reads as "Unknown web action," not as a
+  recognized-but-stubbed one. No `sleep` action was added, and none will be without asking first.
+- [x] Playwright's built-in auto-waiting is preserved on every action — these conditions are for waiting on things you are *not* about to interact with.
+  **2026-10-29:** `waitFor` is a new, separate action; every existing action (`click`, `fill`,
+  etc., WEB-T4) is untouched by this task.
+- [x] `NetworkIdle` waits for a quiet period with no in-flight requests, which is the reliable way to wait for an asynchronous page to settle.
+  **2026-10-29:** via `IPage.WaitForLoadStateAsync(LoadState.NetworkIdle)` — Playwright's own
+  real mechanism for this. **Known simplification:** that threshold is fixed (~500ms) and not
+  configurable through Playwright's API; `NetworkIdle.Quiet` (WEB-T1's own domain field) is
+  honored as the overall *timeout* here, not a tunable quiet duration. Flagged in
+  `plan/OPEN-QUESTIONS.md`, not silently decided.
 
-✔ `dotnet test --filter "FullyQualifiedName~WebWait"`
+✔ `dotnet test --filter "FullyQualifiedName~WebWaitTests"` → 16/16 passed, against a real
+headless Chromium page whose DOM mutations are all delayed 300ms (so a pass proves waiting
+happened, not that the condition was already true) — plus two `FlowEngine`-level tests proving
+the default-timeout-with-per-step-override behavior for real.
 
-Time-box: 3 h.
+Time-box: 3 h. **Closed 2026-10-29.**
 
 ### WEB-T6 — The full action set (P0 unless marked)
 
