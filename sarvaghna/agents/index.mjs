@@ -6,6 +6,7 @@ import { AnalystAgent } from './analyst.mjs';
 import { CoderAgent } from './coder.mjs';
 import { TesterAgent } from './tester.mjs';
 import { ReviewerAgent } from './reviewer.mjs';
+import { BravitasAgent } from './bravitas.mjs';
 
 export const CREW_METADATA = [
   {
@@ -52,6 +53,21 @@ export const CREW_METADATA = [
     bg: '#FAECE7',
     tagline: 'Scores quality and gives feedback',
     class: ReviewerAgent
+  },
+  {
+    id: 'bravitas',
+    name: 'Bravitas',
+    color: '#2BB3A3',
+    dark: '#17746A',
+    bg: '#E3F7F4',
+    // Working name only ("Call it as Bravitas for now") — not a final brand.
+    // Unlike the other five, this one drives a real browser against the
+    // real running frontend rather than reading a git diff, so it isn't
+    // part of --crew's mission pipeline; it runs standalone via --bravitas
+    // (see sarvaghna.mjs), including a merge-triggered run from
+    // .github/workflows/sarvaghna.yml.
+    tagline: 'Audits the rendered UI for accessibility and broken pages',
+    class: BravitasAgent
   }
 ];
 
@@ -60,5 +76,6 @@ export {
   AnalystAgent,
   CoderAgent,
   TesterAgent,
-  ReviewerAgent
+  ReviewerAgent,
+  BravitasAgent
 };

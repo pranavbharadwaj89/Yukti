@@ -9,6 +9,7 @@
   "scripts": {
     "analyze": "node sarvaghna.mjs",
     "pre-flight": "node sarvaghna.mjs --staged",
-    "test": "node --test core/*.test.mjs"
+    "bravitas": "node sarvaghna.mjs --bravitas",
+    "test": "node --test core/*.test.mjs agents/*.test.mjs"
   }
 }

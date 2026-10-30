@@ -15,7 +15,7 @@ import { skill as gitHooksSkill } from './skills/skill-git-hooks/index.mjs';
 import { DecisionEngine } from './core/decision-engine.mjs';
 import { runSemanticReview } from './rules/semantic-reviewer.mjs';
 import { formatTerminalOutput, writeGitHubStepSummary, emitGitHubAnnotations, postOrUpdatePRComment } from './formatters/github.mjs';
-import { OrchestratorAgent, AnalystAgent, CoderAgent, TesterAgent, ReviewerAgent, CREW_METADATA } from './agents/index.mjs';
+import { OrchestratorAgent, AnalystAgent, CoderAgent, TesterAgent, ReviewerAgent, BravitasAgent, CREW_METADATA } from './agents/index.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,7 +74,7 @@ if (args.includes('--ledger')) {
 
 if (args.includes('--crew-list')) {
   console.log('\n================================================================');
-  console.log('         🤖 SARVAGHNA 5-AGENT SPECIALIST CREW ROSTER           ');
+  console.log('         🤖 SARVAGHNA 6-AGENT SPECIALIST CREW ROSTER           ');
   console.log('================================================================');
   CREW_METADATA.forEach(agent => {
     console.log(`• ${agent.name} (${agent.color}) — ${agent.tagline}`);
@@ -133,7 +133,11 @@ if (args.includes('--crew') || args.includes('--mission')) {
   console.log('         🤖 SARVAGHNA 5-AGENT AUTONOMOUS CREW ACTIVATED         ');
   console.log('================================================================');
   console.log('Crew Members:');
-  CREW_METADATA.forEach((m, idx) => {
+  // Bravitas sits outside this mission (see agents/index.mjs's own comment on
+  // its entry) — it drives a real browser against a real running UI, which
+  // orchestrator.executeMission neither starts nor calls, so listing it here
+  // would claim a participation that doesn't happen. Full roster: --crew-list.
+  CREW_METADATA.filter(m => m.id !== 'bravitas').forEach((m, idx) => {
     console.log(`  [${idx + 1}] ${m.name.padEnd(14)} | ${m.tagline}`);
   });
   console.log('----------------------------------------------------------------');
@@ -178,6 +182,62 @@ if (args.includes('--crew') || args.includes('--mission')) {
   console.log(`🏆 Crew Mission Verdict: [${mission.verdict}] (Confidence: ${Math.round(mission.confidence * 100)}%)`);
   console.log('================================================================\n');
   process.exitCode = mission.verdict === 'MISSION_ACCOMPLISHED' ? 0 : 1;
+  crewHandled = true;
+}
+
+// Bravitas (UI Auditor, working name) — standalone, independently callable.
+// Not folded into --crew: it drives a real browser against a real running
+// apps/yukti-gui + API, not a git diff, so it needs its own invocation
+// (locally, or from .github/workflows/sarvaghna.yml's merge-triggered job).
+if (args.includes('--bravitas')) {
+  const baseUrlIndex = args.indexOf('--base-url');
+  const baseURL = baseUrlIndex !== -1 ? args[baseUrlIndex + 1] : undefined;
+
+  console.log('\n================================================================');
+  console.log('         🎨 BRAVITAS — SARVAGHNA UI AUDITOR ACTIVATED          ');
+  console.log('================================================================');
+
+  const bravitas = new BravitasAgent({ baseURL });
+  const bravitasStart = Date.now();
+  const { findings: bravitasFindings, routeReports, auditedCount } = await bravitas.auditRoutes();
+  const bravitasDurationMs = Date.now() - bravitasStart;
+
+  const bravitasResult = {
+    ruleFindings: bravitasFindings,
+    skillReports: [{
+      name: 'bravitas-ui-audit',
+      summary: `Audited ${auditedCount} route(s), ${bravitasFindings.length} finding(s).`
+    }],
+    aiReview: { enabled: false, reason: 'Bravitas does not use AI semantic review in this version (axe-core + structural checks only).' },
+    durationMs: bravitasDurationMs,
+    filesCount: auditedCount,
+    linesAdded: 0,
+    linesDeleted: 0
+  };
+
+  formatTerminalOutput(bravitasResult);
+
+  if (routeReports.length > 0) {
+    console.log('Per-route status:');
+    routeReports.forEach(r => console.log(`  ${r.status === 'PASSED' ? '✅' : '❌'} ${r.route} — ${r.violationCount} finding(s)`));
+    console.log('');
+  }
+
+  const bravitasDecision = DecisionEngine.makeDecision({
+    target: 'bravitas-ui-audit',
+    ruleFindings: bravitasFindings,
+    aiReview: bravitasResult.aiReview,
+    filesCount: auditedCount
+  });
+
+  console.log(`👑 BRAVITAS DECISION: [${bravitasDecision.verdict}] (Confidence: ${Math.round(bravitasDecision.confidence * 100)}%)`);
+  console.log(`   Rationale: ${bravitasDecision.rationale}\n`);
+
+  emitGitHubAnnotations(bravitasFindings);
+  writeGitHubStepSummary(bravitasResult);
+  await postOrUpdatePRComment(bravitasResult);
+
+  process.exitCode = bravitasDecision.verdict === 'BLOCK_AND_PREVENT' ? 1 : 0;
   crewHandled = true;
 }
 
