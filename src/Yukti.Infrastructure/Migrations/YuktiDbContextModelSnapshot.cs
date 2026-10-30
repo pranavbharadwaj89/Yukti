@@ -659,6 +659,10 @@ namespace Yukti.Infrastructure.Migrations
                             b1.Property<Guid>("FlowRunId")
                                 .HasColumnType("uuid");
 
+                            b1.Property<string>("LocatorResolution")
+                                .HasColumnType("jsonb")
+                                .HasColumnName("locator_resolution");
+
                             b1.Property<string>("Message")
                                 .HasColumnType("text");
 

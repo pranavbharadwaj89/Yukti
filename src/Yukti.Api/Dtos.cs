@@ -181,10 +181,16 @@ public sealed record FlowRunReportResponse(
         e.TotalDuration.TotalMilliseconds, e.OccurredAt, e.ProjectedAt);
 }
 
+public sealed record LocatorResolutionResponse(string StrategyUsed, string PrimaryFailureReason, string? Description)
+{
+    public static LocatorResolutionResponse From(Yukti.Domain.Execution.LocatorResolutionInfo info) =>
+        new(info.StrategyUsed.ToString(), info.PrimaryFailureReason, info.Description);
+}
+
 public sealed record StepResultResponse(
     Guid Id, string StepName, string Module, string Action, string Status,
     double DurationMs, string? Message, string? Error, object? Data, bool IsFlaky,
-    IReadOnlyList<RetryAttemptResponse> RetryHistory)
+    IReadOnlyList<RetryAttemptResponse> RetryHistory, bool UsedLocatorFallback, LocatorResolutionResponse? LocatorResolution)
 {
     // D6-T3a: a module's Data can carry the same shape a header can — ApiModule's own response
     // "headers" field, which can include a server's Set-Cookie — so the run API response needs
@@ -195,7 +201,9 @@ public sealed record StepResultResponse(
         result.Data is IReadOnlyDictionary<string, object?> dict ? Yukti.Domain.Auditing.SecretRedactor.Redact(dict) : result.Data,
         result.IsFlaky,
         result.RetryHistory.Select(a => new RetryAttemptResponse(
-            a.AttemptNumber, a.Status.ToString(), a.Duration.TotalMilliseconds, a.Error)).ToList());
+            a.AttemptNumber, a.Status.ToString(), a.Duration.TotalMilliseconds, a.Error)).ToList(),
+        result.UsedLocatorFallback,
+        result.LocatorResolution is null ? null : LocatorResolutionResponse.From(result.LocatorResolution));
 }
 
 public sealed record FlowRunResponse(

@@ -184,17 +184,57 @@ Time-box: 5 h. **Closed 2026-10-29**, with the one caveat above (RLS tests unexe
 
 ### WEB-T3 — Locator strategies and resolution (P0)
 
-- [ ] All seven web strategies work: `TestId`, `Role` (with accessible name), `Label`, `Text` (exact and partial), `Placeholder`, `Css`, `XPath`.
-- [ ] **Chaining** via `Within`: find inside a parent element. This replaces most complex XPath, and a test should demonstrate that by rewriting one.
-- [ ] `Nth` selects among several matches; out-of-range fails clearly rather than silently picking nothing.
-- [ ] Fallback resolution works as in the diagram, in order, each within the step's timeout budget.
-- [ ] A fallback success produces a **flagged pass** carrying: which fallback, why the primary failed, and the entry's identity. Surfaced in the report and in the JUnit output as a property.
-- [ ] Total failure reports every strategy tried, how many elements each matched, and a screenshot.
-- [ ] **Mutation check:** break a primary locator in a test fixture, confirm the flagged-pass path fires; break all of them, confirm a clean failure with full diagnostics.
+- [x] All seven web strategies work: `TestId`, `Role` (with accessible name), `Label`, `Text` (exact and partial), `Placeholder`, `Css`, `XPath`.
+  **2026-10-29:** `PlaywrightLocatorResolver.Build` dispatches per `LocatorStrategy` onto
+  `IPage`/`ILocator`'s real `GetByTestId`/`GetByRole`/`GetByLabel`/`GetByText`/`GetByPlaceholder`/
+  `Locator` methods. **Known simplification:** `LocatorSpec` (WEB-T1, already shipped) carries no
+  exact/partial flag, so `Text` always uses Playwright's own default (case-insensitive substring)
+  — "exact" text matching isn't independently selectable yet. Not a silent gap: flagged here and
+  in `plan/OPEN-QUESTIONS.md` rather than quietly deciding it.
+- [x] **Chaining** via `Within`: find inside a parent element. This replaces most complex XPath, and a test should demonstrate that by rewriting one.
+  **2026-10-29:** `Within_chains_into_a_parent_element_instead_of_complex_XPath` — resolving
+  `#panel` then `TestId:submit-btn` inside it, with the equivalent single XPath spelled out in
+  the test's own comment for the comparison.
+- [x] `Nth` selects among several matches; out-of-range fails clearly rather than silently picking nothing.
+  **2026-10-29:** applying `Nth` to the locator *before* waiting means Playwright itself does the
+  "does this specific index exist" check — an out-of-range `Nth` just times out waiting for that
+  index to attach, and the failure message names the real match count so it reads as "out of
+  range for N matches," never a bare timeout.
+- [x] Fallback resolution works as in the diagram, in order, each within the step's timeout budget.
+  **2026-10-29:** primary first, then every fallback in declared order, all sharing the SAME
+  resolved `Within` scope (chaining applies uniformly, not just to the primary).
+- [x] A fallback success produces a **flagged pass** carrying: which fallback, why the primary failed, and the entry's identity. Surfaced in the report and in the JUnit output as a property.
+  **2026-10-29:** `LocatorResolutionInfo` (new, on `StepOutcome`/`StepResult`, same "optional
+  field, present iff AI/a fallback touched the step" shape `AiAttribution` already uses — one
+  nullable jsonb column, not a child table). `JUnitReportWriter` adds `locatorFallbackUsed`/
+  `locatorStrategyUsed` `<property>` entries (merged into the SAME `<properties>` element a flaky
+  step's own properties use, since a step could in principle be both) plus a `system-out` line
+  naming the primary's failure reason. `JsonReportWriter` and the API's `StepResultResponse`
+  surface the same fields.
+- [x] Total failure reports every strategy tried, how many elements each matched, and a screenshot.
+  **2026-10-29:** every strategy attempted is named with its real match count in
+  `Outcome.FailureDetail` (e.g. `"Css:'#x' matched 0 element(s)"`). **Screenshot not included
+  yet** — `PlaywrightLocatorResolver` isn't wired into `WebModule` (that's WEB-T4), and today's
+  screenshot capture lives entirely inside `WebModule.Run`'s own `screenshot` action; a
+  resolution failure attaching one automatically is WEB-T4's job once the resolver is the thing
+  actually driving a real action.
+- [x] **Mutation check:** break a primary locator in a test fixture, confirm the flagged-pass path fires; break all of them, confirm a clean failure with full diagnostics.
+  **2026-10-29:** `Mutation_check_a_broken_primary_falls_back_and_is_flagged_never_silently` and
+  `Mutation_check_every_strategy_broken_fails_cleanly_with_full_diagnostics` — named to match the
+  spec's own wording directly.
 
-✔ `dotnet test --filter "FullyQualifiedName~LocatorResolution"`
+✔ `dotnet test --filter "FullyQualifiedName~LocatorResolutionTests"` → 13/13 passed (direct,
+against a real headless Chromium page — standalone, the same way `FixtureAppTests` proves
+`FixtureApp` before any module drives it. **Not yet wired into `WebModule`'s real actions** —
+that integration is WEB-T4's own task, next).
 
-Time-box: 4 h.
+**Found while building this, not in the spec:** `ILocator.WaitForAsync` throws the BCL
+`System.TimeoutException` directly on timeout — unlike `ClickAsync`/`WaitForSelectorAsync` (what
+`WebModule`'s existing `WithSelectorNotFound` catches today), which only ever see Playwright's own
+`PlaywrightException`. `PlaywrightLocatorResolver` catches both; WEB-T4 needs the same awareness
+if it adds further `ILocator.WaitForAsync`-based calls.
+
+Time-box: 4 h. **Closed 2026-10-29.**
 
 ### WEB-T4 — Migrate the existing module (P0)
 

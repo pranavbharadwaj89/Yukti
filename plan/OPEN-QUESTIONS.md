@@ -33,7 +33,8 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
 
 ## Web UI Testing Module (`plan/specs/WEB-TESTING-MODULE.md`)
 
-WEB-T1 (shared vocabulary) and WEB-T2 (Object Repository) closed 2026-10-29. WEB-T3 next.
+WEB-T1 (shared vocabulary), WEB-T2 (Object Repository), WEB-T3 (locator resolution) closed
+2026-10-29. WEB-T4 (migrate the existing module) next.
 
 1. 🟡 **"Confirm Playwright stays" (the spec's own blocking question).** Treating this as already
    settled, not re-asking: `CLAUDE.md` §4 already names `Microsoft.Playwright (.NET)` as the web
@@ -73,6 +74,12 @@ WEB-T1 (shared vocabulary) and WEB-T2 (Object Repository) closed 2026-10-29. WEB
    despite being built and tested. The second is already fixed (same change that wired WEB-T2's
    own checker in). The first is a real security-posture question for you, not something I fixed
    silently on a different module's table — see DISC-22 for the two ways to close it.
+8. 🟡 **`Text` strategy has no exact/partial flag.** WEB-T3's own checklist asks for "Text (exact
+   and partial)," but `LocatorSpec` (WEB-T1, already shipped) has no such flag — only
+   `Strategy`/`Value`/`Name`. *Default, already built:* `Text` always uses Playwright's own
+   default (case-insensitive substring/partial match); exact-text matching isn't independently
+   selectable. *Tell me if you want `LocatorSpec` to carry an `Exact: bool?` (a small addition to
+   an already-shipped WEB-T1 type) rather than leaving `Text` partial-only.*
 
 ---
 

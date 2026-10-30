@@ -289,7 +289,8 @@ public sealed class FlowEngine
                     step.Id, step.Name, step.Module, step.Action,
                     retryOutcome.FinalOutcome.Status, dispatchStopwatch.Elapsed,
                     retryOutcome.FinalOutcome.Message, retryOutcome.FinalOutcome.Error, retryOutcome.FinalOutcome.Data,
-                    retryOutcome.FinalOutcome.AiAttribution, retryOutcome.Attempts);
+                    retryOutcome.FinalOutcome.AiAttribution, retryOutcome.Attempts,
+                    retryOutcome.FinalOutcome.LocatorResolution);
 
                 OrchestrationTelemetry.StepDispatchDuration.Record(dispatchStopwatch.Elapsed.TotalMilliseconds,
                     new KeyValuePair<string, object?>("module", step.Module.Value),
