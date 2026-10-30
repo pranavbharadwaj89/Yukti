@@ -2179,6 +2179,11 @@ export interface components {
         HealthResponse: {
             status?: string | null;
         };
+        LocatorResolutionResponse: {
+            strategyUsed?: string | null;
+            primaryFailureReason?: string | null;
+            description?: string | null;
+        };
         LoginRequest: {
             email?: string | null;
             password?: string | null;
@@ -2277,6 +2282,8 @@ export interface components {
             data?: unknown;
             isFlaky?: boolean;
             retryHistory?: components["schemas"]["RetryAttemptResponse"][] | null;
+            usedLocatorFallback?: boolean;
+            locatorResolution?: components["schemas"]["LocatorResolutionResponse"];
         };
         SuggestFlowRequest: {
             naturalLanguageDescription?: string | null;
