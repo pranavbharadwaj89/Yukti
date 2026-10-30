@@ -130,6 +130,13 @@ public sealed class WebModuleLocatorMigrationTests : IAsyncLifetime
         Assert.Equal(StepStatus.Failed, result.Status);
         Assert.Contains("matched 0 element(s)", result.Error);
         Assert.Contains("#does-not-exist", result.Error);
+
+        // WEB-T6's own checklist: a locator-resolution failure also attaches a screenshot.
+        var data = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(result.Data);
+        var screenshotFileName = Assert.IsType<string>(data["screenshotPath"]);
+        var fullPath = Yukti.Infrastructure.InMemory.Modules.ScreenshotStorage.FullPath(completed.Id, screenshotFileName);
+        Assert.True(File.Exists(fullPath), $"Expected a failure screenshot at {fullPath}");
+        File.Delete(fullPath);
     }
 
     [Fact]

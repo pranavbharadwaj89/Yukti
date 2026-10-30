@@ -345,13 +345,49 @@ Time-box: 3 h. **Closed 2026-10-29.**
 | `screenshot` | Full page or a single element |
 | `executeScript` | **P1.** JavaScript escape hatch — see the safety section; it is gated |
 
-- [ ] Every action takes a `LocatorRef` where it targets an element.
-- [ ] Every action honours the step timeout and reports failures with locator diagnostics plus a screenshot.
-- [ ] `handleDialog` is tested for all three dialog types, since an unhandled dialog blocks a browser indefinitely.
+**2026-10-29: every action above except `executeScript` is built and tested** (`executeScript`
+stays deferred per the already-recorded decision in `plan/OPEN-QUESTIONS.md` item 3 — P1, ship
+without it first).
 
-✔ `dotnet test --filter "FullyQualifiedName~WebAction"`
+- [x] Every action takes a `LocatorRef` where it targets an element.
+  **Known, flagged limitation:** `switchToFrame`'s own `selector` only accepts a plain CSS string
+  naming the `<iframe>` — not yet a `LocatorRef` — and the frame-aware legacy-string path
+  (`BuildLegacyLocator`, used once `switchToFrame` is active) doesn't extend to the richer
+  Locator-object path (`PlaywrightLocatorResolver`/`ResolveLocatorTarget`), since `IFrame` and
+  `IPage` don't share a common locator-building interface in Playwright's own public API. Every
+  other action's `LocatorRef` support is unaffected by this — it's specific to acting *inside* a
+  switched-to frame. See `plan/OPEN-QUESTIONS.md`.
+- [x] Every action honours the step timeout and reports failures with locator diagnostics plus a screenshot.
+  Timeout/diagnostics: inherited from WEB-T3/T4's existing `ResolveLocatorTarget` +
+  `SelectorNotFoundException`, unchanged by this task. **Screenshot-on-failure: closed
+  2026-10-29** — `WebModule.Run`'s own `SelectorNotFoundException` catch now takes a best-effort
+  screenshot of the current page via `ScreenshotStorage` and attaches it under the step's
+  `Data["screenshotPath"]`; a page already in a bad state (closed/crashed) just means no
+  screenshot, never a second failure masking the real one. Proven by extending
+  `WebModuleLocatorMigrationTests.Click_reports_full_diagnostics_when_every_strategy_fails` to
+  assert the file actually exists on disk. (Noted as a gap when WEB-T3 closed, since the
+  resolver wasn't wired into a real action yet — closed now that it is.)
+- [x] `handleDialog` is tested for all three dialog types, since an unhandled dialog blocks a browser indefinitely.
+  **2026-10-29:** `alert`/`confirm`/`prompt`, each both accepted and dismissed (prompt's accept
+  case also supplies text) — 5 tests, all against a real page that would otherwise hang waiting
+  on the dialog.
 
-Time-box: 6 h. The largest task in this module.
+Session state added to support this task: `WebSession.CurrentPage` (switchToWindow/closeWindow),
+`CurrentFrame` (switchToFrame/switchToMainFrame), `OpenPages` (every tab/popup opened during the
+run, in order), `PendingDialogAction` (set by `handleDialog`, consumed by one persistent
+`Page.Dialog` handler attached to every page in the run). Every pre-existing action now reads
+`session.CurrentPage` instead of the original single `Page` field, so window-switching actually
+affects later steps — a deliberate, in-scope change to already-shipped WEB-T4 code, verified by
+the pre-existing `WebModuleTests`/`WebModuleLocatorMigrationTests` still passing unmodified.
+
+✔ `dotnet test --filter "FullyQualifiedName~WebActionTests"` → 26/26 passed, through the real
+`WebModule` + `FlowEngine` (never a direct Playwright call bypassing the module) against a single
+real headless Chromium page whose own JS handlers (click counters, a draggable pair, a real
+`<iframe>`, `window.open`, `alert`/`confirm`/`prompt`) prove each action actually did something,
+not just that the call didn't throw. Also re-ran `demo/uc1_flow.json` through the real CLI after
+this change: **Passed, 7/7** — no regression from the `CurrentPage` rewiring.
+
+Time-box: 6 h. **Closed 2026-10-29**, with `executeScript` deferred (by prior decision).
 
 ### WEB-T7 — Assertions (P0)
 

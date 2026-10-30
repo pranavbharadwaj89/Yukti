@@ -1492,7 +1492,26 @@ work here, don't assume they still hold.
   **Known simplification, flagged:** `NetworkIdle`'s quiet-period threshold comes from
   Playwright's own fixed ~500ms, not from the domain's own configurable `Quiet` field — see
   `plan/OPEN-QUESTIONS.md`.
-  Next: WEB-T6 (full action set) — the largest remaining task (6h time-box).
+  **WEB-T6 (full action set) closed 2026-10-29:** every action in the spec's own table except
+  `executeScript` (deferred, prior decision) — `back`/`forward`/`reload`;
+  `doubleClick`/`rightClick`/`clear`/`type`/`press`/`check`/`uncheck`/`hover`/`dragAndDrop`/
+  `scrollIntoView`/`scrollBy`/`uploadFile`; `switchToFrame`/`switchToMainFrame`/
+  `switchToWindow`/`closeWindow`/`handleDialog` (new session state: `CurrentPage`/`CurrentFrame`/
+  `OpenPages`/`PendingDialogAction`, with every pre-existing action now reading `CurrentPage`
+  instead of the original single `Page` field so window-switching actually takes effect);
+  `click` extended with modifiers/button/clickCount; `select` extended with label/index/multi;
+  `screenshot` extended to capture a single element.
+  ✔ `dotnet test --filter "FullyQualifiedName~WebActionTests"` → 26/26 passed, through the real
+  module+engine against a real page whose own JS proves each action actually did something.
+  Re-ran `demo/uc1_flow.json` through the real CLI afterward: Passed, 7/7 — no regression from
+  the `CurrentPage` rewiring touching every existing action.
+  **Known, flagged limitation:** `switchToFrame` only accepts a plain CSS selector, not yet a
+  full `LocatorRef`, and frame-scoping doesn't extend to the Locator-object path at all (`IFrame`/
+  `IPage` share no common interface in Playwright's own API) — see `plan/OPEN-QUESTIONS.md`.
+  **Also closed:** the screenshot-on-resolution-failure gap noted when WEB-T3 closed —
+  `WebModule.Run`'s `SelectorNotFoundException` catch now attaches a best-effort screenshot,
+  proven by a real file-exists assertion.
+  Next: WEB-T7 (assertions).
 - [ ] DISC-22 `RequestTemplate` (API-T9, `plan/specs/API-TESTING-MODULE.md`) has **no database-
   level RLS at all** — `AddRequestTemplates`'s migration creates the table and
   `GrantYuktiAppRequestTemplatesPrivileges` grants the app role read/write, but neither applies
