@@ -2,8 +2,10 @@ using System.Collections.Concurrent;
 using Microsoft.Playwright;
 using Yukti.Application.Security;
 using Yukti.Contracts;
+using Yukti.Domain.Execution;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
+using Yukti.Domain.UiVocabulary;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
 
 namespace Yukti.Infrastructure.InMemory.Modules;
@@ -70,7 +72,7 @@ public sealed class WebModule : IAutomationModule
             Description = "Clicks the first element matching a selector.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to click." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to click. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
                 new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = 5000, Description = "Milliseconds to wait for the element before failing." },
             }
         },
@@ -80,7 +82,7 @@ public sealed class WebModule : IAutomationModule
             Description = "Fills the first element matching a selector with a value.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the input to fill." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the input to fill. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
                 new ParamSpec { Name = "value", Type = ParamType.String, Required = true, Description = "Text value to type into the matched element." },
             }
         },
@@ -90,7 +92,7 @@ public sealed class WebModule : IAutomationModule
             Description = "Asserts a selector's text content, exactly or via substring containment.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element whose text is checked." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element whose text is checked. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
                 new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Text the element's content is compared against." },
                 new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "\"contains\" for substring match; omit for exact match." },
             }
@@ -111,7 +113,7 @@ public sealed class WebModule : IAutomationModule
             Description = "Waits for a selector to appear.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector to wait for." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector to wait for. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
                 new ParamSpec { Name = "timeoutMs", Type = ParamType.Number, Required = false, DefaultValue = 10000, Description = "Milliseconds to wait before failing with SelectorNotFound." },
             }
         },
@@ -121,7 +123,7 @@ public sealed class WebModule : IAutomationModule
             Description = "Selects an option by value in the first <select> element matching a selector.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the <select> element." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the <select> element. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
                 new ParamSpec { Name = "value", Type = ParamType.String, Required = true, Description = "The option value to select." },
             }
         },
@@ -131,7 +133,7 @@ public sealed class WebModule : IAutomationModule
             Description = "Reads the trimmed text content of the first element matching a selector and returns it as step data ({text}), so a later step can use it via saveAs.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to read." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to read. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
             }
         },
         new ActionSchema
@@ -140,7 +142,7 @@ public sealed class WebModule : IAutomationModule
             Description = "Asserts an element matching a selector is displayed. A missing or hidden element both read as not-visible, never an exception.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to check." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to check. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
             }
         },
     };
@@ -232,63 +234,126 @@ public sealed class WebModule : IAutomationModule
                     }
                 case "click":
                     {
-                        var selector = parameters.GetValueOrDefault("selector") as string
+                        var raw = parameters.GetValueOrDefault("selector")
                             ?? throw new ArgumentException("web.click requires a 'selector' parameter.");
                         var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 5000f;
-                        await WithSelectorNotFound(selector, () => page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }), ct);
-                        return StepOutcome.Passed($"Clicked {selector}");
+
+                        if (raw is string selector)
+                        {
+                            await WithSelectorNotFound(selector, () => page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }), ct);
+                            return StepOutcome.Passed($"Clicked {selector}");
+                        }
+
+                        var (target, info, name) = await ResolveLocatorTarget(page, raw, timeoutMs, ct);
+                        await target.ClickAsync(new LocatorClickOptions { Timeout = timeoutMs });
+                        return StepOutcome.Passed($"Clicked {name}", locatorResolution: info);
                     }
                 case "fill":
                     {
-                        var selector = parameters.GetValueOrDefault("selector") as string
+                        var raw = parameters.GetValueOrDefault("selector")
                             ?? throw new ArgumentException("web.fill requires a 'selector' parameter.");
                         var value = parameters.GetValueOrDefault("value") as string
                             ?? throw new ArgumentException("web.fill requires a 'value' parameter.");
-                        await WithSelectorNotFound(selector, () => page.Locator(selector).FillAsync(value), ct);
-                        return StepOutcome.Passed($"Filled {selector}");
+
+                        if (raw is string selector)
+                        {
+                            await WithSelectorNotFound(selector, () => page.Locator(selector).FillAsync(value), ct);
+                            return StepOutcome.Passed($"Filled {selector}");
+                        }
+
+                        var (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
+                        await target.FillAsync(value);
+                        return StepOutcome.Passed($"Filled {name}", locatorResolution: info);
                     }
                 case "select":
                     {
-                        var selector = parameters.GetValueOrDefault("selector") as string
+                        var raw = parameters.GetValueOrDefault("selector")
                             ?? throw new ArgumentException("web.select requires a 'selector' parameter.");
                         var value = parameters.GetValueOrDefault("value") as string
                             ?? throw new ArgumentException("web.select requires a 'value' parameter.");
-                        await WithSelectorNotFound(selector, () => page.Locator(selector).SelectOptionAsync(value), ct);
-                        return StepOutcome.Passed($"Selected '{value}' on {selector}");
+
+                        if (raw is string selector)
+                        {
+                            await WithSelectorNotFound(selector, () => page.Locator(selector).SelectOptionAsync(value), ct);
+                            return StepOutcome.Passed($"Selected '{value}' on {selector}");
+                        }
+
+                        var (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
+                        await target.SelectOptionAsync(value);
+                        return StepOutcome.Passed($"Selected '{value}' on {name}", locatorResolution: info);
                     }
                 case "assertText":
                     {
-                        var selector = parameters.GetValueOrDefault("selector") as string
+                        var raw = parameters.GetValueOrDefault("selector")
                             ?? throw new ArgumentException("web.assertText requires a 'selector' parameter.");
                         var expected = parameters.GetValueOrDefault("expected") as string
                             ?? throw new ArgumentException("web.assertText requires an 'expected' parameter.");
                         var mode = parameters.GetValueOrDefault("mode") as string;
 
-                        var actual = (await WithSelectorNotFound(selector, () => page.Locator(selector).TextContentAsync(), ct))?.Trim() ?? "";
+                        string actual;
+                        string name;
+                        LocatorResolutionInfo? info = null;
+                        if (raw is string selector)
+                        {
+                            actual = (await WithSelectorNotFound(selector, () => page.Locator(selector).TextContentAsync(), ct))?.Trim() ?? "";
+                            name = selector;
+                        }
+                        else
+                        {
+                            ILocator target;
+                            (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
+                            actual = (await target.TextContentAsync())?.Trim() ?? "";
+                        }
+
                         var matched = mode == "contains" ? actual.Contains(expected) : actual == expected;
                         return matched
-                            ? StepOutcome.Passed($"Text of {selector} matched.")
-                            : StepOutcome.Failed($"Expected {selector} text {(mode == "contains" ? "to contain" : "to equal")} \"{expected}\", got \"{actual}\".");
+                            ? StepOutcome.Passed($"Text of {name} matched.", locatorResolution: info)
+                            : StepOutcome.Failed($"Expected {name} text {(mode == "contains" ? "to contain" : "to equal")} \"{expected}\", got \"{actual}\".");
                     }
                 case "getText":
                     {
-                        var selector = parameters.GetValueOrDefault("selector") as string
+                        var raw = parameters.GetValueOrDefault("selector")
                             ?? throw new ArgumentException("web.getText requires a 'selector' parameter.");
-                        var text = (await WithSelectorNotFound(selector, () => page.Locator(selector).TextContentAsync(), ct))?.Trim() ?? "";
-                        return StepOutcome.Passed($"Read text of {selector}", new Dictionary<string, object?> { ["text"] = text });
+
+                        if (raw is string selector)
+                        {
+                            var legacyText = (await WithSelectorNotFound(selector, () => page.Locator(selector).TextContentAsync(), ct))?.Trim() ?? "";
+                            return StepOutcome.Passed($"Read text of {selector}", new Dictionary<string, object?> { ["text"] = legacyText });
+                        }
+
+                        var (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
+                        var text = (await target.TextContentAsync())?.Trim() ?? "";
+                        return StepOutcome.Passed($"Read text of {name}", new Dictionary<string, object?> { ["text"] = text }, info);
                     }
                 case "assertVisible":
                     {
                         ct.ThrowIfCancellationRequested();
-                        var selector = parameters.GetValueOrDefault("selector") as string
+                        var raw = parameters.GetValueOrDefault("selector")
                             ?? throw new ArgumentException("web.assertVisible requires a 'selector' parameter.");
-                        // IsVisibleAsync never waits/throws — a missing element
-                        // and a hidden one both just read as false, matching
-                        // MobileModule's own assertVisible semantics exactly.
-                        var visible = await page.Locator(selector).IsVisibleAsync();
-                        return visible
-                            ? StepOutcome.Passed($"{selector} is visible.")
-                            : StepOutcome.Failed($"Element '{selector}' is not visible (missing or hidden).");
+
+                        // IsVisibleAsync never waits/throws — a missing element and a hidden one
+                        // both just read as false, matching MobileModule's own assertVisible
+                        // semantics exactly. Preserved for the Locator path too: a total
+                        // resolution failure (no strategy matched at all) also just reads as
+                        // "not visible," never an exception, for the same reason.
+                        if (raw is string selector)
+                        {
+                            var visible = await page.Locator(selector).IsVisibleAsync();
+                            return visible
+                                ? StepOutcome.Passed($"{selector} is visible.")
+                                : StepOutcome.Failed($"Element '{selector}' is not visible (missing or hidden).");
+                        }
+
+                        var locator = raw as Locator ?? LocatorParamMapper.Parse(raw);
+                        var outcome = await PlaywrightLocatorResolver.ResolveAsync(page, locator, DefaultLocatorTimeoutMs, ct);
+                        var displayName = locator.Description ?? "locator";
+                        if (!outcome.Succeeded)
+                            return StepOutcome.Failed($"Element '{displayName}' is not visible (missing or hidden). {outcome.FailureDetail}");
+
+                        var isVisible = await outcome.Resolved!.IsVisibleAsync();
+                        return isVisible
+                            ? StepOutcome.Passed($"{displayName} is visible.", locatorResolution: outcome.Info)
+                            : StepOutcome.Failed($"Element '{displayName}' is not visible (missing or hidden).");
                     }
                 case "screenshot":
                     {
@@ -303,11 +368,20 @@ public sealed class WebModule : IAutomationModule
                     }
                 case "waitForSelector":
                     {
-                        var selector = parameters.GetValueOrDefault("selector") as string
+                        var raw = parameters.GetValueOrDefault("selector")
                             ?? throw new ArgumentException("web.waitForSelector requires a 'selector' parameter.");
                         var timeoutMs = ToFloat(parameters.GetValueOrDefault("timeoutMs")) ?? 10000f;
-                        await WithSelectorNotFound(selector, () => page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { Timeout = timeoutMs }), ct);
-                        return StepOutcome.Passed($"{selector} appeared.");
+
+                        if (raw is string selector)
+                        {
+                            await WithSelectorNotFound(selector, () => page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { Timeout = timeoutMs }), ct);
+                            return StepOutcome.Passed($"{selector} appeared.");
+                        }
+
+                        // PlaywrightLocatorResolver.ResolveAsync already IS "wait for attached,"
+                        // so the Locator path needs no separate wait call.
+                        var (_, info, name) = await ResolveLocatorTarget(page, raw, timeoutMs, ct);
+                        return StepOutcome.Passed($"{name} appeared.", locatorResolution: info);
                     }
                 default:
                     return StepOutcome.Failed($"Unknown web action \"{action}\".");
@@ -321,6 +395,32 @@ public sealed class WebModule : IAutomationModule
         {
             return StepOutcome.Failed(ex.Message);
         }
+    }
+
+    /// <summary>Web UI Testing Module Spec, WEB-T4: used only for the Locator-based path, not
+    /// the legacy raw-string one above (whose own call sites keep their pre-existing
+    /// timeoutMs-or-default literals unchanged, by design — zero behavioural change for existing
+    /// flows).</summary>
+    private const float DefaultLocatorTimeoutMs = 5000f;
+
+    /// <summary>
+    /// Web UI Testing Module Spec, WEB-T4: the one place an action's "selector" param, once it's
+    /// anything other than a plain string, gets turned into a real element — either an
+    /// already-resolved Yukti.Domain.UiVocabulary.Locator (FlowEngine.ResolveLocatorRef already
+    /// did this for a RepositoryRef, WEB-T2) or an inline locator object a flow author wrote
+    /// directly in a step's params (LocatorParamMapper, WEB-T4's own new parsing). Either way,
+    /// resolution and fallback-flagging go through PlaywrightLocatorResolver (WEB-T3) — this
+    /// module never re-implements that logic.
+    /// </summary>
+    private static async Task<(ILocator Target, LocatorResolutionInfo? Info, string Name)> ResolveLocatorTarget(
+        IPage page, object raw, float timeoutMs, CancellationToken ct)
+    {
+        var locator = raw as Locator ?? LocatorParamMapper.Parse(raw);
+        var outcome = await PlaywrightLocatorResolver.ResolveAsync(page, locator, timeoutMs, ct);
+        var name = locator.Description ?? "locator";
+        if (!outcome.Succeeded)
+            throw new SelectorNotFoundException(name, outcome.FailureDetail!);
+        return (outcome.Resolved!, outcome.Info, name);
     }
 
     /// <summary>Converts Playwright's own PlaywrightException (its public
