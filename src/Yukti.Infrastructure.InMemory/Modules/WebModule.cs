@@ -291,12 +291,95 @@ public sealed class WebModule : IAutomationModule
         new ActionSchema
         {
             ActionName = "assertText",
-            Description = "Asserts a selector's text content, exactly or via substring containment.",
+            Description = "Asserts a selector's text content: equals, contains, or matches a regex.",
             Parameters = new[]
             {
                 new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element whose text is checked. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
-                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Text the element's content is compared against." },
-                new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "\"contains\" for substring match; omit for exact match." },
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Text (or, in 'matches' mode, a regex pattern) the element's content is compared against." },
+                new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "equals (default), contains, or matches (regex)." },
+                new ParamSpec { Name = "exact", Type = ParamType.Boolean, Required = false, DefaultValue = false, Description = "By default whitespace is normalized before comparing; true compares the raw text instead." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertValue",
+            Description = "Asserts an input/textarea/select's current value: equals, contains, or matches a regex.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element whose value is checked. Also accepts an inline locator object or an Object Repository reference." },
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Value (or, in 'matches' mode, a regex pattern) to compare against." },
+                new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "equals (default), contains, or matches (regex)." },
+                new ParamSpec { Name = "exact", Type = ParamType.Boolean, Required = false, DefaultValue = false, Description = "By default whitespace is normalized before comparing; true compares the raw value instead." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertAttribute",
+            Description = "Asserts one of an element's attributes: equals, contains, or matches a regex.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to check. Also accepts an inline locator object or an Object Repository reference." },
+                new ParamSpec { Name = "attr", Type = ParamType.String, Required = true, Description = "The attribute name to read." },
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Value (or, in 'matches' mode, a regex pattern) to compare against." },
+                new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "equals (default), contains, or matches (regex)." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertEnabled",
+            Description = "Asserts an element matching a selector is enabled (not disabled).",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to check. Also accepts an inline locator object or an Object Repository reference." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertDisabled",
+            Description = "Asserts an element matching a selector is disabled.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to check. Also accepts an inline locator object or an Object Repository reference." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertChecked",
+            Description = "Asserts a checkbox/radio's checked state.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the checkbox/radio. Also accepts an inline locator object or an Object Repository reference." },
+                new ParamSpec { Name = "checked", Type = ParamType.Boolean, Required = false, DefaultValue = true, Description = "true (default) asserts it's checked; false asserts it's unchecked." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertCount",
+            Description = "Asserts how many elements match a selector.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector that may legitimately match several elements. Also accepts an inline locator object or an Object Repository reference." },
+                new ParamSpec { Name = "expected", Type = ParamType.Number, Required = true, Description = "The expected number of matches." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertUrl",
+            Description = "Asserts the shared page's current URL: equals, contains, or matches a regex.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "URL (or, in 'matches' mode, a regex pattern) to compare against." },
+                new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "equals (default), contains, or matches (regex)." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertTitle",
+            Description = "Asserts the shared page's current title: equals, contains, or matches a regex.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Title (or, in 'matches' mode, a regex pattern) to compare against." },
+                new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "equals (default), contains, or matches (regex)." },
             }
         },
         new ActionSchema
@@ -367,6 +450,15 @@ public sealed class WebModule : IAutomationModule
             Parameters = new[]
             {
                 new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to check. Also accepts an inline locator object ({primary, fallbacks, description, within, nth}, WEB-T3/T4) or an already-resolved Object Repository reference." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertHidden",
+            Description = "Asserts an element matching a selector is NOT displayed. A missing element and a hidden one both read as hidden, never an exception.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "CSS or Playwright selector of the element to check. Also accepts an inline locator object or an Object Repository reference." },
             }
         },
     };
@@ -567,26 +659,198 @@ public sealed class WebModule : IAutomationModule
                         var expected = parameters.GetValueOrDefault("expected") as string
                             ?? throw new ArgumentException("web.assertText requires an 'expected' parameter.");
                         var mode = parameters.GetValueOrDefault("mode") as string;
+                        var exact = parameters.GetValueOrDefault("exact") as bool? ?? false;
 
-                        string actual;
+                        string rawActual;
                         string name;
                         LocatorResolutionInfo? info = null;
                         if (raw is string selector)
                         {
-                            actual = (await WithSelectorNotFound(selector, () => BuildLegacyLocator(session, selector).TextContentAsync(), ct))?.Trim() ?? "";
+                            rawActual = await WithSelectorNotFound(selector, () => BuildLegacyLocator(session, selector).TextContentAsync(), ct) ?? "";
                             name = selector;
                         }
                         else
                         {
                             ILocator target;
                             (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
-                            actual = (await target.TextContentAsync())?.Trim() ?? "";
+                            rawActual = await target.TextContentAsync() ?? "";
                         }
 
-                        var matched = mode == "contains" ? actual.Contains(expected) : actual == expected;
+                        var actual = NormalizeText(rawActual, exact);
+                        var matched = TextMatches(actual, expected, mode);
                         return matched
                             ? StepOutcome.Passed($"Text of {name} matched.", locatorResolution: info)
-                            : StepOutcome.Failed($"Expected {name} text {(mode == "contains" ? "to contain" : "to equal")} \"{expected}\", got \"{actual}\".");
+                            : await AssertionFailed(session, ctx, $"Expected {name} text to {mode ?? "equal"} \"{expected}\", got \"{actual}\".", ct);
+                    }
+                case "assertValue":
+                    {
+                        var raw = parameters.GetValueOrDefault("selector")
+                            ?? throw new ArgumentException("web.assertValue requires a 'selector' parameter.");
+                        var expected = parameters.GetValueOrDefault("expected") as string
+                            ?? throw new ArgumentException("web.assertValue requires an 'expected' parameter.");
+                        var mode = parameters.GetValueOrDefault("mode") as string;
+                        var exact = parameters.GetValueOrDefault("exact") as bool? ?? false;
+
+                        string rawActual;
+                        string name;
+                        LocatorResolutionInfo? info = null;
+                        if (raw is string selector)
+                        {
+                            rawActual = await WithSelectorNotFound(selector, () => BuildLegacyLocator(session, selector).InputValueAsync(), ct);
+                            name = selector;
+                        }
+                        else
+                        {
+                            ILocator target;
+                            (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
+                            rawActual = await target.InputValueAsync();
+                        }
+
+                        var actual = NormalizeText(rawActual, exact);
+                        var matched = TextMatches(actual, expected, mode);
+                        return matched
+                            ? StepOutcome.Passed($"Value of {name} matched.", locatorResolution: info)
+                            : await AssertionFailed(session, ctx, $"Expected {name} value to {mode ?? "equal"} \"{expected}\", got \"{actual}\".", ct);
+                    }
+                case "assertAttribute":
+                    {
+                        var raw = parameters.GetValueOrDefault("selector")
+                            ?? throw new ArgumentException("web.assertAttribute requires a 'selector' parameter.");
+                        var attr = parameters.GetValueOrDefault("attr") as string
+                            ?? throw new ArgumentException("web.assertAttribute requires an 'attr' parameter.");
+                        var expected = parameters.GetValueOrDefault("expected") as string
+                            ?? throw new ArgumentException("web.assertAttribute requires an 'expected' parameter.");
+                        var mode = parameters.GetValueOrDefault("mode") as string;
+
+                        string? rawActual;
+                        string name;
+                        LocatorResolutionInfo? info = null;
+                        if (raw is string selector)
+                        {
+                            rawActual = await WithSelectorNotFound(selector, () => BuildLegacyLocator(session, selector).GetAttributeAsync(attr), ct);
+                            name = selector;
+                        }
+                        else
+                        {
+                            ILocator target;
+                            (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
+                            rawActual = await target.GetAttributeAsync(attr);
+                        }
+
+                        if (rawActual is null)
+                            return await AssertionFailed(session, ctx, $"Element '{name}' has no '{attr}' attribute.", ct);
+
+                        var matched = TextMatches(rawActual, expected, mode);
+                        return matched
+                            ? StepOutcome.Passed($"Attribute '{attr}' of {name} matched.", locatorResolution: info)
+                            : await AssertionFailed(session, ctx, $"Expected {name} attribute '{attr}' to {mode ?? "equal"} \"{expected}\", got \"{rawActual}\".", ct);
+                    }
+                case "assertEnabled":
+                case "assertDisabled":
+                    {
+                        var wantEnabled = action == "assertEnabled";
+                        var raw = parameters.GetValueOrDefault("selector")
+                            ?? throw new ArgumentException($"web.{action} requires a 'selector' parameter.");
+
+                        bool isEnabled;
+                        string name;
+                        LocatorResolutionInfo? info = null;
+                        if (raw is string selector)
+                        {
+                            isEnabled = await BuildLegacyLocator(session, selector).IsEnabledAsync();
+                            name = selector;
+                        }
+                        else
+                        {
+                            ILocator target;
+                            (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
+                            isEnabled = await target.IsEnabledAsync();
+                        }
+
+                        return isEnabled == wantEnabled
+                            ? StepOutcome.Passed($"{name} is {(wantEnabled ? "enabled" : "disabled")}.", locatorResolution: info)
+                            : await AssertionFailed(session, ctx, $"Expected {name} to be {(wantEnabled ? "enabled" : "disabled")}, but it was {(isEnabled ? "enabled" : "disabled")}.", ct);
+                    }
+                case "assertChecked":
+                    {
+                        var raw = parameters.GetValueOrDefault("selector")
+                            ?? throw new ArgumentException("web.assertChecked requires a 'selector' parameter.");
+                        var wantChecked = parameters.GetValueOrDefault("checked") as bool? ?? true;
+
+                        bool isChecked;
+                        string name;
+                        LocatorResolutionInfo? info = null;
+                        if (raw is string selector)
+                        {
+                            isChecked = await BuildLegacyLocator(session, selector).IsCheckedAsync();
+                            name = selector;
+                        }
+                        else
+                        {
+                            ILocator target;
+                            (target, info, name) = await ResolveLocatorTarget(page, raw, DefaultLocatorTimeoutMs, ct);
+                            isChecked = await target.IsCheckedAsync();
+                        }
+
+                        return isChecked == wantChecked
+                            ? StepOutcome.Passed($"{name} is {(wantChecked ? "checked" : "unchecked")}.", locatorResolution: info)
+                            : await AssertionFailed(session, ctx, $"Expected {name} to be {(wantChecked ? "checked" : "unchecked")}, but it was {(isChecked ? "checked" : "unchecked")}.", ct);
+                    }
+                case "assertCount":
+                    {
+                        var raw = parameters.GetValueOrDefault("selector")
+                            ?? throw new ArgumentException("web.assertCount requires a 'selector' parameter.");
+                        var expectedCount = Convert.ToInt32(parameters.GetValueOrDefault("expected")
+                            ?? throw new ArgumentException("web.assertCount requires an 'expected' parameter."));
+
+                        int actualCount;
+                        string name;
+                        if (raw is string selector)
+                        {
+                            actualCount = await BuildLegacyLocator(session, selector).CountAsync();
+                            name = selector;
+                        }
+                        else
+                        {
+                            // Legitimately expects several matches, same reasoning as WEB-T5's
+                            // CountEquals -- builds the bare locator directly, never through the
+                            // single-element ResolveAsync (Playwright's own strict mode).
+                            var locator = raw as Locator ?? LocatorParamMapper.Parse(raw);
+                            ILocator? scope = null;
+                            if (locator.Within is not null)
+                            {
+                                var parentOutcome = await PlaywrightLocatorResolver.ResolveAsync(page, locator.Within, DefaultLocatorTimeoutMs, ct);
+                                if (!parentOutcome.Succeeded)
+                                    return await AssertionFailed(session, ctx, $"Parent locator for '{locator.Description ?? "count target"}' did not resolve: {parentOutcome.FailureDetail}", ct);
+                                scope = parentOutcome.Resolved;
+                            }
+                            actualCount = await PlaywrightLocatorResolver.Build(scope, page, locator.Primary).CountAsync();
+                            name = locator.Description ?? "locator";
+                        }
+
+                        return actualCount == expectedCount
+                            ? StepOutcome.Passed($"{name} count equals {expectedCount}.")
+                            : await AssertionFailed(session, ctx, $"Expected {name} count to equal {expectedCount}, got {actualCount}.", ct);
+                    }
+                case "assertUrl":
+                    {
+                        var expected = parameters.GetValueOrDefault("expected") as string
+                            ?? throw new ArgumentException("web.assertUrl requires an 'expected' parameter.");
+                        var mode = parameters.GetValueOrDefault("mode") as string;
+                        var actual = page.Url;
+                        return TextMatches(actual, expected, mode)
+                            ? StepOutcome.Passed($"Url matched.")
+                            : await AssertionFailed(session, ctx, $"Expected url to {mode ?? "equal"} \"{expected}\", got \"{actual}\".", ct);
+                    }
+                case "assertTitle":
+                    {
+                        var expected = parameters.GetValueOrDefault("expected") as string
+                            ?? throw new ArgumentException("web.assertTitle requires an 'expected' parameter.");
+                        var mode = parameters.GetValueOrDefault("mode") as string;
+                        var actual = await page.TitleAsync();
+                        return TextMatches(actual, expected, mode)
+                            ? StepOutcome.Passed($"Title matched.")
+                            : await AssertionFailed(session, ctx, $"Expected title to {mode ?? "equal"} \"{expected}\", got \"{actual}\".", ct);
                     }
                 case "getText":
                     {
@@ -604,34 +868,43 @@ public sealed class WebModule : IAutomationModule
                         return StepOutcome.Passed($"Read text of {name}", new Dictionary<string, object?> { ["text"] = text }, info);
                     }
                 case "assertVisible":
+                case "assertHidden":
                     {
                         ct.ThrowIfCancellationRequested();
+                        var wantVisible = action == "assertVisible";
                         var raw = parameters.GetValueOrDefault("selector")
-                            ?? throw new ArgumentException("web.assertVisible requires a 'selector' parameter.");
+                            ?? throw new ArgumentException($"web.{action} requires a 'selector' parameter.");
 
                         // IsVisibleAsync never waits/throws — a missing element and a hidden one
                         // both just read as false, matching MobileModule's own assertVisible
                         // semantics exactly. Preserved for the Locator path too: a total
                         // resolution failure (no strategy matched at all) also just reads as
-                        // "not visible," never an exception, for the same reason.
+                        // "not visible," never an exception, for the same reason -- which is
+                        // exactly what assertHidden wants to see, not a failure.
                         if (raw is string selector)
                         {
                             var visible = await BuildLegacyLocator(session, selector).IsVisibleAsync();
-                            return visible
-                                ? StepOutcome.Passed($"{selector} is visible.")
-                                : StepOutcome.Failed($"Element '{selector}' is not visible (missing or hidden).");
+                            return visible == wantVisible
+                                ? StepOutcome.Passed($"{selector} is {(wantVisible ? "visible" : "hidden")}.")
+                                : await AssertionFailed(session, ctx, $"Element '{selector}' is not {(wantVisible ? "visible" : "hidden")} (it is {(visible ? "visible" : "missing or hidden")}).", ct);
                         }
 
                         var locator = raw as Locator ?? LocatorParamMapper.Parse(raw);
                         var outcome = await PlaywrightLocatorResolver.ResolveAsync(page, locator, DefaultLocatorTimeoutMs, ct);
                         var displayName = locator.Description ?? "locator";
                         if (!outcome.Succeeded)
-                            return StepOutcome.Failed($"Element '{displayName}' is not visible (missing or hidden). {outcome.FailureDetail}");
+                        {
+                            // Never resolving at all reads as "not visible" -- exactly what
+                            // assertHidden itself is hoping to see, not a resolution failure.
+                            return wantVisible
+                                ? await AssertionFailed(session, ctx, $"Element '{displayName}' is not visible (missing or hidden). {outcome.FailureDetail}", ct)
+                                : StepOutcome.Passed($"{displayName} is hidden.");
+                        }
 
                         var isVisible = await outcome.Resolved!.IsVisibleAsync();
-                        return isVisible
-                            ? StepOutcome.Passed($"{displayName} is visible.", locatorResolution: outcome.Info)
-                            : StepOutcome.Failed($"Element '{displayName}' is not visible (missing or hidden).");
+                        return isVisible == wantVisible
+                            ? StepOutcome.Passed($"{displayName} is {(wantVisible ? "visible" : "hidden")}.", locatorResolution: outcome.Info)
+                            : await AssertionFailed(session, ctx, $"Element '{displayName}' is not {(wantVisible ? "visible" : "hidden")} (it is {(isVisible ? "visible" : "missing or hidden")}).", ct);
                     }
                 case "screenshot":
                     {
@@ -979,6 +1252,32 @@ public sealed class WebModule : IAutomationModule
         {
             return StepOutcome.Failed(ex.Message);
         }
+    }
+
+    /// <summary>WEB-T7: "text assertions normalize whitespace by default, with an exact-match
+    /// option" -- collapses runs of whitespace (including newlines) into a single space and
+    /// trims, unless 'exact' opts out. Applied only to the value read from the page, never to
+    /// the author's own 'expected' (a regex pattern for 'matches' mode must stay literal).</summary>
+    private static string NormalizeText(string raw, bool exact) =>
+        exact ? raw : System.Text.RegularExpressions.Regex.Replace(raw.Trim(), @"\s+", " ");
+
+    /// <summary>WEB-T7: the one comparison every text/value/attribute/url/title assertion in
+    /// this module shares -- equals (default), contains (substring), or matches (regex).</summary>
+    private static bool TextMatches(string actual, string expected, string? mode) => mode switch
+    {
+        "contains" => actual.Contains(expected),
+        "matches" => System.Text.RegularExpressions.Regex.IsMatch(actual, expected),
+        null or "equals" => actual == expected,
+        _ => throw new ArgumentException($"Unknown assertion mode '{mode}'. Supported: equals (default), contains, matches."),
+    };
+
+    /// <summary>WEB-T7: "every failure reports expected, actual, the locator used, and a
+    /// screenshot" -- the screenshot half, shared by every assertion action above (the
+    /// expected/actual/locator half is each action's own failure message).</summary>
+    private static async Task<StepOutcome> AssertionFailed(WebSession session, ExecutionContext ctx, string message, CancellationToken ct)
+    {
+        var screenshotFileName = await TryCaptureFailureScreenshot(session, ctx.RunId, ct);
+        return StepOutcome.Failed(message, screenshotFileName is null ? null : new Dictionary<string, object?> { ["screenshotPath"] = screenshotFileName });
     }
 
     private static async Task<string?> TryCaptureFailureScreenshot(WebSession session, FlowRunId runId, CancellationToken ct)
