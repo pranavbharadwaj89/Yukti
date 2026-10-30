@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Text;
+using System.Text.Json;
 
 namespace FixtureApp;
 
@@ -26,6 +28,8 @@ public static class FixtureAppHost
             options.IdleTimeout = TimeSpan.FromMinutes(30);
         });
         builder.Services.AddSingleton(new LogSink(logPath ?? DefaultLogPath));
+        builder.Services.AddSingleton<TokenStore>();
+        builder.Services.AddSingleton<ItemStore>();
 
         var app = builder.Build();
         app.UseSession();
@@ -94,7 +98,52 @@ public static class FixtureAppHost
             return Results.Content("cookies set", "text/plain");
         });
 
+        // The demo/api_oauth_chain.json gate flow's own backend: an OAuth2
+        // client-credentials token endpoint plus a tiny items resource, so
+        // that flow can fetch a token, create with a JSON body, extract the
+        // id, and fetch it back -- without reaching out to a real OAuth
+        // provider or a non-demo dependency.
+        app.MapPost("/oauth/token", async (HttpContext context, TokenStore tokens) =>
+        {
+            var form = await context.Request.ReadFormAsync();
+            if (form["client_id"] != DemoClientId || form["client_secret"] != DemoClientSecret)
+                return Results.Json(new { error = "invalid_client", error_description = "unknown client_id or client_secret" }, statusCode: 400);
+
+            var token = tokens.Issue();
+            return Results.Json(new { access_token = token, token_type = "Bearer", expires_in = 3600 });
+        });
+
+        app.MapPost("/items", async (HttpContext context, ItemStore items, TokenStore tokens) =>
+        {
+            if (!tokens.IsValid(BearerToken(context)))
+                return Results.Json(new { error = "invalid_token" }, statusCode: 401);
+
+            var body = await JsonDocument.ParseAsync(context.Request.Body);
+            if (!body.RootElement.TryGetProperty("name", out var nameEl) || nameEl.GetString() is not string { Length: > 0 } name)
+                return Results.Json(new { error = "'name' is required" }, statusCode: 400);
+
+            return Results.Json(items.Create(name), statusCode: 201);
+        });
+
+        app.MapGet("/items/{id}", (HttpContext context, string id, ItemStore items, TokenStore tokens) =>
+        {
+            if (!tokens.IsValid(BearerToken(context)))
+                return Results.Json(new { error = "invalid_token" }, statusCode: 401);
+
+            var item = items.Get(id);
+            return item is null ? Results.NotFound() : Results.Json(item);
+        });
+
         return app;
+    }
+
+    private const string DemoClientId = "demo-client";
+    private const string DemoClientSecret = "dummy-demo-secret";
+
+    private static string? BearerToken(HttpContext context)
+    {
+        var header = context.Request.Headers.Authorization.ToString();
+        return header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header["Bearer ".Length..] : null;
     }
 
     private const string LoginPageHtml = """
@@ -151,3 +200,38 @@ public sealed class LogSink
         }
     }
 }
+
+/// <summary>Tokens issued by POST /oauth/token for the demo/api_oauth_chain.json
+/// gate flow. No expiry here -- ApiModule's own OAuth cache already proves
+/// expiry/reuse behavior (API-T5); this fixture only needs to tell a real
+/// issued token apart from a missing/forged one.</summary>
+public sealed class TokenStore
+{
+    private readonly ConcurrentDictionary<string, bool> _issued = new();
+
+    public string Issue()
+    {
+        var token = Guid.NewGuid().ToString("N");
+        _issued[token] = true;
+        return token;
+    }
+
+    public bool IsValid(string? token) => token is not null && _issued.ContainsKey(token);
+}
+
+/// <summary>Backs POST/GET /items for the demo/api_oauth_chain.json gate flow.</summary>
+public sealed class ItemStore
+{
+    private readonly ConcurrentDictionary<string, FixtureItem> _items = new();
+
+    public FixtureItem Create(string name)
+    {
+        var item = new FixtureItem(Guid.NewGuid().ToString("N"), name, DateTimeOffset.UtcNow.ToString("O"));
+        _items[item.Id] = item;
+        return item;
+    }
+
+    public FixtureItem? Get(string id) => _items.GetValueOrDefault(id);
+}
+
+public sealed record FixtureItem(string Id, string Name, string CreatedAt);
