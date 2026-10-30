@@ -1,0 +1,61 @@
+{
+  "name": "API module acceptance: OAuth chain",
+  "description": "API-TESTING-MODULE.md's own 'Module gate' acceptance flow: fetch an OAuth2 client-credentials token, create a resource with a JSON body, extract its id with JSONPath, fetch it back using that id as a path parameter, and assert status, a JSONPath value, response time, and the whole body against a JSON Schema. Needs FixtureApp running: dotnet run --project demo/fixtures/FixtureApp (from the repo root).",
+  "steps": [
+    {
+      "name": "Create a widget using an OAuth2 client-credentials token",
+      "module": "api",
+      "action": "request",
+      "saveAs": "created",
+      "params": {
+        "url": "http://127.0.0.1:5082/items",
+        "method": "POST",
+        "auth": {
+          "type": "oauth2ClientCredentials",
+          "tokenUrl": "http://127.0.0.1:5082/oauth/token",
+          "clientId": "demo-client",
+          "clientSecret": "dummy-demo-secret"
+        },
+        "body": { "name": "widget" },
+        "assert": [
+          { "type": "status", "expectedStatus": 201 }
+        ],
+        "extract": [
+          { "saveAs": "itemId", "source": "body", "path": "id" }
+        ]
+      }
+    },
+    {
+      "name": "Fetch the created widget back by id",
+      "module": "api",
+      "action": "request",
+      "params": {
+        "url": "http://127.0.0.1:5082/items/{{vars.created.extracted.itemId}}",
+        "method": "GET",
+        "auth": {
+          "type": "oauth2ClientCredentials",
+          "tokenUrl": "http://127.0.0.1:5082/oauth/token",
+          "clientId": "demo-client",
+          "clientSecret": "dummy-demo-secret"
+        },
+        "assert": [
+          { "type": "status", "expectedStatus": 200 },
+          { "type": "pathEquals", "path": "name", "equals": "widget" },
+          { "type": "responseTimeUnder", "maxMs": 2000 },
+          {
+            "type": "schema",
+            "schema": {
+              "type": "object",
+              "required": ["id", "name", "createdAt"],
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "createdAt": { "type": "string" }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
