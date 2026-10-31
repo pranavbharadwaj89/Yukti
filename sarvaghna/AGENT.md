@@ -93,3 +93,13 @@ It drives a real Chromium browser (via `apps/yukti-gui`'s own `@playwright/test`
 
 The only thing that ever invokes it is `sarvaghna/run-git-agent.mjs`, and the only thing that calls *that* is the `git-agent-ui-audit` job in `.github/workflows/sarvaghna.yml`, gated `if: github.event_name == 'push'` — i.e. it runs if and only if a merge lands on `main`. There is intentionally no other way to trigger it.
 
+**Sarvaghna has sole authority over UI-audit-on-merge.** A separate, standalone pipeline for this (a Python trigger agent + bash entrypoint + its own GitHub Actions workflow, handed over as a template named "Brevitas") was proposed and partially built, then deliberately retired — its PR (#86) was closed without merging, per the owner's own decision: *"keep the latest and make it as a GIT agent in Sarvaghna... Sarvaghna has complete authority towards it and the decision."* Nothing from that template runs in this repo; only the part of it worth keeping was ported in, below.
+
+**Diff-aware triggering**, ported from that template's `decide.py`/`context.py` (`sarvaghna/agents/git-agent-decide.mjs`, called from `run-git-agent.mjs` before any browser launches):
+- `run-git-agent.mjs` diffs `github.event.before`..`HEAD` (passed through as `GITHUB_EVENT_BEFORE`; the job's checkout uses `fetch-depth: 0` so that diff is actually available) to get the files this merge touched.
+- A merge that touches nothing under `apps/yukti-gui/` skips the audit entirely (`SkipReason.NO_UI_CHANGES`) — a backend-only or docs-only merge can't have changed the rendered UI, so there's nothing to re-confirm.
+- Otherwise, changed files are mapped onto the specific routes they could affect (`ROUTE_TRIGGERS`, keyed off `src/app/router.tsx`'s own imports) and only those routes are audited — not always all 14. A file that matches no route's trigger, or a change to a shared file (layout, login page, the router itself, global store, generated API types), audits every route rather than guessing a narrower blast radius; an unavailable diff (shallow clone, first commit) does the same, and is never read as "nothing changed".
+- What wasn't ported from the template, and why: its upstream deploy/regression-status gating has no equivalent here (this job builds and serves the frontend itself; there's no separate deploy stage to consult), and its baseline-gating has no equivalent either (the Git Agent has no screenshot/finding baseline to diff against — axe-core's own impact tiering is already its escalation path).
+
+15 tests in `sarvaghna/agents/git-agent-decide.test.mjs` cover this (skip/audit boundaries, route selection, shared-file and unmapped-file fallback, force, null/empty diff).
+

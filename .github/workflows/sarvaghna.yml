@@ -115,6 +115,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # run-git-agent.mjs diffs against github.event.before to decide which routes to audit
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
@@ -200,6 +202,10 @@ jobs:
       - name: Run the Git Agent UI audit
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The commit main was at before this push -- lets run-git-agent.mjs diff
+          # exactly what this merge changed, to decide which routes actually need
+          # auditing rather than always sweeping all of them.
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: node sarvaghna/run-git-agent.mjs
 
       - name: Upload Git Agent screenshots
