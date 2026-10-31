@@ -32,3 +32,11 @@ sarvaghna/.env.local
 demo/fixtures/app.log
 out.xml
 
+## UI Audit (Brevitas) generated reports -- agent/context.py's own
+## EXCLUDED_FROM_DIFF comment explains why these must never be committed:
+## a committed report would show up as a changed file on the next run and
+## push the agent into auditing everything, forever. .brevitas/config.yml,
+## .brevitas/flows/, and .brevitas/baselines/ are real config and ARE
+## committed -- only the reports/ output is excluded here.
+.brevitas/reports/
+

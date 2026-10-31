@@ -1,0 +1,98 @@
+# UI Audit — trigger only.
+#
+# This file exists for one reason: a merge is a GitHub event, and only a
+# workflow can receive it. It makes no decisions. It gathers the three facts
+# the agent needs and hands over.
+#
+# All logic lives in agent/decide.py, in this repo, versioned with the code.
+# If you want to change when the audit runs, which flows it covers, or whether
+# it can block — change the agent, not this file. This file should rarely need
+# editing again.
+
+name: UI Audit
+
+on:
+  # push/pull_request are deliberately NOT enabled yet. .brevitas/ (config,
+  # flows, baselines) doesn't exist in this repo and the Deploy step below
+  # is still a TODO placeholder (see UI_AUDIT_HANDOVER.md's "Status in this
+  # repo"), so every automatic run would exit 2 and leave a permanently
+  # failing "UI Audit" check on every future PR and push to main. Caught by
+  # Sarvaghna's own review before this landed. Uncomment both once
+  # .brevitas/ is real and Deploy actually starts the app -- that's the
+  # only change needed here.
+  # push:
+  #   branches: [main]        # a merged PR is a push to main; this is the hook
+  # pull_request:             # and on PRs, so findings arrive before the merge
+  workflow_dispatch:          # manual button -- safe today: never runs unasked
+    inputs:
+      force:
+        description: "Audit every flow, ignoring the change diff"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ui-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # TODO: when a deploy job exists, add `needs: [deploy]` here, and later
+    # `needs: [deploy, regression]`. `if: always()` keeps this job running even
+    # when an upstream job fails, so the agent can record a SKIPPED decision.
+    # Without it, "skipped" and "never ran" look identical.
+    if: always()
+
+    steps:
+      # fetch-depth: 0 — the agent diffs against the merge base to decide
+      # which flows to audit. A shallow clone makes that diff unavailable,
+      # and the agent then audits every flow rather than guessing.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet pyyaml
+          # TODO: install the audit engine, pinned to a tag:
+          # python -m pip install "git+https://github.com/<you>/brevitas@v1.0.0"
+
+      # ── Start the app ────────────────────────────────────────────────────
+      # The runner hosts the app itself: no staging server needed. When AWS
+      # staging exists, delete this step and set BREVITAS_TARGET_URL to the
+      # real URL instead.
+      - name: Deploy
+        id: deploy
+        continue-on-error: true
+        run: |
+          # TODO: the command that starts this app. Whatever you run locally.
+          echo "TODO: docker compose up -d --build"
+
+      - name: Run the UI audit agent
+        env:
+          BREVITAS_TARGET_URL: http://localhost:3000     # TODO: real port
+          BREVITAS_UPSTREAM_DEPLOY: ${{ steps.deploy.outcome == 'success' && 'success' || 'failed' }}
+          # When the regression job exists:
+          # BREVITAS_UPSTREAM_REGRESSION: ${{ needs.regression.result }}
+          BREVITAS_UPSTREAM_REGRESSION: skipped
+          BREVITAS_USERNAME: ${{ secrets.BREVITAS_USERNAME }}
+          BREVITAS_PASSWORD: ${{ secrets.BREVITAS_PASSWORD }}
+        run: |
+          python -m agent.run ${{ (github.event.inputs.force == 'true') && '--force' || '' }}
+
+      # always() — the report for a failed run is the one someone needs.
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-audit-${{ github.sha }}
+          path: .brevitas/reports/
+          if-no-files-found: warn
+          retention-days: 30
