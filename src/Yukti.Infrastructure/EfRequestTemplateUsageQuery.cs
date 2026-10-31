@@ -29,3 +29,17 @@ public sealed class EfRequestTemplateUsageQuery : IRequestTemplateUsageQuery
             .ToList();
     }
 }
+
+/// <summary>DISC-20: the list a template-management page's own table needs — same shape and
+/// same reasoning as <see cref="EfProjectSummaryQuery"/>.</summary>
+public sealed class EfRequestTemplateSummaryQuery : IRequestTemplateSummaryQuery
+{
+    private readonly YuktiDbContext _context;
+    public EfRequestTemplateSummaryQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<IReadOnlyList<RequestTemplateSummary>> ListByTenant(TenantId tenantId, CancellationToken ct) =>
+        await _context.RequestTemplates
+            .Where(t => t.TenantId == tenantId)
+            .Select(t => new RequestTemplateSummary(t.Id, t.Name, t.BaseUrl, t.Version))
+            .ToListAsync(ct);
+}
