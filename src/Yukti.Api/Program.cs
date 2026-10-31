@@ -1123,11 +1123,14 @@ apiCollections.MapDelete("/{collectionId:guid}/requests/{requestId:guid}", async
     }
 }).Produces(StatusCodes.Status204NoContent);
 
-// ---- Request templates (API Testing Module Spec, API-T9) — backend/API only this week; no new
-// frontend page yet (tracked separately), but FindFlowsReferencing already gives one the read
-// model it would need for "the UI shows which flows use a template."
+// ---- Request templates (API Testing Module Spec, API-T9; DISC-20 added the list endpoint
+// and the real frontend page at apps/yukti-gui's /request-templates) ----
 const string requestTemplateNotFound = "Request template not found.";
 var requestTemplates = app.MapGroup($"{apiV1}/request-templates").WithTags("RequestTemplates").RequireAuthorization().RequireRateLimiting("PerTenant");
+
+requestTemplates.MapGet("/", async (ClaimsPrincipal principal, IRequestTemplateSummaryQuery query, CancellationToken ct) =>
+    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(RequestTemplateSummaryResponse.From)))
+.Produces<IEnumerable<RequestTemplateSummaryResponse>>();
 
 requestTemplates.MapPost("/", async (CreateRequestTemplateRequest req, ClaimsPrincipal principal, CreateRequestTemplateCommandHandler handler, CancellationToken ct) =>
 {

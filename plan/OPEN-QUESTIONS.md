@@ -29,8 +29,13 @@ Module gate: **green** (PR #73). P0-complete. Everything below is P1 polish.
    **2026-10-29:** the Web module's own WEB-T7 also has a deferred "soft assertions (P1)" item
    with the same corrected semantics. Worth building both from one shared design when either gets
    picked up, not two independent ones — "soft assertion" means the same thing in both modules.
-3. 🔵 DISC-20 (Request Templates frontend page) — known, scoped, not yet built. Not a question,
-   just listed here so it's visible alongside everything else rather than only in `PLAN.md`.
+3. 🔵 DISC-20 (Request Templates frontend page) — **closed 2026-10-31**, `/request-templates` in
+   `apps/yukti-gui`. See `PLAN.md`'s own closure note for the full build. One real follow-up it
+   created, not resolved here: the new `GET /api/v1/request-templates/` endpoint almost certainly
+   drifted `schema.ts` again (same mechanism PR #85 already fixed once) — regenerating it needs
+   a live API, which needs Docker/Postgres this environment doesn't have. *Needs: either run
+   `npm run generate:api` yourself against a locally-running API, or expect `api-types-drift` to
+   fail on this PR's first real CI run and let me fix it in a tiny follow-up once that happens.*
 
 ---
 

@@ -200,6 +200,33 @@ export interface TestEnvironmentResponse {
   variables: Record<string, unknown>;
 }
 
+// DISC-20: Request Templates management page's own response shapes — same
+// reason ProjectResponse/TestEnvironmentResponse are hand-written here
+// rather than generated: Yukti.Api's minimal-API endpoints don't declare
+// `.Produces<T>()` widely enough yet for Swashbuckle to infer these.
+export interface RequestTemplateSummaryResponse {
+  id: string;
+  name: string;
+  baseUrl?: string | null;
+  version: number;
+}
+
+export interface RequestTemplateResponse {
+  id: string;
+  name: string;
+  baseUrl?: string | null;
+  headers: Record<string, unknown>;
+  auth?: unknown;
+  defaultTimeoutMs?: number | null;
+  version: number;
+}
+
+export interface RequestTemplateUsageResponse {
+  flowId: string;
+  flowName: string;
+  stepName: string;
+}
+
 export interface TriggerResponse {
   id: string;
   flowId: string;
