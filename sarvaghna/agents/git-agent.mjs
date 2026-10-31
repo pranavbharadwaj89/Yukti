@@ -1,15 +1,23 @@
-// sarvaghna/agents/bravitas.mjs
-// Agent: Bravitas (UI Auditor) — "Bravitas" is a placeholder working name
-// (owner's own words: "Call it as Bravitas for now"), not a final brand.
-// Color: #2BB3A3 (Teal) | Tagline: "Audits the rendered UI for accessibility and broken pages"
+// sarvaghna/agents/git-agent.mjs
+// Agent: Git Agent (UI Auditor) — renamed from the "Bravitas" placeholder
+// used while this was being built. Owner's own framing: it "will only have
+// to be active whenever there is a code merged" — it has no standalone
+// CLI flag and no manual dispatch trigger; the only thing that ever
+// invokes it is sarvaghna/run-git-agent.mjs, which only
+// .github/workflows/sarvaghna.yml's merge-triggered job calls.
 //
-// Unlike the other five crew members, Bravitas doesn't read a git diff — it
-// drives a real browser against the real running frontend (apps/yukti-gui)
-// and the real API behind it, the same way e2e/ai-generation.spec.ts
-// already does for one page (signIn + axe-core WCAG scan). This agent
-// generalizes that pattern across every route the app serves instead of
-// one spec-specific page, and reports through Sarvaghna's own existing
-// finding/decision/formatter pipeline so no new report format is needed.
+// Unlike Sarvaghna's 5-agent interactive crew (which reads a git diff and
+// can be run by hand via --crew / --mission), the Git Agent doesn't read a
+// diff at all — it drives a real browser against the real running
+// frontend (apps/yukti-gui) and the real API behind it, the same way
+// e2e/ai-generation.spec.ts already does for one page (signIn + axe-core
+// WCAG scan). This agent generalizes that pattern across every route the
+// app serves instead of one spec-specific page, and reports through
+// Sarvaghna's own existing finding/decision/formatter pipeline so no new
+// report format is needed. For that reason it's deliberately NOT
+// registered in agents/index.mjs's CREW_METADATA — it isn't part of the
+// human-facing crew roster (--crew-list), since there's no human-facing
+// way to invoke it.
 //
 // Deliberately NOT using Gemini vision here: core/gemini-client.mjs's
 // callGeminiJson only sends text parts (no inline_data for images), and
@@ -49,19 +57,19 @@ export const DEFAULT_ROUTES = [
 
 const AXE_WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
-export class BravitasAgent {
+export class GitAgent {
   constructor(options = {}) {
-    this.id = 'bravitas';
-    this.name = 'Bravitas';
+    this.id = 'git-agent';
+    this.name = 'Git Agent';
     this.color = '#2BB3A3';
     this.dark = '#17746A';
     this.bg = '#E3F7F4';
-    this.tagline = 'Audits the rendered UI for accessibility and broken pages';
+    this.tagline = 'Audits the rendered UI on every merge to main';
 
-    this.baseURL = options.baseURL || process.env.BRAVITAS_BASE_URL || 'http://localhost:5173';
+    this.baseURL = options.baseURL || process.env.GIT_AGENT_BASE_URL || 'http://localhost:5173';
     this.email = options.email || process.env.E2E_ADMIN_EMAIL || 'admin@yukti.local';
     this.password = options.password || process.env.E2E_ADMIN_PASSWORD || 'ChangeMe123!';
-    this.screenshotDir = options.screenshotDir || path.resolve(__dirname, '..', 'ledger', 'bravitas-screenshots');
+    this.screenshotDir = options.screenshotDir || path.resolve(__dirname, '..', 'ledger', 'git-agent-screenshots');
 
     // Resolves @playwright/test and axe-core through apps/yukti-gui's own
     // node_modules (both already real devDependencies there) rather than
@@ -85,7 +93,7 @@ export class BravitasAgent {
       ({ chromium } = this._requireFromGui('@playwright/test'));
     } catch (err) {
       return {
-        findings: [this.finding('CRITICAL', 'bravitas-no-playwright', '(setup)',
+        findings: [this.finding('CRITICAL', 'git-agent-no-playwright', '(setup)',
           `Could not load @playwright/test from apps/yukti-gui/node_modules: ${err.message}. ` +
           'Run "npm ci && npx playwright install chromium" in apps/yukti-gui first.')],
         routeReports: [],
@@ -107,7 +115,7 @@ export class BravitasAgent {
 
       const signedIn = await this.signIn(page);
       if (!signedIn.ok) {
-        findings.push(this.finding('CRITICAL', 'bravitas-signin-failed', '/login',
+        findings.push(this.finding('CRITICAL', 'git-agent-signin-failed', '/login',
           `Could not sign in as the seeded admin before auditing any route: ${signedIn.reason}`));
         return { findings, routeReports, auditedCount: 0 };
       }
@@ -147,12 +155,12 @@ export class BravitasAgent {
     try {
       const response = await page.goto(route.path, { waitUntil: 'networkidle', timeout: 20000 });
       if (response && response.status() >= 400) {
-        findings.push(this.finding('CRITICAL', 'bravitas-http-error', route.path,
+        findings.push(this.finding('CRITICAL', 'git-agent-http-error', route.path,
           `Navigating to ${route.path} returned HTTP ${response.status()}.`));
         return findings;
       }
     } catch (err) {
-      findings.push(this.finding('CRITICAL', 'bravitas-navigation-failed', route.path,
+      findings.push(this.finding('CRITICAL', 'git-agent-navigation-failed', route.path,
         `Navigating to ${route.path} failed: ${err.message}`));
       return findings;
     }
@@ -160,13 +168,13 @@ export class BravitasAgent {
     await this.captureScreenshot(page, route);
 
     if (consoleErrors.length > 0) {
-      findings.push(this.finding('HIGH', 'bravitas-console-error', route.path,
+      findings.push(this.finding('HIGH', 'git-agent-console-error', route.path,
         `${consoleErrors.length} console error(s) during render: ${consoleErrors.slice(0, 3).join(' | ')}`));
     }
 
     const violations = await this.axeScan(page);
     for (const v of violations) {
-      findings.push(this.finding(this.severityFor(v.impact), `bravitas-a11y-${v.id}`, route.path,
+      findings.push(this.finding(this.severityFor(v.impact), `git-agent-a11y-${v.id}`, route.path,
         `${v.impact}: ${v.help} — ${v.targets.join(', ')}`));
     }
 
@@ -178,7 +186,7 @@ export class BravitasAgent {
     try {
       axeScriptPath = this._requireFromGui.resolve('axe-core/axe.min.js');
     } catch {
-      return []; // axe-core not resolvable — already reported at the agent level via bravitas-no-playwright-style failure if setup is broken.
+      return []; // axe-core not resolvable — already reported at the agent level via the git-agent-no-playwright-style failure if setup is broken.
     }
     try {
       await page.addScriptTag({ path: axeScriptPath });
@@ -215,6 +223,6 @@ export class BravitasAgent {
   }
 
   finding(severity, rule, routePath, message) {
-    return { rule, severity, title: `Bravitas UI audit: ${rule}`, message, file: routePath, line: 0 };
+    return { rule, severity, title: `Git Agent UI audit: ${rule}`, message, file: routePath, line: 0 };
   }
 }

@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [ "main" ]
     types: [ opened, synchronize, reopened ]
-  workflow_dispatch: {} # lets Bravitas (job below) be run on demand, independent of a merge
 
 permissions:
   contents: read
@@ -75,18 +74,19 @@ jobs:
           REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
         run: python sarvaghna/reporting/send_email.py /tmp/sarvaghna-report.json
 
-  # Bravitas (UI Auditor, working name) — auto-triggers on every merge to
-  # main (push event), the owner's own request: "auto trigger as and when
-  # the merge happens in the git". Also workflow_dispatch-able on its own,
-  # independent of a merge, since Bravitas is meant to be callable by
-  # itself, not only as a side effect of sarvaghna-analyze above. Skipped
-  # on plain pull_request events — a PR's frontend hasn't landed yet, and
-  # auditing every push to every open PR would multiply this job's real
-  # cost (full stack boot + browser) for no corresponding benefit.
-  bravitas-ui-audit:
-    name: BRAVITAS UI Audit
+  # The Git Agent (UI auditor) — active if and only if a merge to main
+  # happens (push event), by the owner's own request: "it will only have
+  # to be active whenever there is a code merged." Deliberately no
+  # workflow_dispatch and no CLI flag (sarvaghna/run-git-agent.mjs's own
+  # header comment) — a merge is the only thing that can start this job.
+  # Skipped on plain pull_request events — a PR's frontend hasn't landed
+  # yet, and auditing every push to every open PR would multiply this
+  # job's real cost (full stack boot + browser) for no corresponding
+  # benefit.
+  git-agent-ui-audit:
+    name: GIT AGENT UI Audit
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push'
     services:
       postgres:
         image: postgres:16
@@ -115,6 +115,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # run-git-agent.mjs diffs against github.event.before to decide which routes to audit
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
@@ -143,8 +145,8 @@ jobs:
           export ConnectionStrings__Yukti="$CONN"
           dotnet ef database update --project src/Yukti.Infrastructure --startup-project src/Yukti.Api --connection "$CONN"
 
-      # Same fixture-AI / Permissive-outbound setup as ci.yml's e2e job — Bravitas
-      # needs a real answering API behind the UI, not a live AI call (§R7).
+      # Same fixture-AI / Permissive-outbound setup as ci.yml's e2e job — the
+      # Git Agent needs a real answering API behind the UI, not a live AI call (§R7).
       - name: Start the API with the fixture AI provider
         env:
           ASPNETCORE_ENVIRONMENT: Production
@@ -165,13 +167,13 @@ jobs:
           export ConnectionStrings__Yukti="$CONN"
           export Ai__FixtureDirectory="$GITHUB_WORKSPACE/apps/yukti-gui/e2e/fixtures/ai"
           cd src/Yukti.Api/bin/Release/net8.0
-          nohup dotnet Yukti.Api.dll > /tmp/yukti-api-bravitas.log 2>&1 &
+          nohup dotnet Yukti.Api.dll > /tmp/yukti-api-git-agent.log 2>&1 &
           cd "$GITHUB_WORKSPACE"
           for i in $(seq 1 30); do
             if curl -sf -o /dev/null http://localhost:5000/swagger/v1/swagger.json; then exit 0; fi
             sleep 1
           done
-          echo "API never served swagger.json within 30s:"; cat /tmp/yukti-api-bravitas.log; exit 1
+          echo "API never served swagger.json within 30s:"; cat /tmp/yukti-api-git-agent.log; exit 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -197,22 +199,26 @@ jobs:
           done
           echo "Frontend preview never came up within 30s:"; cat /tmp/yukti-gui-preview.log; exit 1
 
-      - name: Run BRAVITAS UI audit
+      - name: Run the Git Agent UI audit
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node sarvaghna/sarvaghna.mjs --bravitas
+          # The commit main was at before this push -- lets run-git-agent.mjs diff
+          # exactly what this merge changed, to decide which routes actually need
+          # auditing rather than always sweeping all of them.
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: node sarvaghna/run-git-agent.mjs
 
-      - name: Upload Bravitas screenshots
+      - name: Upload Git Agent screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bravitas-screenshots
-          path: sarvaghna/ledger/bravitas-screenshots
+          name: git-agent-screenshots
+          path: sarvaghna/ledger/git-agent-screenshots
           retention-days: 7
           if-no-files-found: ignore
 
       - name: Show logs on failure
         if: failure()
         run: |
-          cat /tmp/yukti-api-bravitas.log || true
+          cat /tmp/yukti-api-git-agent.log || true
           cat /tmp/yukti-gui-preview.log || true
