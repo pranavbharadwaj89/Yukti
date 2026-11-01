@@ -2199,3 +2199,33 @@ Exit check: **on track.** Day 7's exit check (every P0 box ticked or ALREADY DON
 Next: D7-T3 (time-to-first-flow trial) — owner is running this themselves; append the result here
 once reported. D7-T6 remains open with no defined scope, non-blocking for v0.1. No other Day 7
 task remains.
+
+## 2026-11-01 ~10:00 IST — SCOPE GUARD: Mobile Testing Module Spec
+
+Owner pasted the Mobile Testing Module Spec (Appium-based, Oct 27 2026) and asked to start its
+implementation, after first asking for an API/Web module status check (answered above the
+refusal, not here).
+
+**SCOPE GUARD: refused starting MOB-T1 (or any Mobile task) — reason:** CLAUDE.md §3's own "Not
+this week" list names new modules explicitly, **Mobile first in the parenthetical** — "New modules
+(Mobile, Desktop UI, DB, Load, Security)... refuse and log as SCOPE GUARD." This isn't a judgment
+call Sutradhar is making; it's the governing manual's own, already-written rule.
+
+The spec itself independently agrees it shouldn't start yet — its own "Read this before starting:
+the deferral note" and the first line of its own Open Questions: **"Blocking everything — you: has
+any design partner actually asked for mobile testing? If not, don't build this yet."** Two
+separate documents, written by the same owner, both say the same thing before a single line of
+MOB-T1 gets written.
+
+Also unresolved, independent of the above, if/when this does get picked up: the Appium .NET client
+package needs an ADR + explicit approval (CLAUDE.md §4's "adding a NuGet/npm dependency requires an
+ADR and owner approval", restated in the spec's own "Blocking MOB-T1" open question); no Appium
+server/device/Mac has been confirmed available; no real `.apk`/`.ipa` has been named for the gate's
+own demo flow.
+
+Not started. No files touched for this task. Logged here per CLAUDE.md §3's own instruction, and
+surfaced directly to the owner in the same turn — asking the spec's own blocking question (has a
+design partner actually asked for this?) rather than silently deferring it.
+
+Next: whatever the owner picks next — Mobile only resumes if they answer "yes, build it" to the
+question above, explicitly overriding both the spec's own deferral note and CLAUDE.md §3.
