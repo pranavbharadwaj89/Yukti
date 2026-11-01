@@ -13,6 +13,7 @@ import { ToastViewport } from "@/components/ui/primitives";
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
   { to: "/projects", label: "Projects" },
+  { to: "/request-templates", label: "Request Templates" },
   { to: "/triggers", label: "Scheduler" },
   { to: "/audit", label: "Audit" },
   { to: "/flows", label: "Flows" },

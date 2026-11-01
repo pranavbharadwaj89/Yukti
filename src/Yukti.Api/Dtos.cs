@@ -124,6 +124,10 @@ public sealed record RequestTemplateUsageResponse(Guid FlowId, string FlowName, 
 {
     public static RequestTemplateUsageResponse From(RequestTemplateUsageReadModel u) => new(u.FlowId.Value, u.FlowName, u.StepName);
 }
+public sealed record RequestTemplateSummaryResponse(Guid Id, string Name, string? BaseUrl, int Version)
+{
+    public static RequestTemplateSummaryResponse From(RequestTemplateSummary s) => new(s.Id.Value, s.Name, s.BaseUrl, s.Version);
+}
 
 public sealed record ProjectResponse(Guid Id, string Name, string? Description)
 {

@@ -1277,7 +1277,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RequestTemplateSummaryResponse"][];
+                    };
+                };
+            };
+        };
         put?: never;
         post: {
             parameters: {
@@ -2241,6 +2260,14 @@ export interface components {
             auth?: unknown;
             /** Format: int32 */
             defaultTimeoutMs?: number | null;
+            /** Format: int32 */
+            version?: number;
+        };
+        RequestTemplateSummaryResponse: {
+            /** Format: uuid */
+            id?: string;
+            name?: string | null;
+            baseUrl?: string | null;
             /** Format: int32 */
             version?: number;
         };

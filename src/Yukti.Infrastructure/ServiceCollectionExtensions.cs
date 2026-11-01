@@ -36,6 +36,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApiCollectionSummaryQuery, EfApiCollectionSummaryQuery>();
         services.AddScoped<IRequestTemplateRepository, EfRequestTemplateRepository>();
         services.AddScoped<IRequestTemplateUsageQuery, EfRequestTemplateUsageQuery>();
+        services.AddScoped<IRequestTemplateSummaryQuery, EfRequestTemplateSummaryQuery>();
         services.AddScoped<IRequestTemplateExistsChecker, RequestTemplateExistsChecker>();
         services.AddScoped<IObjectRepositoryRepository, EfObjectRepositoryRepository>();
         services.AddScoped<IObjectRepositoryElementQuery, EfObjectRepositoryElementQuery>();

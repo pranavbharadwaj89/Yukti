@@ -1418,14 +1418,35 @@ work here, don't assume they still hold.
   (`IRequestTemplateExistsChecker`). Full domain/migration/repository/API-endpoint stack built —
   see DISC-20 for the one piece still out of scope (the actual new frontend page for "the UI
   shows which flows use a template").
-- [ ] DISC-20 API-T9's own "the UI shows which flows use a template, so the blast radius is
-  visible before editing" checklist item is backend-only so far: `GET
-  /api/v1/request-templates/{id}/usages` (`IRequestTemplateUsageQuery`) returns exactly the read
-  model a template-management UI page would need, but no such page exists yet. Scoped
-  deliberately this way via AskUserQuestion (2026-10-28) — building a real new React page
-  (schema-driven UI conventions, TanStack Query) is meaningfully larger scope than the
-  domain/migration/engine-hook work the rest of API-T9 needed, closer to a full day's work by
-  itself. Not forgotten; a real follow-up, not a silent gap.
+- [x] DISC-20 API-T9's own "the UI shows which flows use a template, so the blast radius is
+  visible before editing" checklist item — the real frontend page, closed 2026-10-31.
+  `apps/yukti-gui`'s `/request-templates` (new nav item, top-level, same tier as Projects):
+  a `DataTable` of templates (name/base URL/version) with Edit/Delete per row, a create/edit
+  dialog (name, base URL, default timeout, Headers via the existing `KeyValueEditor`, Auth via
+  a new local `AuthEditor` covering all four of `ApiModule.BuildAuth`'s real types —
+  basic/bearer/apiKey/oauth2ClientCredentials — plus none), and `DataTable`'s own
+  `expandedContent` wired to `GET .../usages` so expanding a row shows exactly which flows
+  reference it, fetched lazily only once that row is actually expanded — the literal
+  "blast radius visible before editing" the checklist item asked for, not a paraphrase of it.
+  **New backend surface this needed and didn't have:** no "list templates for this tenant"
+  endpoint existed at all (only create/get-by-id/update/delete/usages) — added
+  `IRequestTemplateSummaryQuery`/`EfRequestTemplateSummaryQuery` (name/baseUrl/version only,
+  mirroring `IProjectSummaryQuery`'s exact shape and reasoning) and `GET /api/v1/request-templates/`.
+  Verified: `dotnet build -warnaserror` clean; full suite 311/311 (Orchestration.Tests,
+  excl. Docker-dependent RLS/audit); frontend `tsc --noEmit`/`npm run lint`/`npm run build` all
+  clean; full Vitest suite 259/259 (25 files, incl. 6 new for this page — WCAG axe check, list
+  render, usages-panel expand/empty states, create, delete); manual dev-server click-through
+  **not done** — no Docker/Postgres available in this environment, same standing limitation
+  flagged all session, so this is unverified by an actual human-driven browser session.
+  **Known gap, flagged not fixed:** the new `GET /api/v1/request-templates/` endpoint's
+  `.Produces<T>()` almost certainly means `apps/yukti-gui/src/api/generated/schema.ts` has
+  drifted again (same mechanism PR #85 fixed once already) — regenerating it needs the live
+  API running, which needs Docker/Postgres this environment doesn't have. Not hand-patched this
+  time (unlike PR #85, there's no CI-computed diff yet to copy exactly, and guessing
+  openapi-typescript's output risks a subtly wrong patch). Expect `api-types-drift` to fail on
+  this PR's own first real CI run; the fix is `npm run generate:api && git diff --exit-code
+  src/api/generated` once this merges and `api-types-drift` actually runs — one small follow-up
+  commit, same shape as `fix/ai-prompt-budget-and-api-types-drift`.
 - [ ] DISC-21 Owner's "Module Depth" program, second module: the Web UI Testing Module Spec
   ("Selenium-class capability on Playwright," 2026-10-27) — saved to
   `plan/specs/WEB-TESTING-MODULE.md`, same pattern as `API-TESTING-MODULE.md`. Tasks WEB-T1–T8,

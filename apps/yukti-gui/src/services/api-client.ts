@@ -14,6 +14,9 @@ import type {
   FlowReportSummaryResponse,
   FlowRunReportResponse,
   ProjectResponse,
+  RequestTemplateResponse,
+  RequestTemplateSummaryResponse,
+  RequestTemplateUsageResponse,
   TestEnvironmentResponse,
   TokenResponse,
   TrendAggregateResponse,
@@ -241,6 +244,18 @@ export const projectsApi = {
       body: { name, description } satisfies Req<"RenameProjectRequest">,
     }),
   delete: (projectId: string) => request<void>(`/api/v1/projects/${projectId}`, { method: "DELETE" }),
+};
+
+export const requestTemplatesApi = {
+  list: () => request<RequestTemplateSummaryResponse[]>("/api/v1/request-templates"),
+  get: (templateId: string) => request<RequestTemplateResponse>(`/api/v1/request-templates/${templateId}`),
+  create: (req: Req<"CreateRequestTemplateRequest"> & { name: string }) =>
+    request<{ templateId: string }>("/api/v1/request-templates", { method: "POST", body: req }),
+  update: (templateId: string, req: Req<"UpdateRequestTemplateRequest"> & { name: string }) =>
+    request<void>(`/api/v1/request-templates/${templateId}`, { method: "PUT", body: req }),
+  delete: (templateId: string) => request<void>(`/api/v1/request-templates/${templateId}`, { method: "DELETE" }),
+  usages: (templateId: string) =>
+    request<RequestTemplateUsageResponse[]>(`/api/v1/request-templates/${templateId}/usages`),
 };
 
 export const environmentsApi = {
