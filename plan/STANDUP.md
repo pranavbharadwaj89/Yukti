@@ -2199,3 +2199,27 @@ Exit check: **on track.** Day 7's exit check (every P0 box ticked or ALREADY DON
 Next: D7-T3 (time-to-first-flow trial) — owner is running this themselves; append the result here
 once reported. D7-T6 remains open with no defined scope, non-blocking for v0.1. No other Day 7
 task remains.
+
+## 2026-11-07 ~09:30 IST — Git Agent (UI audit) pulled out of main, pending revisit
+
+Owner's call: get CI fully green before continuing implementation work (Mobile, next), rather
+than carry the Git Agent's real, recurring finding (`/tests/mobile` throws a `429 Too Many
+Requests` console error on every real merge-triggered run — confirmed twice, not flaky) as
+permanently-red CI in the meantime.
+
+Removed from `main` (PR pending): `sarvaghna/agents/git-agent.mjs`, `git-agent.test.mjs`,
+`git-agent-decide.mjs`, `git-agent-decide.test.mjs`, `sarvaghna/run-git-agent.mjs`, the
+`git-agent-ui-audit` job in `.github/workflows/sarvaghna.yml`, and the AGENT.md section describing
+it. Stale references in two comments (`agents/index.mjs`, `sarvaghna.mjs`) cleaned up too.
+`sarvaghna`'s own test suite back to 3/3 (its original `core/` tests only); `--crew-list` back to
+the 5-agent roster.
+
+Not deleted from git history — fully recoverable from this session's own PRs (#82/#84) whenever
+it's revisited. Nothing else in the repo referenced these files (verified by grep before removing),
+so this is isolated to `sarvaghna/` and its own workflow.
+
+**Still outstanding for when this comes back:** the actual `/tests/mobile` 429 finding itself was
+never fixed, only removed from CI's view. Fixing that is the real prerequisite for bringing the
+Git Agent back, not just re-adding the files.
+
+Next: Mobile Testing Module — owner has confirmed intent to start it after this PR is green.
