@@ -1596,3 +1596,51 @@ work here, don't assume they still hold.
   gap next to it visible) — not fixed here, since it's a pre-existing, unrelated behavior this
   session didn't introduce and wasn't asked to audit. Flagging for an explicit decision: is this
   intentional ("a new version starts fresh and must explicitly re-opt-in") or a real bug?
+
+- [x] DISC-25 Owner's "Module Depth" program, third module: the Mobile Testing Module Spec
+  (Appium-based, Oct 27 2026) — saved to `plan/specs/MOBILE-TESTING-MODULE.md`, same pattern as
+  the API and Web specs. Owner confirmed (2026-11-07, AskUserQuestion) a real design partner has
+  asked for this, unblocking the spec's own first open question before any task started.
+  **MOB-T1 (Appium client) closed 2026-11-07, as a completion pass, not a from-scratch build:**
+  `src/Yukti.Infrastructure.InMemory/Modules/MobileModule.cs` already existed — a direct port of
+  an earlier TS prototype, already wired into the real app (`Program.cs`: DI singleton, module
+  registry, seeded `ModuleRegistration` at startup alongside Api/Web/Logs) — but with zero test
+  coverage anywhere, and genuinely missing three of MOB-T1's own checklist items: specific
+  connection failures (raw Appium/Selenium exceptions propagated unwrapped), Appium-side log
+  capture on step failure, and farm credentials resolved through the existing `{{secrets}}`
+  pipeline rather than taken as literal config values. Fixed all three without touching the
+  existing, already-correct parts (session reuse by `FlowRunId`, guaranteed `Teardown`).
+  New `Yukti.Domain.MobileTesting.DeviceProfile` (+ `MobilePlatform`, `ResetStrategy`,
+  `DeviceProfileId`) — the spec's own domain-model shape, built now since MOB-T1's session
+  layer needs something typed to construct a session from; MOB-T2 is still where this becomes
+  admin-configured/persisted/tenant-scoped/looked-up-by-name (its own repository, summary query,
+  "test profile" admin action, publish validation) — not built here, so MOB-T1 stayed scoped to
+  the client itself, not MOB-T2's job.
+  `MobileModule.ClassifySessionFailure` (public, for direct unit testing): a genuine, reliably
+  detectable connection failure (socket/HTTP/timeout exceptions anywhere in the chain) is
+  reported as "No Appium server reachable at {url}..."; anything else is reported with the real
+  Appium error plus the profile name and endpoint, never a bare timeout either way. The spec's
+  own finer categories ("no device matching profile", "app not found at") need a real Appium
+  server's actual error text to reliably distinguish from each other — not invented here without
+  one; flagged in `plan/OPEN-QUESTIONS.md`, not silently approximated.
+  Farm credential: a `farmCredentialRef` config key is resolved via the already-existing
+  `ICredentialResolver` (the same mechanism `GeminiProvider` and `FakeModules.cs`'s own FR-LOG-04
+  fixture already use) — the spec's own `SecretRef` field, under its real name; no `SecretRef`
+  type exists anywhere in this codebase.
+  `Appium.WebDriver` upgraded `6.0.1` → `8.2.0` (ADR-0009; owner's explicit choice over the
+  zero-risk "keep 6.0.1" default) — verified by a clean build against the *unchanged* existing
+  code before any of MOB-T1's own new code was added, isolating upgrade risk from feature risk.
+  ✔ `dotnet test --filter "FullyQualifiedName~AppiumClient"` → 8/8 passing, all new (the module
+  had zero test coverage before this task): a real connection-failure test against a genuinely
+  unreachable endpoint (same proven pattern as this session's own Git Agent tests), the
+  classifier tested as a pure function against synthetic exceptions, farm-credential resolution
+  and its sentinel-leak proof (the reference name and the resolved secret both absent from every
+  thrown message), and the existing no-op/clean-failure paths (no session, unknown action,
+  teardown-without-setup). Full solution: `dotnet build -warnaserror` clean; full suite 319/319
+  (Orchestration.Tests, excl. Docker-dependent RLS/audit). Confirmed via grep: zero
+  module-specific branching for "mobile" anywhere in the frontend — the spec's own governing
+  rule ("the schema-driven editor must render mobile steps with zero UI changes") already held,
+  unchanged by this task.
+  Next: MOB-T2 (Device profiles) — admin-configured, tenant-scoped, persisted profiles that a
+  flow references by name, replacing the ad-hoc `ctx.Variables["mobile"]` config bag MOB-T1 still
+  reads from (kept as-is deliberately, to stay scoped to the client layer only).
