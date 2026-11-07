@@ -181,10 +181,6 @@ if (args.includes('--crew') || args.includes('--mission')) {
   crewHandled = true;
 }
 
-// The Git Agent (UI auditor) has no flag here by design — see
-// sarvaghna/run-git-agent.mjs and agents/git-agent.mjs's own header
-// comment for why.
-
 // 2. Load Configuration
 const configPath = path.join(__dirname, 'sarvaghna.config.json');
 let config = {};

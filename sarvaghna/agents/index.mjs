@@ -1,12 +1,5 @@
 // sarvaghna/agents/index.mjs
 // Exports and registers the 5-Agent Sarvaghna Crew
-//
-// The Git Agent (sarvaghna/agents/git-agent.mjs) is deliberately NOT
-// registered here. It isn't part of this interactive, human-invocable
-// crew — it has no CLI flag and no manual dispatch trigger, by the
-// owner's own request ("it will only have to be active whenever there is
-// a code merged"). It's wired directly into sarvaghna/run-git-agent.mjs,
-// which only .github/workflows/sarvaghna.yml's merge-triggered job calls.
 
 import { OrchestratorAgent } from './orchestrator.mjs';
 import { AnalystAgent } from './analyst.mjs';
