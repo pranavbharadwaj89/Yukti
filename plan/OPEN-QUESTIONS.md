@@ -182,6 +182,13 @@ full accounting of what existed vs. what MOB-T1 actually added.
    `Appium.WebDriver` was already a dependency (6.0.1, upgraded to 8.2.0 this task, ADR-0009),
    and the module was already live in the real app with zero tests. Not a question, just
    flagged here so it's visible alongside everything else.
+5. 🔵 **MOB-T3's own "flow A writes state, flow B with Fast reset sees a clean app" isolation
+   test couldn't be built — no live Appium server/device in this environment means there's
+   nowhere to actually write state to.** What's proven instead: each `ResetStrategy` maps to the
+   correct Appium `noReset`/`fullReset` capability (`MobileModule.ResetCapabilitiesFor`, tested
+   directly). *Needs: a real Appium server + emulator/device to run `demo/mobile_login.json`
+   (or an equivalent two-flow isolation probe) against, the same resource every item above this
+   one is also waiting on.*
 
 ---
 
