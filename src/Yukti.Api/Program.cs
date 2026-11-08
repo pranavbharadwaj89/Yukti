@@ -19,6 +19,7 @@ using Yukti.Application.ApiTesting;
 using Yukti.Application.Execution;
 using Yukti.Application.FlowAuthoring;
 using Yukti.Application.IdentityAccess;
+using Yukti.Application.MobileTesting;
 using Yukti.Application.ModulePlugin;
 using Yukti.Application.Security;
 using Yukti.Infrastructure.Security;
@@ -28,6 +29,7 @@ using Yukti.Domain.Events;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
+using Yukti.Domain.MobileTesting;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.Scheduling;
@@ -309,6 +311,9 @@ builder.Services.AddSingleton<ApiModule>();
 builder.Services.AddSingleton<LogsModule>();
 builder.Services.AddSingleton<WebModule>();
 builder.Services.AddSingleton<MobileModule>();
+// MOB-T2: stateless (opens its own session, tears it down, returns) — safe Singleton, same
+// reasoning ApiModule/WebModule already rely on.
+builder.Services.AddSingleton<IDeviceProfileTester, AppiumDeviceProfileTester>();
 // DesktopUiModule is [SupportedOSPlatform("windows")] by design (Volume 1
 // Part III — Win32 SendInput automation has no cross-platform equivalent).
 // D1-T2: guard every touch point with OperatingSystem.IsWindows() so this
@@ -354,6 +359,10 @@ builder.Services.AddScoped<DeleteApiRequestCommandHandler>();
 builder.Services.AddScoped<CreateRequestTemplateCommandHandler>();
 builder.Services.AddScoped<UpdateRequestTemplateCommandHandler>();
 builder.Services.AddScoped<DeleteRequestTemplateCommandHandler>();
+builder.Services.AddScoped<CreateDeviceProfileCommandHandler>();
+builder.Services.AddScoped<UpdateDeviceProfileCommandHandler>();
+builder.Services.AddScoped<DeleteDeviceProfileCommandHandler>();
+builder.Services.AddScoped<TestDeviceProfileCommandHandler>();
 builder.Services.AddScoped<AddFlowStepCommandHandler>();
 builder.Services.AddScoped<PublishFlowCommandHandler>();
 builder.Services.AddScoped<TriggerFlowRunCommandHandler>();
@@ -1183,6 +1192,80 @@ requestTemplates.MapDelete("/{templateId:guid}", async (Guid templateId, HttpCon
 requestTemplates.MapGet("/{templateId:guid}/usages", async (Guid templateId, ClaimsPrincipal principal, IRequestTemplateUsageQuery query, CancellationToken ct) =>
     Results.Ok((await query.FindFlowsReferencing(new RequestTemplateId(templateId), principal.GetTenantId(), ct)).Select(RequestTemplateUsageResponse.From)))
 .Produces<IEnumerable<RequestTemplateUsageResponse>>();
+
+// ---- Device profiles (Mobile Testing Module Spec, MOB-T2) ----
+const string deviceProfileNotFound = "Device profile not found.";
+var deviceProfiles = app.MapGroup($"{apiV1}/device-profiles").WithTags("DeviceProfiles").RequireAuthorization().RequireRateLimiting("PerTenant");
+
+deviceProfiles.MapGet("/", async (ClaimsPrincipal principal, IDeviceProfileSummaryQuery query, CancellationToken ct) =>
+    Results.Ok((await query.ListByTenant(principal.GetTenantId(), ct)).Select(DeviceProfileSummaryResponse.From)))
+.Produces<IEnumerable<DeviceProfileSummaryResponse>>();
+
+deviceProfiles.MapPost("/", async (CreateDeviceProfileRequest req, ClaimsPrincipal principal, CreateDeviceProfileCommandHandler handler, CancellationToken ct) =>
+{
+    var profileId = await handler.Handle(new CreateDeviceProfileCommand(
+        req.Name, principal.GetTenantId(), req.Platform, req.PlatformVersion, req.DeviceName, req.App, req.AppiumUrl,
+        req.EndpointKind, req.FarmCredentialRef, req.Reset,
+        req.SessionTimeoutSeconds is { } s ? TimeSpan.FromSeconds(s) : null, req.ExtraCapabilities, principal.GetUserId()), ct);
+    return Results.Created($"{apiV1}/device-profiles/{profileId.Value}", new CreatedDeviceProfileResponse(profileId.Value));
+}).Produces<CreatedDeviceProfileResponse>(StatusCodes.Status201Created);
+
+deviceProfiles.MapGet("/{profileId:guid}", async (Guid profileId, HttpContext context, ClaimsPrincipal principal, IDeviceProfileRepository repo, CancellationToken ct) =>
+{
+    // Same defense-in-depth every other handle-then-tenant-check endpoint in this file already
+    // has (e.g. request-templates' own GetById above) — never rely solely on the repository's
+    // own ambient-tenant filter.
+    var profile = await repo.GetById(new DeviceProfileId(profileId), ct);
+    return profile is null || profile.TenantId != principal.GetTenantId()
+        ? ProblemResults.NotFound(context, deviceProfileNotFound)
+        : Results.Ok(DeviceProfileResponse.From(profile));
+}).Produces<DeviceProfileResponse>();
+
+deviceProfiles.MapPut("/{profileId:guid}", async (Guid profileId, UpdateDeviceProfileRequest req, HttpContext context, ClaimsPrincipal principal, UpdateDeviceProfileCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        await handler.Handle(new UpdateDeviceProfileCommand(
+            new DeviceProfileId(profileId), req.Name, req.Platform, req.PlatformVersion, req.DeviceName, req.App,
+            req.AppiumUrl, req.EndpointKind, req.FarmCredentialRef, req.Reset,
+            TimeSpan.FromSeconds(req.SessionTimeoutSeconds), req.ExtraCapabilities, principal.GetUserId()), ct);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, deviceProfileNotFound);
+    }
+}).Produces(StatusCodes.Status204NoContent);
+
+deviceProfiles.MapDelete("/{profileId:guid}", async (Guid profileId, HttpContext context, ClaimsPrincipal principal, DeleteDeviceProfileCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        await handler.Handle(new DeleteDeviceProfileCommand(new DeviceProfileId(profileId), principal.GetUserId()), ct);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, deviceProfileNotFound);
+    }
+}).Produces(StatusCodes.Status204NoContent);
+
+// MOB-T2's own checklist: "Admin UI with a 'test profile' action that opens a session, takes a
+// screenshot and tears down, so a misconfiguration is caught at setup rather than in a failing
+// test run." A real Appium server is required for this to do anything but fail with "no Appium
+// server reachable" -- that failure is itself the point of the action.
+deviceProfiles.MapPost("/{profileId:guid}/test-connection", async (Guid profileId, HttpContext context, ClaimsPrincipal principal, TestDeviceProfileCommandHandler handler, CancellationToken ct) =>
+{
+    try
+    {
+        var result = await handler.Handle(new TestDeviceProfileCommand(new DeviceProfileId(profileId), principal.GetUserId()), ct);
+        return Results.Ok(DeviceProfileTestResponse.From(result));
+    }
+    catch (InvalidOperationException)
+    {
+        return ProblemResults.NotFound(context, deviceProfileNotFound);
+    }
+}).Produces<DeviceProfileTestResponse>();
 
 // ---- Projects + TestEnvironments — deliberately direct repository CRUD
 // rather than the full AuditableCommandHandler ceremony every other

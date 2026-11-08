@@ -157,9 +157,17 @@ public sealed class MobileModule : IAutomationModule
                 extraCapabilities["farmCredential"] = resolved;
         }
 
-        return new DeviceProfile(
-            DeviceProfileId.New(), deviceName, platform, PlatformVersion: null, deviceName, app, appiumUrl,
-            farmCredentialRef, ResetStrategy.Fast, TimeSpan.FromMinutes(5), tenantId, extraCapabilities);
+        // MOB-T2: this ad hoc path (literal config in ctx.Variables["mobile"]) builds a
+        // transient, never-persisted DeviceProfile -- deliberately not looked up by name here.
+        // FlowEngine.ResolveDeviceProfile (MOB-T2) is what turns a flow's "profileName" into
+        // this same literal-config shape *before* Setup() ever sees it, so this method stays
+        // unaware of persistence either way. EndpointKind is metadata-only at this layer (not
+        // yet used to vary connection/retry behaviour -- a later task's job), so a farm
+        // credential's presence is the only signal available to infer it from literal config.
+        return DeviceProfile.Create(
+            deviceName, tenantId, platform, platformVersion: null, deviceName, app, appiumUrl,
+            farmCredentialRef is not null ? DeviceEndpointKind.Farm : DeviceEndpointKind.Local,
+            farmCredentialRef, ResetStrategy.Fast, TimeSpan.FromMinutes(5), extraCapabilities);
     }
 
     /// <summary>

@@ -13,6 +13,9 @@ import type {
   AuditEntryDetailResponse,
   FlowReportSummaryResponse,
   FlowRunReportResponse,
+  DeviceProfileResponse,
+  DeviceProfileSummaryResponse,
+  DeviceProfileTestResponse,
   ProjectResponse,
   RequestTemplateResponse,
   RequestTemplateSummaryResponse,
@@ -256,6 +259,19 @@ export const requestTemplatesApi = {
   delete: (templateId: string) => request<void>(`/api/v1/request-templates/${templateId}`, { method: "DELETE" }),
   usages: (templateId: string) =>
     request<RequestTemplateUsageResponse[]>(`/api/v1/request-templates/${templateId}/usages`),
+};
+
+// Mobile Testing Module Spec, MOB-T2
+export const deviceProfilesApi = {
+  list: () => request<DeviceProfileSummaryResponse[]>("/api/v1/device-profiles"),
+  get: (profileId: string) => request<DeviceProfileResponse>(`/api/v1/device-profiles/${profileId}`),
+  create: (req: Req<"CreateDeviceProfileRequest"> & { name: string; appiumUrl: string }) =>
+    request<{ profileId: string }>("/api/v1/device-profiles", { method: "POST", body: req }),
+  update: (profileId: string, req: Req<"UpdateDeviceProfileRequest"> & { name: string; appiumUrl: string }) =>
+    request<void>(`/api/v1/device-profiles/${profileId}`, { method: "PUT", body: req }),
+  delete: (profileId: string) => request<void>(`/api/v1/device-profiles/${profileId}`, { method: "DELETE" }),
+  testConnection: (profileId: string) =>
+    request<DeviceProfileTestResponse>(`/api/v1/device-profiles/${profileId}/test-connection`, { method: "POST" }),
 };
 
 export const environmentsApi = {

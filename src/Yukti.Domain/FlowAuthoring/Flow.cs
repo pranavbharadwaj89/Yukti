@@ -182,9 +182,17 @@ public sealed class Flow : AggregateRoot<FlowId>
     /// <summary>Web UI Testing Module Spec, WEB-T2: same "add another optional checker, keep
     /// every existing overload compiling" shape as the templateChecker overload above, rather
     /// than growing this one's own parameter list.</summary>
+    public Task<FlowPublishResult> Publish(
+        IModuleActionResolver resolver, IRequestTemplateExistsChecker? templateChecker,
+        IRepositoryEntryExistsChecker? repositoryChecker, CancellationToken ct) =>
+        Publish(resolver, templateChecker, repositoryChecker, null, ct);
+
+    /// <summary>Mobile Testing Module Spec, MOB-T2: same "add another optional checker, keep
+    /// every existing overload compiling" shape as the two checkers above.</summary>
     public async Task<FlowPublishResult> Publish(
         IModuleActionResolver resolver, IRequestTemplateExistsChecker? templateChecker,
-        IRepositoryEntryExistsChecker? repositoryChecker, CancellationToken ct)
+        IRepositoryEntryExistsChecker? repositoryChecker, IDeviceProfileExistsChecker? deviceProfileChecker,
+        CancellationToken ct)
     {
         if (Status != FlowStatus.Draft)
             return FlowPublishResult.Failure(new[]
@@ -266,6 +274,25 @@ public sealed class Flow : AggregateRoot<FlowId>
 
             if (step.SaveAs is not null)
                 availableBindings.Add(step.SaveAs);
+        }
+
+        // MOB-T2: unlike templateId/RepositoryRef above, a device profile reference isn't a
+        // per-step param -- MobileModule.Setup() opens its session once per flow run, before any
+        // step executes, from the flow's own declared "mobile" variable (FlowEngine.ResolveDeviceProfile
+        // resolves it the same way at run time). So this check is flow-scoped, not step-scoped --
+        // still purely shape-based (a declared variable named "mobile" holding a "profileName" key),
+        // never a `step.Module == ModuleKind.Mobile` branch, which Architecture Principle 20.3
+        // forbids here same as everywhere else. Same FlowPublishError/422 shape as every other
+        // check above, just a "variables.*" field path instead of a "steps[i].*" one, since that's
+        // genuinely where this reference lives.
+        if (deviceProfileChecker is not null
+            && _declaredVariables.GetValueOrDefault("mobile") is IReadOnlyDictionary<string, object?> mobileConfig
+            && mobileConfig.GetValueOrDefault("profileName") is string profileName)
+        {
+            var exists = await deviceProfileChecker.ExistsAsync(profileName, TenantId, ct);
+            if (!exists)
+                errors.Add(new FlowPublishError("variables.mobile.profileName", "unresolved_device_profile",
+                    $"Flow references device profile '{profileName}', which was not found."));
         }
 
         if (errors.Count > 0)

@@ -317,6 +317,65 @@ namespace Yukti.Infrastructure.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Yukti.Domain.MobileTesting.DeviceProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("App")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AppiumUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DeviceName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EndpointKind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExtraCapabilities")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("extra_capabilities");
+
+                    b.Property<string>("FarmCredentialRef")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PlatformVersion")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reset")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<TimeSpan>("SessionTimeout")
+                        .HasColumnType("interval");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("device_profiles", (string)null);
+                });
+
             modelBuilder.Entity("Yukti.Domain.ModulePlugin.ModuleRegistration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -583,7 +642,7 @@ namespace Yukti.Infrastructure.Migrations
 
             modelBuilder.Entity("Yukti.Domain.ApiTesting.ApiCollection", b =>
                 {
-                    b.OwnsMany("Yukti.Domain.ApiTesting.ApiCollection.Requests#Yukti.Domain.ApiTesting.ApiRequest", "Requests", b1 =>
+                    b.OwnsMany("Yukti.Domain.ApiTesting.ApiRequest", "Requests", b1 =>
                         {
                             b1.Property<Guid>("Id")
                                 .HasColumnType("uuid");
@@ -640,7 +699,7 @@ namespace Yukti.Infrastructure.Migrations
 
             modelBuilder.Entity("Yukti.Domain.Execution.FlowRun", b =>
                 {
-                    b.OwnsMany("Yukti.Domain.Execution.FlowRun.Results#Yukti.Domain.Execution.StepResult", "Results", b1 =>
+                    b.OwnsMany("Yukti.Domain.Execution.StepResult", "Results", b1 =>
                         {
                             b1.Property<Guid>("Id")
                                 .HasColumnType("uuid");
@@ -702,7 +761,7 @@ namespace Yukti.Infrastructure.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("FlowRunId");
 
-                            b1.OwnsMany("Yukti.Domain.Execution.FlowRun.Results#Yukti.Domain.Execution.StepResult.RetryHistory#Yukti.Domain.Execution.RetryAttempt", "RetryHistory", b2 =>
+                            b1.OwnsMany("Yukti.Domain.Execution.RetryAttempt", "RetryHistory", b2 =>
                                 {
                                     b2.Property<Guid>("Id")
                                         .HasColumnType("uuid");
@@ -744,7 +803,7 @@ namespace Yukti.Infrastructure.Migrations
 
             modelBuilder.Entity("Yukti.Domain.FlowAuthoring.Flow", b =>
                 {
-                    b.OwnsMany("Yukti.Domain.FlowAuthoring.Flow.Steps#Yukti.Domain.FlowAuthoring.FlowStep", "Steps", b1 =>
+                    b.OwnsMany("Yukti.Domain.FlowAuthoring.FlowStep", "Steps", b1 =>
                         {
                             b1.Property<Guid>("Id")
                                 .HasColumnType("uuid");
@@ -799,7 +858,7 @@ namespace Yukti.Infrastructure.Migrations
 
             modelBuilder.Entity("Yukti.Domain.ModulePlugin.ModuleRegistration", b =>
                 {
-                    b.OwnsMany("Yukti.Domain.ModulePlugin.ModuleRegistration.Actions#Yukti.Domain.ModulePlugin.ModuleActionEntry", "Actions", b1 =>
+                    b.OwnsMany("Yukti.Domain.ModulePlugin.ModuleActionEntry", "Actions", b1 =>
                         {
                             b1.Property<Guid>("Id")
                                 .HasColumnType("uuid");

@@ -6,6 +6,7 @@ using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
 using Yukti.Domain.Auditing;
+using Yukti.Domain.MobileTesting;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.Scheduling;
@@ -218,6 +219,48 @@ public sealed class EfRequestTemplateRepository : IRequestTemplateRepository
         _context.Remove(template);
         return Task.CompletedTask;
     }
+}
+
+public sealed class EfDeviceProfileRepository : IDeviceProfileRepository
+{
+    private readonly YuktiDbContext _context;
+    private readonly ITenantContextAccessor _tenant;
+
+    public EfDeviceProfileRepository(YuktiDbContext context, ITenantContextAccessor tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
+
+    public Task<DeviceProfile?> GetById(DeviceProfileId id, CancellationToken ct) =>
+        _context.DeviceProfiles.FirstOrDefaultAsync(p => p.Id == id && p.TenantId == _tenant.CurrentTenantId, ct);
+
+    public Task<DeviceProfile?> GetByName(string name, TenantId tenantId, CancellationToken ct) =>
+        _context.DeviceProfiles.FirstOrDefaultAsync(p => p.Name == name && p.TenantId == tenantId, ct);
+
+    public async Task Save(DeviceProfile profile, CancellationToken ct)
+    {
+        if (_context.Entry(profile).State == EntityState.Detached)
+            await _context.AddAsync(profile, ct);
+    }
+
+    public Task Delete(DeviceProfile profile, CancellationToken ct)
+    {
+        _context.Remove(profile);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class EfDeviceProfileSummaryQuery : IDeviceProfileSummaryQuery
+{
+    private readonly YuktiDbContext _context;
+    public EfDeviceProfileSummaryQuery(YuktiDbContext context) => _context = context;
+
+    public async Task<IReadOnlyList<DeviceProfileSummary>> ListByTenant(TenantId tenantId, CancellationToken ct) =>
+        await _context.DeviceProfiles
+            .Where(p => p.TenantId == tenantId)
+            .Select(p => new DeviceProfileSummary(p.Id, p.Name, p.Platform, p.DeviceName, p.EndpointKind, p.Version))
+            .ToListAsync(ct);
 }
 
 public sealed class EfProjectRepository : IProjectRepository

@@ -2,6 +2,7 @@ using Yukti.Application.Abstractions;
 using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
+using Yukti.Domain.MobileTesting;
 using Yukti.Domain.ModulePlugin;
 
 namespace Yukti.Api;
@@ -127,6 +128,43 @@ public sealed record RequestTemplateUsageResponse(Guid FlowId, string FlowName, 
 public sealed record RequestTemplateSummaryResponse(Guid Id, string Name, string? BaseUrl, int Version)
 {
     public static RequestTemplateSummaryResponse From(RequestTemplateSummary s) => new(s.Id.Value, s.Name, s.BaseUrl, s.Version);
+}
+
+// ---- Device profiles (Mobile Testing Module Spec, MOB-T2) ----
+
+public sealed record CreateDeviceProfileRequest(
+    string Name, MobilePlatform Platform, string? PlatformVersion, string? DeviceName, string? App,
+    string AppiumUrl, DeviceEndpointKind EndpointKind, string? FarmCredentialRef, ResetStrategy Reset,
+    int? SessionTimeoutSeconds, Dictionary<string, object?>? ExtraCapabilities);
+
+public sealed record UpdateDeviceProfileRequest(
+    string Name, MobilePlatform Platform, string? PlatformVersion, string? DeviceName, string? App,
+    string AppiumUrl, DeviceEndpointKind EndpointKind, string? FarmCredentialRef, ResetStrategy Reset,
+    int SessionTimeoutSeconds, Dictionary<string, object?>? ExtraCapabilities);
+
+public sealed record CreatedDeviceProfileResponse(Guid ProfileId);
+
+public sealed record DeviceProfileResponse(
+    Guid Id, string Name, MobilePlatform Platform, string? PlatformVersion, string? DeviceName, string? App,
+    string AppiumUrl, DeviceEndpointKind EndpointKind, string? FarmCredentialRef, ResetStrategy Reset,
+    int SessionTimeoutSeconds, IReadOnlyDictionary<string, object?> ExtraCapabilities, int Version)
+{
+    public static DeviceProfileResponse From(DeviceProfile p) => new(
+        p.Id.Value, p.Name, p.Platform, p.PlatformVersion, p.DeviceName, p.App, p.AppiumUrl, p.EndpointKind,
+        p.FarmCredentialRef, p.Reset, (int)p.SessionTimeout.TotalSeconds, p.ExtraCapabilities, p.Version);
+}
+
+public sealed record DeviceProfileSummaryResponse(Guid Id, string Name, MobilePlatform Platform, string? DeviceName, DeviceEndpointKind EndpointKind, int Version)
+{
+    public static DeviceProfileSummaryResponse From(DeviceProfileSummary s) => new(s.Id.Value, s.Name, s.Platform, s.DeviceName, s.EndpointKind, s.Version);
+}
+
+/// <summary>MOB-T2: "test profile" result — Screenshot is base64 (System.Text.Json's own
+/// default for byte[]), the same shape a client already expects for any binary-over-JSON field
+/// in this API.</summary>
+public sealed record DeviceProfileTestResponse(bool Success, string? Error, byte[]? Screenshot)
+{
+    public static DeviceProfileTestResponse From(DeviceProfileTestResult r) => new(r.Success, r.Error, r.Screenshot);
 }
 
 public sealed record ProjectResponse(Guid Id, string Name, string? Description)

@@ -4,6 +4,7 @@ using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
+using Yukti.Domain.MobileTesting;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
 using Yukti.Domain.UiVocabulary;
@@ -29,6 +30,33 @@ public sealed class InMemoryRequestTemplateRepository : IRequestTemplateReposito
     public Task Delete(RequestTemplate template, CancellationToken ct)
     {
         _uowFactory.StageSave(() => _store.TryRemove(template.Id.Value, out _), template);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class InMemoryDeviceProfileRepository : IDeviceProfileRepository
+{
+    private readonly ConcurrentDictionary<Guid, DeviceProfile> _store = new();
+    private readonly InMemoryUnitOfWorkFactory _uowFactory;
+
+    public InMemoryDeviceProfileRepository(InMemoryUnitOfWorkFactory uowFactory) => _uowFactory = uowFactory;
+
+    public Task<DeviceProfile?> GetById(DeviceProfileId id, CancellationToken ct) =>
+        Task.FromResult(_store.TryGetValue(id.Value, out var profile) ? profile : null);
+
+    public Task<DeviceProfile?> GetByName(string name, TenantId tenantId, CancellationToken ct) =>
+        Task.FromResult(_store.Values.FirstOrDefault(p =>
+            p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && p.TenantId == tenantId));
+
+    public Task Save(DeviceProfile profile, CancellationToken ct)
+    {
+        _uowFactory.StageSave(() => _store[profile.Id.Value] = profile, profile);
+        return Task.CompletedTask;
+    }
+
+    public Task Delete(DeviceProfile profile, CancellationToken ct)
+    {
+        _uowFactory.StageSave(() => _store.TryRemove(profile.Id.Value, out _), profile);
         return Task.CompletedTask;
     }
 }

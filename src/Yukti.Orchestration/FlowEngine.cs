@@ -5,6 +5,7 @@ using Yukti.Contracts;
 using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
+using Yukti.Domain.MobileTesting;
 using Yukti.Domain.SharedKernel;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
 
@@ -40,12 +41,13 @@ public sealed class FlowEngine
     private readonly ILogger<FlowEngine> _logger;
     private readonly IRequestTemplateRepository? _requestTemplates;
     private readonly IObjectRepositoryElementQuery? _repositoryElements;
+    private readonly IDeviceProfileRepository? _deviceProfiles;
 
     public FlowEngine(
         IModuleDispatcher dispatcher, IModuleRegistry registry, IVariableStore variables, IRetryFlakeHandler retryHandler,
         IFlowRunRepository runRepository, IUnitOfWorkFactory uowFactory, ILogger<FlowEngine> logger,
         RetryPolicy? defaultRetryPolicy = null, IRequestTemplateRepository? requestTemplates = null,
-        IObjectRepositoryElementQuery? repositoryElements = null)
+        IObjectRepositoryElementQuery? repositoryElements = null, IDeviceProfileRepository? deviceProfiles = null)
     {
         _dispatcher = dispatcher;
         _registry = registry;
@@ -57,6 +59,54 @@ public sealed class FlowEngine
         _defaultRetryPolicy = defaultRetryPolicy ?? new RetryPolicy(MaxAttempts: 2, InitialBackoff: TimeSpan.FromMilliseconds(200), BackoffMultiplier: 2.0);
         _requestTemplates = requestTemplates;
         _repositoryElements = repositoryElements;
+        _deviceProfiles = deviceProfiles;
+    }
+
+    /// <summary>
+    /// Mobile Testing Module Spec, MOB-T2: the run-time half of "editing a profile reaches every
+    /// flow referencing it with zero flow edits" — the same resolved-fresh-every-run rule
+    /// ResolveRequestTemplate already applies, never baked in at publish time. `_deviceProfiles`
+    /// is null for every caller that doesn't configure one (every test/CLI construction site,
+    /// unchanged); resolution is then simply skipped, same as the other two resolvers.
+    ///
+    /// Flow-scoped, not step-scoped, unlike ResolveRequestTemplate: MobileModule.Setup() reads
+    /// `ctx.Variables["mobile"]` once, before any step dispatches, so this resolves against the
+    /// run's own Variables dictionary directly rather than per-step params. Purely shape-based
+    /// (a "mobile" entry holding a "profileName" key) — never a module-kind check, matching
+    /// Flow.Publish's own device-profile validation.
+    ///
+    /// Merge rule, same precedence as ResolveRequestTemplate: the profile supplies defaults into
+    /// MobileModule.BuildProfile's own config-bag keys (platformName, deviceName, app, appiumUrl,
+    /// farmCredentialRef); any of those keys already present in the literal "mobile" dict win —
+    /// a flow can reference a profile by name and still override one field without copying the
+    /// rest.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, object?>> ResolveDeviceProfile(IReadOnlyDictionary<string, object?> variables, TenantId tenantId, CancellationToken ct)
+    {
+        if (_deviceProfiles is null
+            || variables.GetValueOrDefault("mobile") is not IReadOnlyDictionary<string, object?> mobileConfig
+            || mobileConfig.GetValueOrDefault("profileName") is not string profileName)
+            return variables;
+
+        var profile = await _deviceProfiles.GetByName(profileName, tenantId, ct);
+        if (profile is null)
+            throw new DeviceProfileResolutionException(profileName);
+
+        var mergedMobile = new Dictionary<string, object?>
+        {
+            ["platformName"] = profile.Platform.ToString(),
+            ["deviceName"] = profile.DeviceName,
+            ["app"] = profile.App,
+            ["appiumUrl"] = profile.AppiumUrl,
+            ["farmCredentialRef"] = profile.FarmCredentialRef,
+        };
+        foreach (var (key, value) in profile.ExtraCapabilities)
+            mergedMobile[key] = value;
+        foreach (var (key, value) in mobileConfig)
+            mergedMobile[key] = value; // the flow's own literal config always wins per field
+
+        var merged = new Dictionary<string, object?>(variables) { ["mobile"] = mergedMobile };
+        return merged;
     }
 
     /// <summary>
@@ -247,10 +297,12 @@ public sealed class FlowEngine
             .Cast<IAutomationModule>()
             .ToList();
 
+        var runLevelVariables = await ResolveDeviceProfile(run.Variables, run.TenantId, ct);
+
         var runLevelCtx = new ExecutionContext
         {
             RunId = run.Id,
-            Variables = run.Variables,
+            Variables = runLevelVariables,
             Credentials = credentials,
             RunCancellation = ct,
             TenantId = run.TenantId,

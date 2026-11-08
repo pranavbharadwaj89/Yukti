@@ -79,6 +79,13 @@ Not in the code. The code is a WebDriver client, which is well-trodden. The diff
 > `ResetStrategy`, `DeviceProfileId`) matches this shape, with `FarmCredentialRef: string?` in
 > place of `SecretRef? FarmCredential` (same mechanism, real name — see above). `Gesture` and
 > `DeviceCommand` are not built yet — MOB-T5/MOB-T6's own job.
+>
+> **MOB-T2, 2026-11-08:** `DeviceProfile` is now the real, persisted `AggregateRoot<DeviceProfileId>`
+> this section originally described — admin-configured, tenant-scoped, versioned, looked-up-by-name,
+> with its own repository, summary query, "test profile" admin action and publish validation. Also
+> added `DeviceEndpointKind { Local, SelfHosted, Farm }`, this task's own "records whether its
+> endpoint is local, self-hosted or a named device farm" field, not yet in the shape below when
+> MOB-T1 wrote it.
 
 ```csharp
 // Admin-configured, tenant-scoped. A flow references a profile by name,
@@ -183,13 +190,58 @@ Time-box: 5 h.
 
 ### MOB-T2 — Device profiles (P0)
 
-- [ ] Admin-configured, tenant-scoped, versioned, exactly like DB connections. A flow references a profile **by name**.
-- [ ] Admin UI with a "test profile" action that opens a session, takes a screenshot and tears down, so a misconfiguration is caught at setup rather than in a failing test run.
-- [ ] Publish validation: a flow referencing a missing profile fails with the existing 422-naming-the-step behaviour.
-- [ ] Tenant isolation, tested at the API and the raw-SQL level.
-- [ ] A profile records whether its endpoint is local, self-hosted or a named device farm, because error messages and retry behaviour differ.
+**Closed 2026-11-08.** `DeviceProfile` (MOB-T1's bare record) is now an `AggregateRoot<DeviceProfileId>`
+with private setters, a visible `Version` counter, and `Create`/`Update` factory methods — the same
+"disposable, editable resource" shape `RequestTemplate` already has. Persisted via EF
+(`device_profiles` table, `EfDeviceProfileRepository`/`EfDeviceProfileSummaryQuery`) and an
+in-memory counterpart for tests/CLI.
 
-✔ `dotnet test --filter "FullyQualifiedName~DeviceProfile"`
+- [x] Admin-configured, tenant-scoped, versioned, exactly like DB connections. A flow references a profile **by name**.
+  `FlowEngine.ResolveDeviceProfile` resolves a flow's declared `mobile.profileName` against the
+  current `DeviceProfile` (by name + tenant) on every run, merging the profile's fields into
+  `MobileModule.BuildProfile`'s own config-bag shape — the flow's own literal fields always win
+  per key, same merge precedence `ResolveRequestTemplate` already uses for `templateId`. Unresolved
+  name -> `DeviceProfileResolutionException`, thrown before any step dispatches (Setup is
+  flow-scoped, not step-scoped). `CreateDeviceProfileCommand`/`Update`/`Delete` handlers + a
+  `/api/v1/device-profiles` CRUD group enforce `Permission.DeviceProfileManage`.
+- [x] Admin UI with a "test profile" action that opens a session, takes a screenshot and tears down, so a misconfiguration is caught at setup rather than in a failing test run.
+  `IDeviceProfileTester`/`AppiumDeviceProfileTester` (Infrastructure.InMemory, reuses
+  `MobileModule.ClassifySessionFailure` for the same specific-not-bare-timeout failure shape) +
+  `POST /device-profiles/{id}/test-connection` + a real page at `/device-profiles`
+  (`apps/yukti-gui`) with a "Test connection" row action rendering the result/screenshot. Not
+  exercised against a real Appium server (none available in this environment, same MOB-T1
+  constraint) — proven against a genuinely unreachable endpoint instead.
+- [x] Publish validation: a flow referencing a missing profile fails with the existing 422-naming-the-step behaviour.
+  **Honest deviation, not silently approximated:** a device profile reference is flow-scoped
+  (Flow's declared `mobile` variable), not step-scoped the way `templateId` is — there is no one
+  step to "name" the way the spec's own phrase literally reads. `Flow.Publish`'s new
+  `IDeviceProfileExistsChecker` check uses the exact same `FlowPublishError`/422 shape as the
+  `templateId`/`RepositoryRef` checks beside it, with field `"variables.mobile.profileName"`
+  instead of `"steps[i]..."`, since that is genuinely where the reference lives. Still purely
+  shape-based — no `step.Module == ModuleKind.Mobile` branch anywhere (Architecture Principle
+  20.3 held, verified by grep same as MOB-T1).
+- [x] Tenant isolation, tested at the API and the raw-SQL level.
+  `device_profiles` got the real Postgres RLS policy from day one of its own migration
+  (`ENABLE`/`FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy + `yukti_app` GRANT) — the
+  `object_repositories`/WEB-T2 pattern, not `request_templates`' gap (that migration's own comment
+  flags why). Three new tests in `TenantIsolationTests.cs`, same shape as the `object_repositories`
+  ones: cross-tenant read via the real repository, a raw unparameterized SQL count proving the
+  database itself (not just the C# `WHERE`) refuses the row, and a rejected illegally-tagged write
+  (`42501 insufficient_privilege`). All three run against the real local Postgres and pass.
+- [x] A profile records whether its endpoint is local, self-hosted or a named device farm, because error messages and retry behaviour differ.
+  `DeviceEndpointKind { Local, SelfHosted, Farm }` on the aggregate, persisted and surfaced in the
+  admin UI. Metadata only so far — `ClassifySessionFailure`'s own message doesn't yet branch on it
+  (no real farm to test against in this environment); the field exists and is wired through end to
+  end, ready for that to be added without a persistence change.
+
+✔ `dotnet test --filter "FullyQualifiedName~DeviceProfile"` → 18/18 passing (13 orchestration-level
++ 5 domain), plus 3/3 new `TenantIsolationTests` cases against the real DB (not covered by that
+filter; run separately, see above). Full solution: `dotnet build -warnaserror` clean; full suite
+green (one `WebWaitTests` timing flake, confirmed pre-existing/unrelated — passes in isolation).
+`npm run lint`/`tsc --noEmit`/`vitest run` all clean on the frontend.
+Next: MOB-T3 (Session lifecycle and app state) — reset strategies, teardown-on-every-path,
+session timeout, session reuse across steps; `DeviceProfile.Reset` already exists from MOB-T2,
+not yet actually honored by `MobileModule.Teardown`.
 
 Time-box: 3 h.
 

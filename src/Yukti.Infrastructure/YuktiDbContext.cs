@@ -5,6 +5,7 @@ using Yukti.Domain.Auditing;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
 using Yukti.Domain.IdentityAccess;
+using Yukti.Domain.MobileTesting;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.Scheduling;
@@ -68,6 +69,7 @@ public sealed class YuktiDbContext : DbContext
     public DbSet<Flow> Flows => Set<Flow>();
     public DbSet<ApiCollection> ApiCollections => Set<ApiCollection>();
     public DbSet<RequestTemplate> RequestTemplates => Set<RequestTemplate>();
+    public DbSet<DeviceProfile> DeviceProfiles => Set<DeviceProfile>();
     public DbSet<ObjectRepository> ObjectRepositories => Set<ObjectRepository>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<TestEnvironment> TestEnvironments => Set<TestEnvironment>();
@@ -91,6 +93,7 @@ public sealed class YuktiDbContext : DbContext
         modelBuilder.ApplyConfiguration(new FlowConfiguration());
         modelBuilder.ApplyConfiguration(new ApiCollectionConfiguration());
         modelBuilder.ApplyConfiguration(new RequestTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new DeviceProfileConfiguration());
         modelBuilder.ApplyConfiguration(new ObjectRepositoryConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
         modelBuilder.ApplyConfiguration(new TestEnvironmentConfiguration());

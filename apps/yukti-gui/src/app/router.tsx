@@ -5,6 +5,7 @@ import { DashboardPage } from "@/pages/dashboard-page";
 import { SettingsPage } from "@/pages/settings-page";
 import { ProjectsPage } from "@/features/projects/projects-page";
 import { RequestTemplatesPage } from "@/features/request-templates/request-templates-page";
+import { DeviceProfilesPage } from "@/features/device-profiles/device-profiles-page";
 import { SchedulerPage } from "@/features/scheduler/scheduler-page";
 import { AuditPage } from "@/features/audit/audit-page";
 import { FlowsPage } from "@/features/flow-authoring/flows-page";
@@ -40,6 +41,7 @@ const authenticatedLayoutRoute = createRoute({
 const dashboardRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/", component: DashboardPage });
 const projectsRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/projects", component: ProjectsPage });
 const requestTemplatesRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/request-templates", component: RequestTemplatesPage });
+const deviceProfilesRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/device-profiles", component: DeviceProfilesPage });
 const schedulerRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/triggers", component: SchedulerPage });
 const auditRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/audit", component: AuditPage });
 const flowsRoute = createRoute({ getParentRoute: () => authenticatedLayoutRoute, path: "/flows", component: FlowsPage });
@@ -102,6 +104,7 @@ const routeTree = rootRoute.addChildren([
     dashboardRoute,
     projectsRoute,
     requestTemplatesRoute,
+    deviceProfilesRoute,
     schedulerRoute,
     auditRoute,
     flowsRoute,

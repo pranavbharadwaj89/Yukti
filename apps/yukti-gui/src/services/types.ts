@@ -227,6 +227,51 @@ export interface RequestTemplateUsageResponse {
   stepName: string;
 }
 
+// Mobile Testing Module Spec, MOB-T2 — same "hand-written, raw enum ordinals" shape as
+// RequestTemplateResponse above; MobilePlatform/DeviceEndpointKind/ResetStrategy are declared in
+// that exact order on the backend (Yukti.Domain.MobileTesting.DeviceProfile.cs), so the ordinal
+// numbers below must stay in sync with that file, not reordered independently.
+export function mobilePlatformLabel(platform: number): string {
+  return platform === 1 ? "iOS" : "Android";
+}
+export function deviceEndpointKindLabel(kind: number): string {
+  return kind === 1 ? "Self-hosted" : kind === 2 ? "Device farm" : "Local";
+}
+export function resetStrategyLabel(reset: number): string {
+  return reset === 0 ? "Full" : reset === 2 ? "None" : "Fast";
+}
+
+export interface DeviceProfileSummaryResponse {
+  id: string;
+  name: string;
+  platform: number;
+  deviceName?: string | null;
+  endpointKind: number;
+  version: number;
+}
+
+export interface DeviceProfileResponse {
+  id: string;
+  name: string;
+  platform: number;
+  platformVersion?: string | null;
+  deviceName?: string | null;
+  app?: string | null;
+  appiumUrl: string;
+  endpointKind: number;
+  farmCredentialRef?: string | null;
+  reset: number;
+  sessionTimeoutSeconds: number;
+  extraCapabilities: Record<string, unknown>;
+  version: number;
+}
+
+export interface DeviceProfileTestResponse {
+  success: boolean;
+  error?: string | null;
+  screenshot?: string | null; // base64, System.Text.Json's default byte[] encoding
+}
+
 export interface TriggerResponse {
   id: string;
   flowId: string;
