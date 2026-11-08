@@ -70,8 +70,12 @@ export function DeviceProfilesPage() {
           <Button
             variant="ghost"
             onClick={async () => {
-              const full = await deviceProfilesApi.get(p.id);
-              setEditing(full);
+              try {
+                const full = await deviceProfilesApi.get(p.id);
+                setEditing(full);
+              } catch (err) {
+                pushToast({ kind: "error", message: err instanceof ApiError ? err.message : "Failed to fetch device profile." });
+              }
             }}
           >
             Edit
@@ -215,7 +219,7 @@ function DeviceProfileDialog({
         extraCapabilities: null,
       };
       if (isEdit && profile) {
-        await deviceProfilesApi.update(profile.id, { ...req, sessionTimeoutSeconds: Number(sessionTimeoutSeconds) });
+        await deviceProfilesApi.update(profile.id, { ...req, sessionTimeoutSeconds: Number(sessionTimeoutSeconds) || 300 });
       } else {
         await deviceProfilesApi.create({
           ...req,
