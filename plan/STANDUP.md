@@ -2486,3 +2486,46 @@ Exit check: on track. All of Mobile's buildable P0+P1 scope is now closed; what 
 (DISC-26, device farms, CI) all needs an owner decision or resources this session can't supply.
 Next: push `feature/MOB-T8-web-and-hybrid`, open its PR (stacked on #96). Report the full Mobile
 Testing Module status to the owner and ask about DISC-26 / device farms / CI / what's next.
+
+## 2026-11-09 ~14:45 IST — ADR-0010 (DISC-26 design)
+
+Done: Pushed `feature/MOB-T8-web-and-hybrid`, opened PR #97 (stacked on #96/.../#92). Reported
+the full Mobile Testing Module status (all P0+P1 closed across 6 PRs) plus the two open
+questions (DISC-26, device farms/CI). Owner asked to continue with DISC-26's design specifically.
+Used the `engineering:architecture` skill, then wrote `plan/adr/0010-soft-assertions.md` following
+this repo's own established ADR format (`plan/adr/0008-...`'s template), not the skill's generic
+one. Design: a per-step `Soft` flag on `FlowStep` (same tier as the existing `SaveAs`/
+`WhenCondition`, not a module `ActionSchema` param — found the exact natural slot by reading
+`Flow.ContinueOnFailure` (`Flow.cs:42`) and the fail-fast `break` it already guards in
+`FlowEngine.cs` (~line 442), then designed `Soft` as the per-step scoping that flag is missing).
+`StepResult` gets the same flag denormalized, same reasoning `StepName`/`Module`/`Action` already
+are. `FlowRun.Status`'s own failure computation (`_results.Any(r => r.Status ==
+StepStatus.Failed)`) needs zero change — correct by construction, not something to remember to
+update. Rejected three alternatives with reasons in the ADR: a per-module `ActionSchema` param
+(needs building three times, inconsistent by construction — the opposite of what "consistent
+with the other modules" is actually asking for), restricting to `assert*`-named actions (engine
+pattern-matching action names), a new `StepStatus.SoftFailed` value (breaks the existing
+derived-boolean-signal pattern `IsFlaky`/`UsedLocatorFallback` already uses). Flagged that
+`Flow.CreateNewVersion` must copy `Soft` forward explicitly, tied directly to DISC-24's existing
+open question about `ContinueOnFailure` itself not being copied forward today — the same mistake
+must not get made twice, independently.
+Sarvaghna's own commit-time review raised a genuinely good question on the first commit: should
+`Soft` apply even to a catastrophic/infrastructure failure (a crashed session), not just an
+assertion mismatch? Answered explicitly in a follow-up commit rather than left implicit:
+deliberately yes — `Setup`/`Teardown`/`RetryFlakeHandler` guarantees are unaffected by `Soft`, so
+a dead session still surfaces as fast uniform failures on later steps rather than a hang, and
+`RunStatus.Failed` is reached either way; the only cost is a noisier report.
+Opened as a standalone PR (#98) against `main`, not stacked on the Mobile sequence — this is
+cross-cutting (Api/Web/Mobile alike), not Mobile-specific, so a reviewer shouldn't have to go
+through 6 Mobile PRs to see it. Verified the frontend step editor actually has existing `when`/
+`saveAs` controls before claiming a `Soft` checkbox would sit alongside them (grepped
+`flow-authoring/*.tsx` rather than assumed). Updated `plan/PLAN.md`'s DISC-26 and
+`plan/OPEN-QUESTIONS.md` item 11 with the ADR/PR reference.
+Discovered: nothing new — this was a design task on an already-discovered gap.
+Scope guards: design only, no production code — explicit per the ADR's own Status (Proposed,
+pending owner approval) and this session's own commitment not to build a cross-cutting change
+without sign-off first.
+Exit check: on track.
+Next: owner reviews/approves (or redirects) ADR-0010. If approved, the real implementation
+(domain + EF migration + API + CLI + frontend + report UI) is its own PLAN.md task, not
+assumed to follow automatically.

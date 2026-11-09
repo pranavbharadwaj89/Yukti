@@ -1921,3 +1921,6 @@ work here, don't assume they still hold.
   Mobile), not something to add quietly inside one module alone. Needs an explicit owner
   decision (build it as its own cross-cutting task/ADR, or defer) before any module's "soft
   assertions" line can honestly be ticked.
+  **Design proposed 2026-11-09:** `plan/adr/0010-soft-assertions.md`, PR #98 against `main`
+  (standalone — not stacked on the Mobile sequence, since this is cross-cutting, not
+  Mobile-specific). Status: Proposed, pending owner approval. Not implemented.

@@ -226,7 +226,8 @@ full accounting of what existed vs. what MOB-T1 actually added.
     still need a live Appium server to exercise end-to-end, same as every item above.
 11. 🟡 **DISC-26 (soft assertions) — not a "needs a live server" gap, a real missing feature
     across every module.** See `plan/PLAN.md`'s DISC-26 for the full accounting; needs an owner
-    decision before it's buildable anywhere, Mobile included.
+    decision before it's buildable anywhere, Mobile included. Design proposed:
+    `plan/adr/0010-soft-assertions.md` (PR #98, status Proposed, pending approval).
 
 ---
 
