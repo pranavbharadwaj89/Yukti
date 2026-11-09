@@ -5,9 +5,11 @@ using OpenQA.Selenium.Appium.Android;
 using OpenQA.Selenium.Appium.iOS;
 using OpenQA.Selenium.Interactions;
 using Yukti.Contracts;
+using Yukti.Domain.Execution;
 using Yukti.Domain.MobileTesting;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
+using Yukti.Domain.UiVocabulary;
 using ExecutionContext = Yukti.Contracts.ExecutionContext;
 
 namespace Yukti.Infrastructure.InMemory.Modules;
@@ -40,10 +42,16 @@ public sealed class MobileModule : IAutomationModule
     /// can tell a stale session from a healthy one without a timer -- checked lazily, on the
     /// next action against it, same "no background machinery" shape RetryFlakeHandler's own
     /// per-call checks already use.</summary>
-    private sealed record MobileSession(AppiumDriver Driver, DateTimeOffset CreatedAt, TimeSpan Timeout)
+    private sealed record MobileSession(AppiumDriver Driver, MobilePlatform Platform, DateTimeOffset CreatedAt, TimeSpan Timeout)
     {
         public bool IsExpired(DateTimeOffset now) => now - CreatedAt > Timeout;
     }
+
+    /// <summary>MOB-T4, mirrors WebModule's own DefaultLocatorTimeoutMs — used only for the
+    /// Locator-based resolution path, never the legacy plain-string one, which keeps its own
+    /// implicit per-FindElement behaviour unchanged (zero behavioural change for an existing
+    /// flow's plain-string selector).</summary>
+    private static readonly TimeSpan DefaultLocatorTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ConcurrentDictionary<FlowRunId, MobileSession> _sessions = new();
     private readonly TimeProvider _clock;
@@ -61,7 +69,7 @@ public sealed class MobileModule : IAutomationModule
             Description = "Taps the first element matching a selector.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "XPath (starting with /) or accessibility id." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
             }
         },
         new ActionSchema
@@ -70,7 +78,7 @@ public sealed class MobileModule : IAutomationModule
             Description = "Sets the value of the first element matching a selector.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "XPath (starting with /) or accessibility id." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
                 new ParamSpec { Name = "value", Type = ParamType.String, Required = true, Description = "Text to set on the matched element." },
             }
         },
@@ -92,10 +100,22 @@ public sealed class MobileModule : IAutomationModule
             Description = "Asserts an element matching a selector is displayed. A missing or hidden element both read as not-visible.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "XPath (starting with /) or accessibility id." },
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
             }
         },
     };
+
+    /// <summary>MOB-T4: "XPath carries an explicit warning in the UI: on mobile it is genuinely
+    /// slow, because the driver serializes the whole UI tree for each query. This is not a style
+    /// preference; it's a measurable performance cliff." Zero schema/UI changes needed to say
+    /// this -- same as every WEB-T4 selector param's own "also accepts an inline locator object"
+    /// text, the generic schema-driven form already renders whatever Description says.</summary>
+    private const string MobileSelectorParamDescription =
+        "AccessibilityId or resource-id string (plain), XPath (starting with /), or an inline locator object " +
+        "({primary, fallbacks, description, within, nth} -- AccessibilityId, ResourceId, IosPredicate, " +
+        "IosClassChain, ClassName, Text, XPath) or an already-resolved Object Repository reference. " +
+        "XPath works but is measurably slower on mobile than every other strategy here -- the driver " +
+        "serializes the whole UI tree for each query -- prefer AccessibilityId when the app exposes one.";
 
     public async Task Setup(ExecutionContext ctx, CancellationToken ct)
     {
@@ -138,7 +158,7 @@ public sealed class MobileModule : IAutomationModule
             throw ClassifySessionFailure(ex, profile);
         }
 
-        _sessions[ctx.RunId] = new MobileSession(driver, _clock.GetUtcNow(), profile.SessionTimeout);
+        _sessions[ctx.RunId] = new MobileSession(driver, profile.Platform, _clock.GetUtcNow(), profile.SessionTimeout);
     }
 
     /// <summary>
@@ -297,16 +317,18 @@ public sealed class MobileModule : IAutomationModule
             {
                 case "tap":
                     {
-                        var selector = RequireString(parameters, "selector");
-                        ResolveElement(driver, selector).Click();
-                        return StepOutcome.Passed($"Tapped {selector}");
+                        var raw = RequireSelectorParam(parameters);
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        target.Click();
+                        return StepOutcome.Passed($"Tapped {name}", locatorResolution: info);
                     }
                 case "type":
                     {
-                        var selector = RequireString(parameters, "selector");
+                        var raw = RequireSelectorParam(parameters);
                         var value = RequireString(parameters, "value");
-                        ResolveElement(driver, selector).SendKeys(value);
-                        return StepOutcome.Passed($"Typed into {selector}");
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        target.SendKeys(value);
+                        return StepOutcome.Passed($"Typed into {name}", locatorResolution: info);
                     }
                 case "swipe":
                     {
@@ -326,13 +348,23 @@ public sealed class MobileModule : IAutomationModule
                     }
                 case "assertVisible":
                     {
-                        var selector = RequireString(parameters, "selector");
+                        var raw = RequireSelectorParam(parameters);
                         bool visible;
-                        try { visible = ResolveElement(driver, selector).Displayed; }
-                        catch { visible = false; }
+                        string name;
+                        try
+                        {
+                            var (target, _, resolvedName) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                            visible = target.Displayed;
+                            name = resolvedName;
+                        }
+                        catch
+                        {
+                            visible = false;
+                            name = DescribeSelectorParam(raw);
+                        }
                         return visible
-                            ? StepOutcome.Passed($"{selector} is visible.")
-                            : StepOutcome.Failed($"{selector} is not visible.");
+                            ? StepOutcome.Passed($"{name} is visible.")
+                            : StepOutcome.Failed($"{name} is not visible.");
                     }
                 default:
                     return StepOutcome.Failed($"Unknown mobile action \"{action}\".");
@@ -340,10 +372,80 @@ public sealed class MobileModule : IAutomationModule
         }
         catch (Exception ex)
         {
+            var data = new Dictionary<string, object?>();
             var log = await TryCaptureAppiumLog(driver, ct);
-            return StepOutcome.Failed(ex.Message, log is null ? null : new Dictionary<string, object?> { ["appiumServerLog"] = log });
+            if (log is not null)
+                data["appiumServerLog"] = log;
+
+            // MOB-T4's own checklist: "failure diagnostics include a screenshot and the UI
+            // hierarchy XML" -- scoped to a locator-resolution failure specifically (the mobile
+            // equivalent of WEB-T4's screenshot-on-selector-failure), not every possible action
+            // failure (a swipe failure, say, has nothing to do with a selector at all).
+            if (ex is MobileSelectorNotFoundException)
+            {
+                var diagnostics = await TryCaptureLocatorFailureDiagnostics(driver, ct);
+                if (diagnostics is not null)
+                    foreach (var (key, value) in diagnostics)
+                        data[key] = value;
+            }
+
+            return StepOutcome.Failed(ex.Message, data.Count > 0 ? data : null);
         }
     }
+
+    /// <summary>MOB-T4: "failure diagnostics include a screenshot and the UI hierarchy XML."
+    /// Best-effort, same tolerance as <see cref="TryCaptureAppiumLog"/> -- a driver/platform that
+    /// doesn't support one must never turn a real step failure into a different, more confusing
+    /// failure about diagnostics.</summary>
+    private static async Task<IReadOnlyDictionary<string, object?>?> TryCaptureLocatorFailureDiagnostics(AppiumDriver driver, CancellationToken ct)
+    {
+        var diagnostics = new Dictionary<string, object?>();
+        try
+        {
+            var screenshot = await Task.Run(() => driver.GetScreenshot(), ct);
+            diagnostics["screenshot"] = Convert.ToBase64String(screenshot.AsByteArray);
+        }
+        catch { /* best-effort */ }
+
+        try
+        {
+            diagnostics["uiHierarchy"] = await Task.Run(() => driver.PageSource, ct);
+        }
+        catch { /* best-effort */ }
+
+        return diagnostics.Count > 0 ? diagnostics : null;
+    }
+
+    /// <summary>MOB-T4: a step's "selector" param is either the legacy plain string (zero
+    /// behavioural change), an already-resolved Yukti.Domain.UiVocabulary.Locator
+    /// (FlowEngine.ResolveLocatorRef already did this for a RepositoryRef, WEB-T2's mechanism,
+    /// engine-neutral, reused as-is), or an inline locator object a flow author wrote directly
+    /// in the step's params (LocatorParamMapper, shared with WebModule, never duplicated).</summary>
+    private static async Task<(IWebElement Target, LocatorResolutionInfo? Info, string Name)> ResolveLocatorTarget(
+        AppiumDriver driver, object raw, MobilePlatform platform, CancellationToken ct)
+    {
+        if (raw is string selector)
+            return (ResolveElement(driver, selector), null, selector);
+
+        var locator = raw as Locator ?? LocatorParamMapper.Parse(raw);
+        var outcome = await AppiumLocatorResolver.ResolveAsync(driver, locator, platform, DefaultLocatorTimeout, ct);
+        var name = locator.Description ?? "locator";
+        if (!outcome.Succeeded)
+            throw new MobileSelectorNotFoundException(outcome.FailureDetail!);
+        return (outcome.Resolved!, outcome.Info, name);
+    }
+
+    private static object RequireSelectorParam(IReadOnlyDictionary<string, object?> parameters) =>
+        parameters.GetValueOrDefault("selector")
+            ?? throw new ArgumentException("mobile.selector is required.");
+
+    private static string DescribeSelectorParam(object raw) => raw switch
+    {
+        string s => s,
+        Locator l => l.Description ?? "locator",
+        IReadOnlyDictionary<string, object?> d when d.GetValueOrDefault("description") is string desc => desc,
+        _ => "locator",
+    };
 
     /// <summary>MOB-T1: "Appium-side logs are captured and attached to the step result on
     /// failure, because the real cause is usually in the driver's log rather than the

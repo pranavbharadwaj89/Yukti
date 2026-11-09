@@ -1716,3 +1716,41 @@ work here, don't assume they still hold.
   Next: MOB-T4 (Mobile locators) — `AccessibilityId`/`ResourceId`/`IosPredicate`/`IosClassChain`/
   `ClassName` strategies against the shared `LocatorStrategy` vocabulary (WEB-T1), fallback
   resolution, Object Repository integration, XPath performance warning.
+
+  **MOB-T4 (Mobile locators) closed 2026-11-09.** `AppiumLocatorResolver` implements the shared
+  `Yukti.Domain.UiVocabulary.Locator` against Appium — the Mobile counterpart to WEB-T3's
+  `PlaywrightLocatorResolver`, same shape: `Build` is the pure strategy-to-`By` mapping
+  (`AccessibilityId`→`MobileBy.AccessibilityId`, `ResourceId`→`MobileBy.Id`, `IosPredicate`,
+  `IosClassChain`, `ClassName`, `XPath`, platform-aware `Text` via `IosNSPredicate`/
+  `AndroidUIAutomator`; every Web-only strategy — `TestId`/`Role`/`Label`/`Placeholder`/`Css` —
+  rejected by name, never silently misinterpreted), `ResolveAsync` polls `FindElements` (no
+  `WebDriverWait`/`Selenium.Support` dependency added — a hand-rolled poll loop, same reasoning as
+  not adding a NuGet package for three config reads in D5-T3) through primary then every fallback
+  in declared order, each attempt scoped to the same resolved `Within` parent, `Nth` selection
+  applied per attempt; a fallback success is always a flagged pass (`LocatorResolutionInfo` naming
+  the fallback and why the primary failed), never silent. `MobileModule`'s `tap`/`type`/
+  `assertVisible` now accept a plain string (legacy, zero behavioural change), an already-resolved
+  `Locator` (Object Repository, via the existing engine-neutral `FlowEngine.ResolveLocatorRef`,
+  proven end-to-end with a real repository entry and zero Mobile-specific resolution code — one
+  repository entry already works for both engines), or an inline locator object
+  (`LocatorParamMapper`, shared with `WebModule`, not duplicated). A missing/unresolved selector
+  now fails with a typed `MobileSelectorNotFoundException` naming every strategy tried and how
+  many elements each matched — never a bare Appium exception — and that specific failure captures
+  a screenshot + the full UI hierarchy XML into the step's data (best-effort, same tolerance as
+  the existing Appium-log capture; never turns a real failure into a confusing one about
+  diagnostics). XPath's param description now carries the spec's own explicit performance warning
+  (driver serializes the whole UI tree per query) and steers authors to `AccessibilityId` first.
+  **Left open, flagged not invented (same constraint as MOB-T1/T2/T3):** no live Appium
+  server/device exists in this environment, so `ResolveAsync`'s full fallback/`Within`/`Nth`
+  orchestration against a real driver isn't exercisable end-to-end here — what's proven instead is
+  `Build` (the pure, directly-testable mapping every strategy goes through) plus the Object
+  Repository integration (via `EchoModule`, an orchestration-level proof independent of a live
+  driver). Recorded as `plan/OPEN-QUESTIONS.md` Mobile item 6.
+  ✔ `dotnet test --filter "FullyQualifiedName~MobileLocator"` → 14/14 passing.
+  `dotnet build -warnaserror` → 0 warnings, 0 errors. `dotnet format --verify-no-changes` → clean.
+  Full solution `dotnet test` → Orchestration.Tests 356/356 (incl. all pre-existing Mobile tests,
+  unbroken); Infrastructure.Tests' 13 failures are the pre-existing, documented
+  Postgres-not-running-on-this-machine gap (DISC-15), unrelated to this change, confirmed by
+  inspecting the failures directly (all `Npgsql`/connection-refused, all in `TenantIsolationTests`).
+  Next: MOB-T5 (Gestures) — tap/double-tap/long-press/swipe/scroll/pinch/drag-and-drop against the
+  `Gesture` vocabulary already declared in the spec.

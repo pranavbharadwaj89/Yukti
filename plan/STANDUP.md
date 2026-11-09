@@ -2223,3 +2223,32 @@ never fixed, only removed from CI's view. Fixing that is the real prerequisite f
 Git Agent back, not just re-adding the files.
 
 Next: Mobile Testing Module — owner has confirmed intent to start it after this PR is green.
+
+## 2026-11-09 ~11:30 IST — MOB-T4 (Mobile locators)
+
+Done: Re-verified the true baseline before touching anything — found MOB-T4's implementation
+already written but uncommitted in the working tree, sitting on `feature/MOB-T3-session-lifecycle`
+(whose own commit, MOB-T3, is already pushed as PR #92, still open/unmerged). Checked it against
+`plan/specs/MOBILE-TESTING-MODULE.md`'s own MOB-T4 checklist line by line (all 6 items: shared
+`Locator` type against Appium, all 7 strategies, XPath warning, flagged-pass fallback, `Within`/
+`Nth` chaining, shared Object-Repository entry, screenshot+UI-hierarchy failure diagnostics) —
+genuinely complete, not partial. Verified rather than assumed: `dotnet build -warnaserror` → 0/0;
+`dotnet format --verify-no-changes` → clean; the task's own `✔` filter
+(`FullyQualifiedName~MobileLocator`) → 14/14; broader `~Mobile` → 37/37 (no regression in MOB-T1/
+T2/T3's own tests); full solution `dotnet test` → Orchestration.Tests 356/356, Infrastructure.Tests'
+13 failures are the pre-existing, already-documented Postgres-not-running-on-this-machine gap
+(DISC-15) — confirmed by reading the stack traces directly (`Npgsql`/connection-refused, all in
+`TenantIsolationTests`), not assumed unrelated. Cut a proper branch,
+`feature/MOB-T4-mobile-locators`, stacked on `feature/MOB-T3-session-lifecycle` (same pattern
+D5-T4 used stacking on D5-T3 while it was still unmerged), since the work had been sitting on the
+wrong branch with no task-scoped name. Closed MOB-T4 in `plan/PLAN.md` with full evidence; added
+`plan/OPEN-QUESTIONS.md` Mobile item 6 for the one real limitation (no live Appium server/device
+in this environment, so `ResolveAsync`'s full fallback/`Within`/`Nth` orchestration against a real
+driver isn't exercised end-to-end — same standing constraint as MOB-T1/T2/T3, not new).
+Discovered: none new — this session's job was verifying and landing already-written work, not
+building from scratch.
+Scope guards: none.
+Exit check: on track. Committing this branch and opening a PR (stacked on #92), per the work loop
+— owner reviews and merges.
+Next: push `feature/MOB-T4-mobile-locators`, open its PR against `feature/MOB-T3-session-lifecycle`.
+Then MOB-T5 (Gestures) is next per the spec's own task order.
