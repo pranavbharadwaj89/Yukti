@@ -913,7 +913,7 @@ flows.MapPost("/{flowId:guid}/steps", async (Guid flowId, AddStepRequest req, Ht
     {
         await handler.Handle(new AddFlowStepCommand(
             new FlowId(flowId), req.Name, ModuleKind.Custom(req.Module), req.Action,
-            JsonParamNormalizer.Normalize(req.Params), req.SaveAs, req.When, principal.GetUserId()), ct);
+            JsonParamNormalizer.Normalize(req.Params), req.SaveAs, req.When, principal.GetUserId(), req.Soft), ct);
         return Results.NoContent();
     }
     catch (InvalidOperationException)

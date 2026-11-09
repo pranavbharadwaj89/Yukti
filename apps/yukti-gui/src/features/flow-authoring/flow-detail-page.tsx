@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { flowsApi, flowReportsApi, getActionParams, modulesApi, runsApi, ApiError } from "@/services/api-client";
 import { Button, Card, Dialog, Input, Spinner, StatusPill } from "@/components/ui/primitives";
-import { Select } from "@/components/ui/form-controls";
+import { Checkbox, Select } from "@/components/ui/form-controls";
 import { useToastStore } from "@/store/toast-store";
 import { WorkflowCanvas } from "@/features/flow-authoring/workflow-canvas";
 import { ParamFields, buildParamsFromFields, type FieldValue } from "@/features/shared/param-fields";
@@ -69,11 +69,12 @@ export function FlowDetailPage() {
   const [stepName, setStepName] = useState("");
   const [fieldValues, setFieldValues] = useState<Record<string, FieldValue>>({});
   const [saveAs, setSaveAs] = useState("");
+  const [soft, setSoft] = useState(false);
 
   const addStepMutation = useMutation({
     mutationFn: () => {
       const params = buildParamsFromFields(selectedActionSchema, fieldValues);
-      return flowsApi.addStep(flowId, { name: stepName, module: moduleKind, action, params, saveAs: saveAs || undefined });
+      return flowsApi.addStep(flowId, { name: stepName, module: moduleKind, action, params, saveAs: saveAs || undefined, soft });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["flows", flowId] });
@@ -81,6 +82,7 @@ export function FlowDetailPage() {
       setStepName("");
       setFieldValues({});
       setSaveAs("");
+      setSoft(false);
       setAddStepOpen(false);
     },
     onError: (err) => pushToast({ kind: "error", message: err instanceof Error ? err.message : "Failed to add step." }),
@@ -237,6 +239,12 @@ export function FlowDetailPage() {
             data-testid="step-name-input"
           />
           <Input placeholder="Save as (optional)" value={saveAs} onChange={(e) => setSaveAs(e.target.value)} />
+          <Checkbox
+            checked={soft}
+            onChange={setSoft}
+            label="Soft — a failure here won't stop the flow"
+            ariaLabel="Soft assertion"
+          />
           <Select
             value={moduleKind}
             placeholder="Module…"

@@ -64,6 +64,13 @@ public static class JUnitReportWriter
                         new XAttribute("message", result.Error ?? "Step failed."),
                         new XAttribute("type", $"{step.Module.Value}.{step.Action}"),
                         new XText($"params: {paramsExcerpt}{Environment.NewLine}data excerpt: {Excerpt(ParamRedaction.RedactData(result.Data))}")));
+
+                    // ADR-0010 (DISC-26): a soft step's failure doesn't stop the run -- flagged
+                    // the same honest, never-silent way flaky/locatorFallback already are, so
+                    // later testcases that still ran don't read as a reporting bug.
+                    if (result.Soft)
+                        testcase.Add(new XElement("properties",
+                            new XElement("property", new XAttribute("name", "soft"), new XAttribute("value", "true"))));
                     break;
                 case StepStatus.Skipped:
                     testcase.Add(new XElement("skipped", new XAttribute("message", result.Message ?? "when condition was false")));
@@ -166,6 +173,7 @@ public static class JsonReportWriter
                 error = r.Error,
                 data = ParamRedaction.RedactData(r.Data),
                 isFlaky = r.IsFlaky,
+                soft = r.Soft,
                 usedLocatorFallback = r.UsedLocatorFallback,
                 locatorResolution = r.LocatorResolution is null ? null : new
                 {

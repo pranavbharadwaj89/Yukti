@@ -19,6 +19,8 @@ public sealed class FlowFileStepDto
     [JsonPropertyName("params")] public Dictionary<string, object?> Params { get; set; } = new();
     [JsonPropertyName("saveAs")] public string? SaveAs { get; set; }
     [JsonPropertyName("when")] public string? When { get; set; }
+    /// <summary>ADR-0010 (DISC-26): this step's failure does not stop the flow.</summary>
+    [JsonPropertyName("soft")] public bool Soft { get; set; }
 }
 
 public sealed class FlowFileDto

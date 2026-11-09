@@ -111,6 +111,11 @@ export function RunDetailPage() {
                   <div className="font-mono text-xs text-ink-dim">
                     {r.module}.{r.action} · {r.durationMs}ms
                     {r.isFlaky && <span className="ml-1 text-warning">flaky</span>}
+                    {r.status === "Failed" && r.soft && (
+                      <span className="ml-1 text-warning" title="This failure did not stop the run.">
+                        soft
+                      </span>
+                    )}
                   </div>
                 </div>
                 <StatusPill status={r.status} />

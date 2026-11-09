@@ -1885,6 +1885,7 @@ export interface components {
             } | null;
             saveAs?: string | null;
             when?: string | null;
+            soft?: boolean;
         };
         AiAttributionResponse: {
             capability?: string | null;
@@ -2132,6 +2133,7 @@ export interface components {
             /** Format: int32 */
             order?: number;
             aiAttribution?: components["schemas"]["AiAttributionResponse"];
+            soft?: boolean;
         };
         FlowSummaryReadModel: {
             flowId?: components["schemas"]["FlowId"];
@@ -2311,6 +2313,7 @@ export interface components {
             retryHistory?: components["schemas"]["RetryAttemptResponse"][] | null;
             usedLocatorFallback?: boolean;
             locatorResolution?: components["schemas"]["LocatorResolutionResponse"];
+            soft?: boolean;
         };
         SuggestFlowRequest: {
             naturalLanguageDescription?: string | null;

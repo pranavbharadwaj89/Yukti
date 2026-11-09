@@ -129,12 +129,12 @@ public sealed class Flow : AggregateRoot<FlowId>
 
     public void AddStep(string name, ModulePlugin.ModuleKind module, string action,
         IReadOnlyDictionary<string, object?> parameters, string? saveAs = null, string? whenCondition = null,
-        Execution.AiAttribution? aiAttribution = null)
+        Execution.AiAttribution? aiAttribution = null, bool soft = false)
     {
         if (Status != FlowStatus.Draft)
             throw new DomainException("Cannot modify a non-draft Flow. Create a new version instead.");
 
-        var step = new FlowStep(FlowStepId.New(), name, module, action, parameters, _steps.Count, saveAs, whenCondition, aiAttribution);
+        var step = new FlowStep(FlowStepId.New(), name, module, action, parameters, _steps.Count, saveAs, whenCondition, aiAttribution, soft);
         _steps.Add(step);
     }
 

@@ -223,4 +223,84 @@ public sealed class FlowEngineSemanticsTests
         Assert.Equal(2, module.CallCount); // step 2's Run was never called
         Assert.Equal(RunStatus.Passed, completed.Status); // Passed + Skipped, no failures, is Passed
     }
+
+    // ---- Soft assertions (ADR-0010 / DISC-26) ----
+
+    [Fact]
+    public async Task A_soft_step_that_fails_does_not_stop_the_flow_but_the_run_is_still_Failed()
+    {
+        var module = new ScriptedModule(StepOutcome.Passed(), StepOutcome.Failed("soft step fails"), StepOutcome.Passed(), StepOutcome.Passed());
+        var engine = BuildEngine(module, ZeroDelay1Attempt, out _);
+
+        var tenantId = TenantId.New();
+        var flow = Flow.CreateDraft("Soft-step flow", null, tenantId, UserId.New());
+        // ContinueOnFailure stays false (default) -- proving Soft alone, on just this one step,
+        // is what keeps the run going, not the flow-level switch.
+        flow.AddStep("Step 1", ScriptedModule.Kind, "run", new Dictionary<string, object?>());
+        flow.AddStep("Step 2 — soft", ScriptedModule.Kind, "run", new Dictionary<string, object?>(), soft: true);
+        flow.AddStep("Step 3", ScriptedModule.Kind, "run", new Dictionary<string, object?>());
+        flow.AddStep("Step 4", ScriptedModule.Kind, "run", new Dictionary<string, object?>());
+
+        var run = FlowRun.Create(flow.Id, RunTrigger.Api, tenantId);
+        var completed = await engine.Execute(flow, run, new InMemoryCredentialResolver(), CancellationToken.None);
+
+        Assert.Equal(4, completed.Results.Count); // all 4 ran, despite step 2 failing and ContinueOnFailure being false
+        Assert.Equal(StepStatus.Passed, completed.Results[0].Status);
+        Assert.Equal(StepStatus.Failed, completed.Results[1].Status);
+        Assert.True(completed.Results[1].Soft); // never hidden -- still reports Failed, flagged as soft
+        Assert.Equal(StepStatus.Passed, completed.Results[2].Status);
+        Assert.Equal(StepStatus.Passed, completed.Results[3].Status);
+        Assert.Equal(RunStatus.Failed, completed.Status); // a soft failure still fails the run overall
+        Assert.Equal(4, module.CallCount);
+    }
+
+    [Fact]
+    public async Task Soft_protects_only_its_own_step_a_later_non_soft_failure_still_stops_the_flow()
+    {
+        var module = new ScriptedModule(StepOutcome.Passed(), StepOutcome.Failed("soft step fails"), StepOutcome.Failed("non-soft step fails"), StepOutcome.Passed());
+        var engine = BuildEngine(module, ZeroDelay1Attempt, out _);
+
+        var tenantId = TenantId.New();
+        var flow = Flow.CreateDraft("Soft-does-not-blanket-continue flow", null, tenantId, UserId.New());
+        flow.AddStep("Step 1", ScriptedModule.Kind, "run", new Dictionary<string, object?>());
+        flow.AddStep("Step 2 — soft", ScriptedModule.Kind, "run", new Dictionary<string, object?>(), soft: true);
+        flow.AddStep("Step 3 — not soft", ScriptedModule.Kind, "run", new Dictionary<string, object?>());
+        flow.AddStep("Step 4", ScriptedModule.Kind, "run", new Dictionary<string, object?>());
+
+        var run = FlowRun.Create(flow.Id, RunTrigger.Api, tenantId);
+        var completed = await engine.Execute(flow, run, new InMemoryCredentialResolver(), CancellationToken.None);
+
+        Assert.Equal(3, completed.Results.Count); // step 4 never reached -- step 3's own failure, not soft, stops it
+        Assert.True(completed.Results[1].Soft);
+        Assert.False(completed.Results[2].Soft);
+        Assert.Equal(StepStatus.Failed, completed.Results[2].Status);
+        Assert.Equal(RunStatus.Failed, completed.Status);
+        Assert.Equal(3, module.CallCount); // step 4's Run never called
+    }
+
+    [Fact]
+    public async Task A_soft_steps_unresolved_variable_reference_also_does_not_stop_the_flow()
+    {
+        // Exercises the OTHER fail-fast decision point in FlowEngine -- the one reached when
+        // interpolation itself throws (VariableResolutionException), one line earlier than the
+        // usual post-dispatch path the tests above cover.
+        var module = new ScriptedModule(StepOutcome.Passed(), StepOutcome.Passed());
+        var engine = BuildEngine(module, ZeroDelay1Attempt, out _);
+
+        var tenantId = TenantId.New();
+        var flow = Flow.CreateDraft("Soft unresolved-variable flow", null, tenantId, UserId.New());
+        flow.AddStep("Step 1 — references a variable no earlier step produced", ScriptedModule.Kind, "run",
+            new Dictionary<string, object?> { ["x"] = "{{vars.neverProduced.field}}" }, soft: true);
+        flow.AddStep("Step 2", ScriptedModule.Kind, "run", new Dictionary<string, object?>());
+
+        var run = FlowRun.Create(flow.Id, RunTrigger.Api, tenantId);
+        var completed = await engine.Execute(flow, run, new InMemoryCredentialResolver(), CancellationToken.None);
+
+        Assert.Equal(2, completed.Results.Count); // step 2 still ran despite step 1 never even dispatching
+        Assert.Equal(StepStatus.Failed, completed.Results[0].Status);
+        Assert.True(completed.Results[0].Soft);
+        Assert.Equal(StepStatus.Passed, completed.Results[1].Status);
+        Assert.Equal(RunStatus.Failed, completed.Status);
+        Assert.Equal(1, module.CallCount); // step 1 never dispatched at all; step 2 did
+    }
 }

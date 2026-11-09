@@ -25,6 +25,13 @@ public sealed class FlowStep : Entity<FlowStepId>
     public string? WhenCondition { get; private set; }
     public int Order { get; private set; }
 
+    /// <summary>ADR-0010 (DISC-26): a soft step's failure is still a real, reported `Failed` --
+    /// never hidden -- but does not stop the flow the way an ordinary failure does, even when
+    /// the flow's own `ContinueOnFailure` is false. Scoped to one step, not the whole run, which
+    /// `ContinueOnFailure` already covers. See `FlowEngine`'s own fail-fast check for where this
+    /// is read.</summary>
+    public bool Soft { get; private set; }
+
     /// <summary>
     /// D5-T6 (CLAUDE.md principle 3): null for every manually/CLI-authored step — the ordinary
     /// case, and the only case until Sarvagna's planning pipeline (D5-T3/T5) existed. Non-null
@@ -48,7 +55,8 @@ public sealed class FlowStep : Entity<FlowStepId>
         int order,
         string? saveAs = null,
         string? whenCondition = null,
-        AiAttribution? aiAttribution = null) : base(id)
+        AiAttribution? aiAttribution = null,
+        bool soft = false) : base(id)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("FlowStep name cannot be empty.");
@@ -63,6 +71,7 @@ public sealed class FlowStep : Entity<FlowStepId>
         SaveAs = saveAs;
         WhenCondition = whenCondition;
         AiAttribution = aiAttribution;
+        Soft = soft;
     }
 
     /// <summary>

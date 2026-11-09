@@ -40,19 +40,20 @@ public sealed record GenerateFlowResponse(
 
 public sealed record AddStepRequest(
     string Name, string Module, string Action,
-    Dictionary<string, object?> Params, string? SaveAs, string? When);
+    Dictionary<string, object?> Params, string? SaveAs, string? When, bool Soft = false);
 
 public sealed record TriggerRunRequest(Dictionary<string, object?>? VariableOverrides);
 
 public sealed record FlowStepResponse(
     Guid Id, string Name, string Module, string Action,
     IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When, int Order,
-    AiAttributionResponse? AiAttribution)
+    AiAttributionResponse? AiAttribution, bool Soft)
 {
     public static FlowStepResponse From(FlowStep step) => new(
         step.Id.Value, step.Name, step.Module.Value, step.Action,
         step.Params, step.SaveAs, step.WhenCondition, step.Order,
-        step.AiAttribution is { } a ? new AiAttributionResponse(a.Capability, a.Confidence, a.ModelIdentifier, a.PromptVersion) : null);
+        step.AiAttribution is { } a ? new AiAttributionResponse(a.Capability, a.Confidence, a.ModelIdentifier, a.PromptVersion) : null,
+        step.Soft);
 }
 
 /// <summary>D5-T6/T7: null on every manually-authored step; present only on a Coder-generated one.</summary>
@@ -194,7 +195,8 @@ public sealed record LocatorResolutionResponse(string StrategyUsed, string Prima
 public sealed record StepResultResponse(
     Guid Id, string StepName, string Module, string Action, string Status,
     double DurationMs, string? Message, string? Error, object? Data, bool IsFlaky,
-    IReadOnlyList<RetryAttemptResponse> RetryHistory, bool UsedLocatorFallback, LocatorResolutionResponse? LocatorResolution)
+    IReadOnlyList<RetryAttemptResponse> RetryHistory, bool UsedLocatorFallback, LocatorResolutionResponse? LocatorResolution,
+    bool Soft)
 {
     // D6-T3a: a module's Data can carry the same shape a header can — ApiModule's own response
     // "headers" field, which can include a server's Set-Cookie — so the run API response needs
@@ -207,7 +209,8 @@ public sealed record StepResultResponse(
         result.RetryHistory.Select(a => new RetryAttemptResponse(
             a.AttemptNumber, a.Status.ToString(), a.Duration.TotalMilliseconds, a.Error)).ToList(),
         result.UsedLocatorFallback,
-        result.LocatorResolution is null ? null : LocatorResolutionResponse.From(result.LocatorResolution));
+        result.LocatorResolution is null ? null : LocatorResolutionResponse.From(result.LocatorResolution),
+        result.Soft);
 }
 
 public sealed record FlowRunResponse(

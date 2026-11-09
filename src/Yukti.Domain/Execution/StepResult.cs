@@ -25,6 +25,12 @@ public sealed class StepResult : Entity<StepResultId>
     public AiAttribution? AiAttribution { get; }
     public LocatorResolutionInfo? LocatorResolution { get; }
 
+    /// <summary>ADR-0010 (DISC-26): denormalized from the originating `FlowStep.Soft`, same
+    /// reasoning as `StepName`/`Module`/`Action` above — a report must reflect exactly what ran,
+    /// including whether a `Failed` step was soft (why the run kept going past it), even if the
+    /// Draft's step is edited afterward.</summary>
+    public bool Soft { get; }
+
     private readonly List<RetryAttempt> _retryHistory;
     public IReadOnlyList<RetryAttempt> RetryHistory => _retryHistory.AsReadOnly();
 
@@ -33,7 +39,7 @@ public sealed class StepResult : Entity<StepResultId>
         StepStatus status, TimeSpan duration,
         string? message = null, string? error = null, object? data = null,
         AiAttribution? aiAttribution = null, IEnumerable<RetryAttempt>? retryHistory = null,
-        LocatorResolutionInfo? locatorResolution = null)
+        LocatorResolutionInfo? locatorResolution = null, bool soft = false)
         : base(StepResultId.New())
     {
         SourceStepId = sourceStepId;
@@ -47,6 +53,7 @@ public sealed class StepResult : Entity<StepResultId>
         Data = data;
         AiAttribution = aiAttribution;
         LocatorResolution = locatorResolution;
+        Soft = soft;
         _retryHistory = retryHistory?.ToList() ?? new List<RetryAttempt>();
     }
 
@@ -63,7 +70,7 @@ public sealed class StepResult : Entity<StepResultId>
     private StepResult(
         StepResultId id, FlowStepId sourceStepId, string stepName, ModuleKind module, string action,
         StepStatus status, TimeSpan duration, string? message, string? error, object? data, AiAttribution? aiAttribution,
-        LocatorResolutionInfo? locatorResolution)
+        LocatorResolutionInfo? locatorResolution, bool soft)
         : base(id)
     {
         SourceStepId = sourceStepId;
@@ -77,14 +84,15 @@ public sealed class StepResult : Entity<StepResultId>
         Data = data;
         AiAttribution = aiAttribution;
         LocatorResolution = locatorResolution;
+        Soft = soft;
         _retryHistory = new List<RetryAttempt>();
     }
 
     public static StepResult Skipped(FlowStepId sourceStepId, string stepName, ModuleKind module, string action, string reason) =>
         new(sourceStepId, stepName, module, action, StepStatus.Skipped, TimeSpan.Zero, message: reason);
 
-    public static StepResult Failed(FlowStepId sourceStepId, string stepName, ModuleKind module, string action, string error) =>
-        new(sourceStepId, stepName, module, action, StepStatus.Failed, TimeSpan.Zero, error: error);
+    public static StepResult Failed(FlowStepId sourceStepId, string stepName, ModuleKind module, string action, string error, bool soft = false) =>
+        new(sourceStepId, stepName, module, action, StepStatus.Failed, TimeSpan.Zero, error: error, soft: soft);
 
     public bool IsFlaky => Status == StepStatus.Passed && _retryHistory.Count > 0;
 
