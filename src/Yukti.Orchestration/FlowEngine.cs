@@ -316,12 +316,12 @@ public sealed class FlowEngine
                     // same fail-fast/ContinueOnFailure decision as any other
                     // Failed step, just reached one line earlier than usual.
                     stepActivity?.SetTag("flow.step.status", StepStatus.Failed.ToString());
-                    run.RecordStepResult(StepResult.Failed(step.Id, step.Name, step.Module, step.Action, ex.Message));
+                    run.RecordStepResult(StepResult.Failed(step.Id, step.Name, step.Module, step.Action, ex.Message, step.Soft));
                     _logger.LogError("Step {StepName} ({Module}.{Action}) failed: {Error}",
                         step.Name, step.Module, step.Action, ex.Message);
                     await CommitRun(run, CancellationToken.None);
 
-                    if (!flow.ContinueOnFailure)
+                    if (!flow.ContinueOnFailure && !step.Soft)
                     {
                         _logger.LogWarning("FlowRun {FlowRunId} stopping early — step {StepName} failed and ContinueOnFailure is false",
                             run.Id.Value, step.Name);
@@ -350,7 +350,7 @@ public sealed class FlowEngine
                     retryOutcome.FinalOutcome.Status, dispatchStopwatch.Elapsed,
                     retryOutcome.FinalOutcome.Message, retryOutcome.FinalOutcome.Error, retryOutcome.FinalOutcome.Data,
                     retryOutcome.FinalOutcome.AiAttribution, retryOutcome.Attempts,
-                    retryOutcome.FinalOutcome.LocatorResolution);
+                    retryOutcome.FinalOutcome.LocatorResolution, step.Soft);
 
                 OrchestrationTelemetry.StepDispatchDuration.Record(dispatchStopwatch.Elapsed.TotalMilliseconds,
                     new KeyValuePair<string, object?>("module", step.Module.Value),
@@ -382,11 +382,11 @@ public sealed class FlowEngine
                 // of its own just-finished result.
                 await CommitRun(run, CancellationToken.None);
 
-                if (result.Status == StepStatus.Failed && !flow.ContinueOnFailure)
+                if (result.Status == StepStatus.Failed && !flow.ContinueOnFailure && !step.Soft)
                 {
                     _logger.LogWarning("FlowRun {FlowRunId} stopping early — step {StepName} failed and ContinueOnFailure is false",
                         run.Id.Value, step.Name);
-                    break; // fail-fast default (Product Philosophy 4.2)
+                    break; // fail-fast default (Product Philosophy 4.2), unless this step is Soft (ADR-0010)
                 }
             }
 

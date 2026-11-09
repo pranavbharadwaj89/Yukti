@@ -85,6 +85,41 @@ public sealed class CliIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task A_soft_steps_failure_does_not_stop_the_flow_but_the_run_still_exits_1()
+    {
+        // ADR-0010 (DISC-26): a real end-to-end proof, not just the in-memory FlowEngine test --
+        // the actual built CLI, a real process, a real HTTP round-trip.
+        var flowPath = WriteFlow("""
+        {
+          "name": "Soft-step flow",
+          "declaredVariables": ["baseUrl"],
+          "steps": [
+            { "name": "Soft bad status", "module": "api", "action": "request", "soft": true,
+              "params": { "url": "{{vars.baseUrl}}/items", "method": "POST", "body": {"name":"x"},
+                          "assert": [{"type":"status","expectedStatus": 999}] } },
+            { "name": "List endpoint still works", "module": "api", "action": "request",
+              "params": { "url": "{{vars.baseUrl}}/items", "method": "GET",
+                          "assert": [{"type":"status","expectedStatus": 200}] } }
+          ]
+        }
+        """);
+        var junitPath = TempPath("out.xml");
+
+        var result = await CliProcess.Run("run", flowPath, "--var", $"baseUrl={_stub.BaseUrl}", "--junit", junitPath);
+
+        Assert.Equal(1, result.ExitCode); // the run still failed overall -- soft never hides it
+        var doc = XDocument.Load(junitPath);
+        var testcases = doc.Descendants("testcase").ToList();
+        Assert.Equal(2, testcases.Count); // the second step actually ran, proving soft didn't fail-fast
+        Assert.Single(doc.Descendants("failure"));
+
+        var softProperty = doc.Descendants("testcase").First().Descendants("property")
+            .SingleOrDefault(p => p.Attribute("name")?.Value == "soft");
+        Assert.NotNull(softProperty);
+        Assert.Equal("true", softProperty!.Attribute("value")?.Value);
+    }
+
+    [Fact]
     public async Task An_unregistered_action_exits_2_naming_the_step_on_stderr()
     {
         var flowPath = WriteFlow("""

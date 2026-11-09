@@ -68,6 +68,8 @@ export interface FlowStepResponse {
   when?: string | null;
   /** D5-T6/T7: null on every manually-authored step; present only on an AI-generated one. */
   aiAttribution?: AiAttribution | null;
+  /** ADR-0010 (DISC-26): this step's failure does not stop the flow. */
+  soft?: boolean;
 }
 
 export interface AiAttribution {
@@ -137,6 +139,9 @@ export interface StepResultResponse {
   data?: unknown;
   isFlaky: boolean;
   retryHistory: RetryAttemptResponse[];
+  /** ADR-0010 (DISC-26): denormalized from the originating step -- a Failed result that was
+   * soft didn't stop the run, so the UI can explain why later steps still ran. */
+  soft?: boolean;
 }
 
 export interface FlowRunResponse {

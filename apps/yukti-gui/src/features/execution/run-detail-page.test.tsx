@@ -137,3 +137,45 @@ describe("RunDetailPage — screenshots (D6-T5)", () => {
     expect(screenshotsApi.fetchObjectUrl).not.toHaveBeenCalled();
   });
 });
+
+// ADR-0010 (DISC-26): a soft step's Failed status is never hidden, but the run kept going past
+// it -- the "soft" badge is what tells a reader that was intentional, not a reporting bug.
+describe("RunDetailPage — soft assertions (ADR-0010)", () => {
+  it("shows a soft badge on a Failed step that was soft", async () => {
+    vi.mocked(hooks.useLiveRunProgress).mockReturnValue({
+      run: { ...run, results: [stepResult({ status: "Failed", error: "expected visible, was not", soft: true })] },
+      error: null,
+      connectionState: "connected",
+    });
+
+    renderPageWithRunId();
+
+    expect(await screen.findByText("soft")).toBeInTheDocument();
+  });
+
+  it("shows no soft badge on an ordinary Failed step", async () => {
+    vi.mocked(hooks.useLiveRunProgress).mockReturnValue({
+      run: { ...run, results: [stepResult({ status: "Failed", error: "boom", soft: false })] },
+      error: null,
+      connectionState: "connected",
+    });
+
+    renderPageWithRunId();
+
+    await screen.findAllByText("Capture");
+    expect(screen.queryByText("soft")).not.toBeInTheDocument();
+  });
+
+  it("shows no soft badge on a Passed step even if soft happened to be set", async () => {
+    vi.mocked(hooks.useLiveRunProgress).mockReturnValue({
+      run: { ...run, results: [stepResult({ status: "Passed", soft: true })] },
+      error: null,
+      connectionState: "connected",
+    });
+
+    renderPageWithRunId();
+
+    await screen.findAllByText("Capture");
+    expect(screen.queryByText("soft")).not.toBeInTheDocument();
+  });
+});

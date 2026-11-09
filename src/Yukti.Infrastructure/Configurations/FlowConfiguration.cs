@@ -73,6 +73,9 @@ public sealed class FlowConfiguration : IEntityTypeConfiguration<Flow>
             steps.Property(s => s.WhenCondition).HasColumnName("when_condition");
             steps.Property(s => s.Order);
 
+            // ADR-0010 (DISC-26): a soft step's failure does not stop the flow.
+            steps.Property(s => s.Soft);
+
             steps.Property(s => s.Params)
                 .HasConversion(JsonValueConverters.Dictionary)
                 .HasColumnName("params")

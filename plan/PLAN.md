@@ -1596,3 +1596,78 @@ work here, don't assume they still hold.
   gap next to it visible) — not fixed here, since it's a pre-existing, unrelated behavior this
   session didn't introduce and wasn't asked to audit. Flagging for an explicit decision: is this
   intentional ("a new version starts fresh and must explicitly re-opt-in") or a real bug?
+
+- [x] DISC-26-IMPL Soft assertions, real implementation (ADR-0010, Accepted 2026-11-09). Scope
+  per the ADR's own Consequences: domain (`FlowStep.Soft`, `StepResult.Soft`, `FlowEngine`'s
+  fail-fast condition), EF migration, `AddFlowStepCommand`/API DTO, CLI flow-file schema,
+  frontend step editor + report UI.
+  **Correction to the ADR, not an edit to it (CLAUDE.md §1: never edit an Accepted ADR) — found
+  while starting this task:** `Flow.CreateNewVersion` reuses the *same* `FlowStep` objects
+  (`foreach (var step in _steps) next._steps.Add(step);`), not reconstructed copies — so a new
+  field on `FlowStep` carries forward automatically, with no risk of the DISC-24-style silent
+  reset the ADR predicted for this specific field. (DISC-24 itself, about `ContinueOnFailure`
+  specifically — a `Flow`-level field missing from `CreateNewVersion`'s object initializer — is
+  real and still open, just doesn't extend to `Soft`.) Also found: there is no "update step" or
+  "delete step" command/endpoint anywhere in this codebase today — flow authoring is add-only
+  (`AddFlowStepCommand`/`POST /flows/{id}/steps` only) — so `Soft` only needs to be an add-time
+  parameter, the same tier `saveAs`/`whenCondition` already are, with no separate edit path to
+  build.
+  **Closed 2026-11-09.** Every layer the ADR names, built:
+  - **Domain:** `FlowStep.Soft` (append-only constructor param, zero call-site breakage),
+    `Flow.AddStep(..., soft: false)`, `StepResult.Soft` denormalized onto both constructors and
+    the `Failed` factory. `FlowEngine`'s two independent fail-fast decision points — the normal
+    post-dispatch path and the earlier one reached when interpolation itself throws
+    (`VariableResolutionException`) — both now read `!step.Soft` alongside
+    `!flow.ContinueOnFailure`; `FlowRun.Status`'s own failure computation needed no change, exactly
+    as the ADR predicted.
+  - **EF:** migration `AddFlowStepAndStepResultSoft` (two `boolean NOT NULL DEFAULT false`
+    columns, `flow_steps`/`step_results`), Fluent API entries in both `FlowConfiguration.cs` and
+    `FlowRunConfiguration.cs`. Not round-trip-tested against a real Postgres here — no DB in this
+    environment (DISC-15) — same gap as every other recent field addition; the migration itself
+    was generated and inspected, not merely written by hand.
+  - **API:** `AddFlowStepCommand.Soft`, `AddStepRequest.Soft`, `FlowStepResponse.Soft`,
+    `StepResultResponse.Soft`, the `POST /flows/{id}/steps` handler threading it through. The
+    frontend's generated `schema.ts` was hand-edited to match exactly what the real generator
+    would produce — `npm run generate:api` needs a live API server, which needs a live DB
+    connection (confirmed directly: the API refuses to start at all without one, even just to
+    serve its own Swagger document — "Missing ConnectionStrings:YuktiRuntime/Yukti"), neither of
+    which exist here.
+  - **CLI:** `FlowFileStepDto.Soft` (flow-file JSON field `"soft"`), threaded through
+    `FlowLoader`; `JUnitReportWriter` adds a `<property name="soft" value="true">` on a soft
+    `Failed` testcase (mirrors the existing `flaky`/`locatorFallbackUsed` convention exactly);
+    `JsonReportWriter` adds a `soft` field per result.
+  - **Frontend:** a `Soft` checkbox in the step-add form (`flow-detail-page.tsx`, next to the
+    existing `saveAs` control — correcting the ADR's own claim of a `when` control existing too;
+    there isn't one, `saveAs` is the only existing sibling), and a "soft" badge on a Failed+soft
+    step in the run report (`run-detail-page.tsx`), both using the real `Checkbox` component
+    already in `components/ui/form-controls.tsx`. `services/types.ts`'s hand-maintained
+    `FlowStepResponse`/`StepResultResponse` interfaces got the field too.
+  **Discovered while testing, fixed, not an ADR correction:** writing the first real
+  dialog-opening test for this page surfaced a pre-existing bug in the test file's own mock —
+  `getActionParams: vi.fn(() => [])` returned an array where the real function returns
+  `ActionSchema | undefined`, crashing `ParamFields`' `schema.parameters.map` the moment a test
+  actually selected a module+action (never exercised before, since no prior test opened this
+  dialog with real data). Fixed the mock to mirror the real implementation.
+  ✔ `dotnet test --filter "FullyQualifiedName~FlowEngineSemanticsTests"` → 10/10 (7 pre-existing +
+  3 new Soft tests: a soft step's failure doesn't stop the flow but still fails the run; Soft
+  protects only its own step, a later non-soft failure still stops the flow; the same holds for
+  the interpolation-exception fail-fast path, not just the post-dispatch one).
+  A real end-to-end proof, not just the in-memory engine test: new
+  `tests/Yukti.Cli.Tests/CliIntegrationTests.cs` case
+  `A_soft_steps_failure_does_not_stop_the_flow_but_the_run_still_exits_1` — an actual built CLI
+  process, a real HTTP round-trip against the stub server, a soft step that fails followed by one
+  that passes, asserting exit code 1 (the run still fails overall), 2 testcases in the JUnit
+  output (the second step genuinely ran), and the `soft` JUnit property present on the failing
+  one. `dotnet test tests/Yukti.Cli.Tests` → 24/24 (was 23, no regression).
+  Frontend: `npx vitest run --pool=threads` → 264/264 (was 263, +4 new across
+  `flow-detail-page.test.tsx`/`run-detail-page.test.tsx`: checkbox wired to `addStep`'s payload
+  both checked and unchecked, soft badge shown only on a Failed+soft step, never on Passed or on
+  an ordinary Failed one). `npm run typecheck`/`npm run lint` clean, `npm run build` succeeds.
+  `dotnet build -warnaserror` → 0/0. `dotnet format --verify-no-changes` → clean. Full solution
+  `dotnet test` → Orchestration.Tests 314/314 (was 311, +3); Infrastructure.Tests' failures are
+  the same pre-existing Postgres gap (DISC-15), confirmed unrelated.
+  Next: owner review/merge. Not yet covered, flagged not invented: an EF round-trip test against
+  a real Postgres (needs DISC-15's gap closed — Testcontainers/Docker), and `Flow.CreateNewVersion`
+  carrying `Soft` forward was *verified* true by reading the aggregate's own code (see the
+  correction above), not separately unit-tested — a cheap, worthwhile follow-up if this area is
+  touched again.

@@ -13,7 +13,8 @@ public sealed record CreateFlowCommand(string Name, string? Description, TenantI
 
 public sealed record AddFlowStepCommand(
     FlowId FlowId, string StepName, ModuleKind Module, string Action,
-    IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When, UserId RequestedBy) : ICommand<bool>;
+    IReadOnlyDictionary<string, object?> Params, string? SaveAs, string? When, UserId RequestedBy,
+    bool Soft = false) : ICommand<bool>;
 
 public sealed record PublishFlowCommand(FlowId FlowId, UserId PublishedBy) : ICommand<FlowPublishResult>;
 
@@ -63,7 +64,7 @@ public sealed class AddFlowStepCommandHandler : AuditableCommandHandler<AddFlowS
             ?? throw new InvalidOperationException($"Flow {cmd.FlowId} not found.");
         _tenantGuard.EnsureAccessible(flow.TenantId); // FR-TENANT-01 Layer 3, redundant with the repository's own tenant filter by design
 
-        flow.AddStep(cmd.StepName, cmd.Module, cmd.Action, cmd.Params, cmd.SaveAs, cmd.When);
+        flow.AddStep(cmd.StepName, cmd.Module, cmd.Action, cmd.Params, cmd.SaveAs, cmd.When, soft: cmd.Soft);
 
         await _flows.Save(flow, ct);
         // FR-OPS-03: no commit here — see CreateFlowCommandHandler's comment.

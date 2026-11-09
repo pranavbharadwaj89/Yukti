@@ -79,7 +79,7 @@ public static class FlowLoader
             await host.AddStep.Handle(new AddFlowStepCommand(
                 flowId, string.IsNullOrWhiteSpace(step.Name) ? $"Step {i + 1}" : step.Name,
                 ParseModuleKind(step.Module), step.Action, FlowFileJson.NormalizeParams(step.Params),
-                step.SaveAs, step.When, host.UserId), ct);
+                step.SaveAs, step.When, host.UserId, step.Soft), ct);
         }
 
         if (dto.ContinueOnFailure || dto.DeclaredVariables.Count > 0)

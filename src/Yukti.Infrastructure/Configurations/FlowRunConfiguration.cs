@@ -70,6 +70,11 @@ public sealed class FlowRunConfiguration : IEntityTypeConfiguration<FlowRun>
             results.Property(s => s.Message);
             results.Property(s => s.Error);
 
+            // ADR-0010 (DISC-26): denormalized from the originating FlowStep.Soft -- a report
+            // must reflect whether a Failed step was soft, same reasoning as every other
+            // denormalized field on StepResult.
+            results.Property(s => s.Soft);
+
             // StepResult.Data is genuinely polymorphic per module (a string,
             // a parsed JSON body, a nested object, or null) — no fixed
             // shape, so it's the one column stored as raw jsonb with no

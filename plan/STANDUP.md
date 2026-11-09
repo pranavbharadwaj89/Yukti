@@ -2223,3 +2223,66 @@ never fixed, only removed from CI's view. Fixing that is the real prerequisite f
 Git Agent back, not just re-adding the files.
 
 Next: Mobile Testing Module — owner has confirmed intent to start it after this PR is green.
+
+## 2026-11-09 ~15:30 IST — DISC-26-IMPL (soft assertions, real implementation)
+
+Done: Owner approved ADR-0010 directly in conversation. Merged PR #98 (the ADR) to `main`. Then
+built the real implementation across every layer the ADR's own Consequences section named,
+branched off the now-current `main` (`feature/DISC-26-soft-assertions`), not stacked on the
+still-open Mobile PRs since this is cross-cutting, not Mobile-specific.
+Two things verified and corrected before writing code, not assumed from the ADR's own prose:
+(1) `Flow.CreateNewVersion` actually reuses the *same* `FlowStep` objects (not reconstructed
+copies), so a new field on `FlowStep` carries forward automatically — the ADR's predicted
+DISC-24-style forward-copy risk doesn't apply to `Soft` at all. Logged as a correction in
+`plan/PLAN.md`, not an edit to the Accepted ADR file itself (CLAUDE.md §1's own rule). (2) There
+is no "update step"/"delete step" command anywhere in this codebase — flow authoring is add-only
+— so `Soft` only needed to be an add-time parameter, simplifying the whole task.
+Domain: `FlowStep.Soft`, `StepResult.Soft` (both constructors + the `Failed` factory, all
+append-only params, zero existing call-site breakage), `FlowEngine`'s two independent fail-fast
+checks (the normal post-dispatch one and the earlier one reached when interpolation itself
+throws) both now respect it. EF: generated migration `AddFlowStepAndStepResultSoft` (via
+`DOTNET_ROLL_FORWARD=LatestMajor dotnet ef migrations add`, the same workaround this machine's
+dotnet-ef/runtime mismatch has needed before), inspected and correct (two `boolean NOT NULL
+DEFAULT false` columns), plus the matching Fluent API entries. API: `AddFlowStepCommand`/
+`AddStepRequest`/`FlowStepResponse`/`StepResultResponse` all gained `Soft`, threaded through the
+real endpoint handler. Tried to regenerate the frontend's `schema.ts` properly via `npm run
+generate:api` — confirmed directly that this machine's API can't even start without a configured
+DB connection string (not just "can't query one" — it refuses to boot at all, so it can't even
+serve its own Swagger document), the same DISC-15 gap in a new form. Hand-edited `schema.ts` to
+match exactly what the real generator would produce, cross-checked against sibling existing
+fields' exact style. CLI: flow-file `"soft"` field, `FlowLoader` threading, JUnit `soft` property
+(mirrors the existing `flaky` convention exactly) and JSON report field. Frontend: a `Soft`
+checkbox next to the existing `saveAs` control in the step-add form (correcting the ADR's own
+claim that a `when` control also exists there — it doesn't, `saveAs` is the only sibling), and a
+"soft" badge on a Failed+soft step in the run report.
+Found and fixed a real, pre-existing test-mock bug while writing the first test that actually
+opens the add-step dialog with real module/action data (nothing before this ever did):
+`getActionParams: vi.fn(() => [])` returned an array where the real function returns `ActionSchema
+| undefined`, crashing `ParamFields` the moment real data flowed through. Fixed the mock to
+mirror the real implementation rather than paper over it with a different workaround.
+New tests: 3 in `FlowEngineSemanticsTests.cs` (soft step's failure doesn't stop the flow but still
+fails the run; Soft protects only its own step; the same holds for the interpolation-exception
+path too) — 10/10 incl. the 7 pre-existing. One real end-to-end proof, not just the in-memory
+engine test: `CliIntegrationTests.cs`'s new case runs the actual built CLI as a subprocess
+against a real HTTP stub, a soft step that fails followed by one that passes — exit code 1 (the
+run still fails overall, soft never hides it), 2 testcases (the second step genuinely ran), the
+`soft` JUnit property present on the failing one. 4 new frontend tests across
+`flow-detail-page.test.tsx`/`run-detail-page.test.tsx`.
+Verified, not assumed: `dotnet build -warnaserror` → 0/0; `dotnet format --verify-no-changes` →
+clean; full solution `dotnet test` → Orchestration.Tests 314/314 (was 311, +3), Cli.Tests 24/24
+(was 23, +1), Infrastructure.Tests' failures are the same pre-existing Postgres gap (DISC-15);
+frontend `npx vitest run --pool=threads` → 264/264 (was 263, +4 new, 1 pre-existing mock bug
+fixed), `npm run typecheck`/`npm run lint` clean, `npm run build` succeeds.
+Closed DISC-26-IMPL in `plan/PLAN.md` with full evidence. Branch
+`feature/DISC-26-soft-assertions`, off `main` directly (standalone, same reasoning as the ADR
+PR). Not built, flagged not invented: an EF round-trip test against a real Postgres (needs
+DISC-15's gap closed first).
+Discovered: the `getActionParams` test-mock bug above, and the two corrections to the ADR's own
+predictions (`CreateNewVersion`'s real behavior; no `when` control exists in the frontend) — both
+logged inline above and in `plan/PLAN.md`, not silently absorbed.
+Scope guards: none.
+Exit check: on track. DISC-26 fully closed end to end — design (ADR-0010) and implementation both
+done and verified.
+Next: push `feature/DISC-26-soft-assertions`, open its PR against `main`. Report back to the
+owner with the full picture: 7 open PRs total (6 Mobile stack #92-97, this one), everything
+green, ready for review.
