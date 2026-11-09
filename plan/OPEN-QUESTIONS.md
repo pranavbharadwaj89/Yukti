@@ -189,6 +189,14 @@ full accounting of what existed vs. what MOB-T1 actually added.
    directly). *Needs: a real Appium server + emulator/device to run `demo/mobile_login.json`
    (or an equivalent two-flow isolation probe) against, the same resource every item above this
    one is also waiting on.*
+6. 🔵 **MOB-T4's `AppiumLocatorResolver.ResolveAsync` — the full primary/fallback/`Within`/`Nth`
+   orchestration against a real driver — isn't exercised end-to-end here, the same standing
+   constraint as items 1-5.** What's proven instead: `Build`, the pure strategy-to-`By` mapping
+   every strategy (and every fallback) goes through, is directly unit-tested for all 7 strategies
+   plus the Web-only-strategy rejection; the Object Repository integration is proven at the
+   orchestration level (`FlowEngine.ResolveLocatorRef`, engine-neutral, exercised with a real
+   repository entry and `EchoModule` as a param-echoing probe, no live driver needed). *Needs: the
+   same real Appium server + emulator/device as items 1, 3 and 5.*
 
 ---
 
