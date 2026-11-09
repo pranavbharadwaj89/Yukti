@@ -64,6 +64,17 @@ already are: *"a report always reflects exactly what ran"* even if the Draft's s
 later. Without it, a report showing steps running normally *after* a `Failed` one looks like a
 reporting bug, not an intentional soft assertion.
 
+**`Soft` does not distinguish an assertion mismatch from a catastrophic failure (a crashed
+session, a dead driver).** Sarvaghna's own review of this ADR raised exactly this: should a
+soft step's failure still be treated as soft when the underlying cause is infrastructure, not
+"expected got wrong"? Deliberately yes, not an oversight — `RetryFlakeHandler` and the module's
+own `Setup`/`Teardown` guarantees already run unconditionally regardless of `Soft`, so a dead
+session surfaces as fast, uniform failures on every subsequent step rather than a hang; `Soft`
+only ever means "don't stop because of this one step," never "retry harder" or "assume the
+session is still healthy." The cost is a noisier report (several fast failures instead of one),
+never a correctness or safety issue, and `RunStatus.Failed` is reached exactly the same either
+way. Revisit only if a real case surfaces where this noise materially hides the actual cause.
+
 ## Why this shape, not another
 
 **A first-class `FlowStep` field, not a module `ActionSchema` param.** If "soft" were a param
