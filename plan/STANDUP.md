@@ -2252,3 +2252,37 @@ Exit check: on track. Committing this branch and opening a PR (stacked on #92), 
 — owner reviews and merges.
 Next: push `feature/MOB-T4-mobile-locators`, open its PR against `feature/MOB-T3-session-lifecycle`.
 Then MOB-T5 (Gestures) is next per the spec's own task order.
+
+Done: Pushed `feature/MOB-T4-mobile-locators`, opened PR #93 against `feature/MOB-T3-session-lifecycle`
+(stacked on the still-open #92). Sarvaghna's own push-time review on #93 flagged two real,
+pre-existing bugs in MOB-T2's Device Profiles dialog (`device-profiles-page.tsx`, out of MOB-T4's
+scope): (1) the "New profile" dialog is permanently mounted with `profile` always `null`, so its
+reseed check — keyed only on profile identity — never re-fires on a second open, so dirty, typed-
+and-abandoned values from a prior open leaked into the next; (2) the save payload hardcoded
+`extraCapabilities: null` on every save, silently wiping anything set on a profile outside this
+dialog on every edit. Owner said get them fixed and keep going. Switched to
+`feature/MOB-T3-session-lifecycle` (where the file actually lives, part of #92) and fixed both:
+(1) folded `open` into the reseed key (`seedKey = open ? (profile?.id ?? "create") : "closed"`),
+so closing always forces the next open to reseed; (2) preserve `profile?.extraCapabilities` on
+update instead of hardcoding `null` (create still has none to preserve). While verifying the fix,
+`npm run typecheck` surfaced a third, real, pre-existing failure unrelated to either bug:
+`platform`/`endpointKind`/`reset` were seeded from `DeviceProfileResponse`'s wider `number` fields
+into state TypeScript inferred as plain `number`, which the save request DTOs' own literal unions
+(`0 | 1`, `0 | 1 | 2`) rejected — confirmed pre-existing by stashing the fix and re-running
+typecheck against unmodified MOB-T3 code, same two errors, same lines. Fixed by casting at the one
+point each value enters the form instead of widening the DTOs. New
+`device-profiles-page.test.tsx` (WCAG check + both regressions + the create-still-null case,
+mirroring `request-templates-page.test.tsx`'s pattern) — 4/4 passing. Full verification before
+committing: `npm run typecheck` clean, `npm run lint` clean (only pre-existing warnings elsewhere),
+full frontend `npx vitest run --pool=threads` → 263/263 (26/26 files), `npm run build` succeeds.
+Committed and pushed to `feature/MOB-T3-session-lifecycle` (updates #92). Rebased
+`feature/MOB-T4-mobile-locators` onto the updated MOB-T3 tip (clean, no conflicts), re-verified
+`dotnet build -warnaserror` → 0/0, force-pushed (safe: sole pusher, moments after the original
+push) so #93's diff stays limited to MOB-T4's own commits.
+Discovered: the typecheck failure above — logged inline, not a separate DISC entry (it's a direct
+consequence of the same dialog, found while fixing it, not an unrelated gap).
+Scope guards: none — both review findings and the typecheck failure they led to are real,
+pre-existing defects in code this session was already touching, not new scope.
+Exit check: on track.
+Next: MOB-T5 (Gestures) — tap/double-tap/long-press/swipe/scroll/pinch/drag-and-drop against the
+`Gesture` vocabulary already declared in the spec, per the spec's own task order.
