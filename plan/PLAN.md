@@ -1923,4 +1923,6 @@ work here, don't assume they still hold.
   assertions" line can honestly be ticked.
   **Design proposed 2026-11-09:** `plan/adr/0010-soft-assertions.md`, PR #98 against `main`
   (standalone — not stacked on the Mobile sequence, since this is cross-cutting, not
-  Mobile-specific). Status: Proposed, pending owner approval. Not implemented.
+  Mobile-specific). **Status: Accepted — owner approved 2026-11-09.** Not yet implemented; the
+  real implementation (domain + EF migration + API + CLI + frontend + report UI) is its own
+  task, not assumed to follow automatically from this design approval.

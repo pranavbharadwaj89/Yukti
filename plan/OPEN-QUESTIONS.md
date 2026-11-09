@@ -227,7 +227,7 @@ full accounting of what existed vs. what MOB-T1 actually added.
 11. 🟡 **DISC-26 (soft assertions) — not a "needs a live server" gap, a real missing feature
     across every module.** See `plan/PLAN.md`'s DISC-26 for the full accounting; needs an owner
     decision before it's buildable anywhere, Mobile included. Design proposed:
-    `plan/adr/0010-soft-assertions.md` (PR #98, status Proposed, pending approval).
+    `plan/adr/0010-soft-assertions.md` (PR #98, **Accepted — owner approved 2026-11-09**).
 
 ---
 
