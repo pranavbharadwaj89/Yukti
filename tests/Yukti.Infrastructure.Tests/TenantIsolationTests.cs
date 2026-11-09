@@ -5,6 +5,7 @@ using Xunit;
 using Yukti.Application.Abstractions;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
+using Yukti.Domain.MobileTesting;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.SharedKernel;
 
@@ -277,6 +278,89 @@ public sealed class TenantIsolationTests
         await using var asA = await OpenSessionAs(connectionString, tenantA, ct);
         var repositoryIllegallyTaggedForB = Yukti.Domain.UiVocabulary.ObjectRepository.Create("WEB-T2 illegally tagged for tenant B", tenantB);
         asA.Add(repositoryIllegallyTaggedForB);
+
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => asA.SaveChangesAsync(ct));
+        var pgEx = FindPostgresException(ex);
+        Assert.NotNull(pgEx);
+        Assert.Equal("42501", pgEx!.SqlState); // insufficient_privilege — the RLS policy rejected the write
+    }
+
+    /// <summary>Mobile Testing Module Spec, MOB-T2's own checklist: "Tenant isolation, tested at
+    /// the API and the raw-SQL level" — same shape as the object_repositories tests above,
+    /// against device_profiles instead.</summary>
+    [Fact]
+    public async Task Tenant_B_cannot_read_tenant_As_device_profile_through_the_real_repository()
+    {
+        var connectionString = GetConnectionString();
+        if (connectionString is null) return; // Skip: no live DB configured in this environment.
+
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var ct = CancellationToken.None;
+
+        DeviceProfileId profileId;
+        await using (var asA = await OpenSessionAs(connectionString, tenantA, ct))
+        {
+            var profile = DeviceProfile.Create(
+                "D6-T1-style tenant A's profile", tenantA, MobilePlatform.Android, null, "pixel-7",
+                null, "http://localhost:4723", DeviceEndpointKind.Local, null);
+            profileId = profile.Id;
+            asA.Add(profile);
+            await asA.SaveChangesAsync(ct);
+        }
+
+        await using var asB = await OpenSessionAs(connectionString, tenantB, ct);
+        var repo = new EfDeviceProfileRepository(asB, new FixedTenantContextAccessor(tenantB));
+
+        var result = await repo.GetById(profileId, ct);
+
+        Assert.Null(result); // not "forbidden" — genuinely invisible, same as it not existing
+    }
+
+    [Fact]
+    public async Task Tenant_B_cannot_see_tenant_As_device_profile_even_with_no_application_level_filter_at_all()
+    {
+        // Layer 2 alone: a raw, unparameterized-by-tenant query — proves the database itself
+        // refuses the row, independent of whether the C# repository's own WHERE is even present.
+        var connectionString = GetConnectionString();
+        if (connectionString is null) return;
+
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var ct = CancellationToken.None;
+
+        DeviceProfileId profileId;
+        await using (var asA = await OpenSessionAs(connectionString, tenantA, ct))
+        {
+            var profile = DeviceProfile.Create(
+                "D6-T1-style tenant A's profile (raw query proof)", tenantA, MobilePlatform.Android, null, "pixel-7",
+                null, "http://localhost:4723", DeviceEndpointKind.Local, null);
+            profileId = profile.Id;
+            asA.Add(profile);
+            await asA.SaveChangesAsync(ct);
+        }
+
+        await using var asB = await OpenSessionAs(connectionString, tenantB, ct);
+        var rawMatch = await RawCountAsync(asB, "SELECT count(*) FROM device_profiles WHERE \"Id\" = @id", profileId.Value, ct);
+
+        Assert.Equal(0, rawMatch);
+    }
+
+    [Fact]
+    public async Task Tenant_A_cannot_illegally_tag_a_new_device_profile_as_tenant_Bs()
+    {
+        var connectionString = GetConnectionString();
+        if (connectionString is null) return;
+
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var ct = CancellationToken.None;
+
+        await using var asA = await OpenSessionAs(connectionString, tenantA, ct);
+        var profileIllegallyTaggedForB = DeviceProfile.Create(
+            "D6-T1-style illegally tagged for tenant B", tenantB, MobilePlatform.Android, null, "pixel-7",
+            null, "http://localhost:4723", DeviceEndpointKind.Local, null);
+        asA.Add(profileIllegallyTaggedForB);
 
         var ex = await Assert.ThrowsAnyAsync<Exception>(() => asA.SaveChangesAsync(ct));
         var pgEx = FindPostgresException(ex);

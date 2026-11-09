@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
   { to: "/projects", label: "Projects" },
   { to: "/request-templates", label: "Request Templates" },
+  { to: "/device-profiles", label: "Device Profiles" },
   { to: "/triggers", label: "Scheduler" },
   { to: "/audit", label: "Audit" },
   { to: "/flows", label: "Flows" },

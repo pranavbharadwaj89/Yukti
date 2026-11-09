@@ -79,6 +79,13 @@ Not in the code. The code is a WebDriver client, which is well-trodden. The diff
 > `ResetStrategy`, `DeviceProfileId`) matches this shape, with `FarmCredentialRef: string?` in
 > place of `SecretRef? FarmCredential` (same mechanism, real name — see above). `Gesture` and
 > `DeviceCommand` are not built yet — MOB-T5/MOB-T6's own job.
+>
+> **MOB-T2, 2026-11-08:** `DeviceProfile` is now the real, persisted `AggregateRoot<DeviceProfileId>`
+> this section originally described — admin-configured, tenant-scoped, versioned, looked-up-by-name,
+> with its own repository, summary query, "test profile" admin action and publish validation. Also
+> added `DeviceEndpointKind { Local, SelfHosted, Farm }`, this task's own "records whether its
+> endpoint is local, self-hosted or a named device farm" field, not yet in the shape below when
+> MOB-T1 wrote it.
 
 ```csharp
 // Admin-configured, tenant-scoped. A flow references a profile by name,
@@ -183,13 +190,58 @@ Time-box: 5 h.
 
 ### MOB-T2 — Device profiles (P0)
 
-- [ ] Admin-configured, tenant-scoped, versioned, exactly like DB connections. A flow references a profile **by name**.
-- [ ] Admin UI with a "test profile" action that opens a session, takes a screenshot and tears down, so a misconfiguration is caught at setup rather than in a failing test run.
-- [ ] Publish validation: a flow referencing a missing profile fails with the existing 422-naming-the-step behaviour.
-- [ ] Tenant isolation, tested at the API and the raw-SQL level.
-- [ ] A profile records whether its endpoint is local, self-hosted or a named device farm, because error messages and retry behaviour differ.
+**Closed 2026-11-08.** `DeviceProfile` (MOB-T1's bare record) is now an `AggregateRoot<DeviceProfileId>`
+with private setters, a visible `Version` counter, and `Create`/`Update` factory methods — the same
+"disposable, editable resource" shape `RequestTemplate` already has. Persisted via EF
+(`device_profiles` table, `EfDeviceProfileRepository`/`EfDeviceProfileSummaryQuery`) and an
+in-memory counterpart for tests/CLI.
 
-✔ `dotnet test --filter "FullyQualifiedName~DeviceProfile"`
+- [x] Admin-configured, tenant-scoped, versioned, exactly like DB connections. A flow references a profile **by name**.
+  `FlowEngine.ResolveDeviceProfile` resolves a flow's declared `mobile.profileName` against the
+  current `DeviceProfile` (by name + tenant) on every run, merging the profile's fields into
+  `MobileModule.BuildProfile`'s own config-bag shape — the flow's own literal fields always win
+  per key, same merge precedence `ResolveRequestTemplate` already uses for `templateId`. Unresolved
+  name -> `DeviceProfileResolutionException`, thrown before any step dispatches (Setup is
+  flow-scoped, not step-scoped). `CreateDeviceProfileCommand`/`Update`/`Delete` handlers + a
+  `/api/v1/device-profiles` CRUD group enforce `Permission.DeviceProfileManage`.
+- [x] Admin UI with a "test profile" action that opens a session, takes a screenshot and tears down, so a misconfiguration is caught at setup rather than in a failing test run.
+  `IDeviceProfileTester`/`AppiumDeviceProfileTester` (Infrastructure.InMemory, reuses
+  `MobileModule.ClassifySessionFailure` for the same specific-not-bare-timeout failure shape) +
+  `POST /device-profiles/{id}/test-connection` + a real page at `/device-profiles`
+  (`apps/yukti-gui`) with a "Test connection" row action rendering the result/screenshot. Not
+  exercised against a real Appium server (none available in this environment, same MOB-T1
+  constraint) — proven against a genuinely unreachable endpoint instead.
+- [x] Publish validation: a flow referencing a missing profile fails with the existing 422-naming-the-step behaviour.
+  **Honest deviation, not silently approximated:** a device profile reference is flow-scoped
+  (Flow's declared `mobile` variable), not step-scoped the way `templateId` is — there is no one
+  step to "name" the way the spec's own phrase literally reads. `Flow.Publish`'s new
+  `IDeviceProfileExistsChecker` check uses the exact same `FlowPublishError`/422 shape as the
+  `templateId`/`RepositoryRef` checks beside it, with field `"variables.mobile.profileName"`
+  instead of `"steps[i]..."`, since that is genuinely where the reference lives. Still purely
+  shape-based — no `step.Module == ModuleKind.Mobile` branch anywhere (Architecture Principle
+  20.3 held, verified by grep same as MOB-T1).
+- [x] Tenant isolation, tested at the API and the raw-SQL level.
+  `device_profiles` got the real Postgres RLS policy from day one of its own migration
+  (`ENABLE`/`FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy + `yukti_app` GRANT) — the
+  `object_repositories`/WEB-T2 pattern, not `request_templates`' gap (that migration's own comment
+  flags why). Three new tests in `TenantIsolationTests.cs`, same shape as the `object_repositories`
+  ones: cross-tenant read via the real repository, a raw unparameterized SQL count proving the
+  database itself (not just the C# `WHERE`) refuses the row, and a rejected illegally-tagged write
+  (`42501 insufficient_privilege`). All three run against the real local Postgres and pass.
+- [x] A profile records whether its endpoint is local, self-hosted or a named device farm, because error messages and retry behaviour differ.
+  `DeviceEndpointKind { Local, SelfHosted, Farm }` on the aggregate, persisted and surfaced in the
+  admin UI. Metadata only so far — `ClassifySessionFailure`'s own message doesn't yet branch on it
+  (no real farm to test against in this environment); the field exists and is wired through end to
+  end, ready for that to be added without a persistence change.
+
+✔ `dotnet test --filter "FullyQualifiedName~DeviceProfile"` → 18/18 passing (13 orchestration-level
++ 5 domain), plus 3/3 new `TenantIsolationTests` cases against the real DB (not covered by that
+filter; run separately, see above). Full solution: `dotnet build -warnaserror` clean; full suite
+green (one `WebWaitTests` timing flake, confirmed pre-existing/unrelated — passes in isolation).
+`npm run lint`/`tsc --noEmit`/`vitest run` all clean on the frontend.
+Next: MOB-T3 (Session lifecycle and app state) — reset strategies, teardown-on-every-path,
+session timeout, session reuse across steps; `DeviceProfile.Reset` already exists from MOB-T2,
+not yet actually honored by `MobileModule.Teardown`.
 
 Time-box: 3 h.
 
@@ -197,14 +249,54 @@ Time-box: 3 h.
 
 The mobile equivalent of the DB module's transaction problem: without this, test two inherits test one's mess.
 
-- [ ] Three reset strategies, set per profile: **Full** (reinstall the app — slowest, cleanest), **Fast** (clear app data between flows), **None** (reuse state deliberately, for flows that chain).
-- [ ] Default is **Fast**. A flow can override it.
-- [ ] A session is torn down on flow completion, failure **and** cancellation. A leaked session holds a device hostage, which on a shared device farm blocks a whole team.
-- [ ] Session reuse across steps within one flow is automatic; emulator cold-start cost is paid once.
-- [ ] A configurable session timeout, after which the session is force-released and the run fails with a clear message.
-- [ ] A test proves isolation: flow A writes state, flow B with Fast reset sees a clean app.
+**Closed 2026-11-08.**
 
-✔ `dotnet test --filter "FullyQualifiedName~MobileSession"`
+- [x] Three reset strategies, set per profile: **Full** (reinstall the app — slowest, cleanest), **Fast** (clear app data between flows), **None** (reuse state deliberately, for flows that chain).
+  Mapped onto Appium's own W3C `noReset`/`fullReset` capabilities (`MobileModule.ResetCapabilitiesFor`,
+  public and pure, same "direct unit testing without a live server" reasoning as
+  `ClassifySessionFailure`) rather than a hand-rolled uninstall/clear-data sequence this module
+  would otherwise have to reimplement and keep correct per platform. Applied in `Setup()` before
+  any `ExtraCapabilities` override, so the escape hatch can still take precedence if a team ever
+  needs to.
+- [x] Default is **Fast**. A flow can override it.
+  `DeviceProfile.Create`'s own `reset` parameter already defaulted to `Fast` (MOB-T2); the real gap
+  closed here was that `MobileModule.BuildProfile`'s literal-config path **hardcoded** `Fast`/5
+  minutes regardless of what a resolved, persisted profile said — `FlowEngine.ResolveDeviceProfile`
+  was silently dropping both fields on the floor. Fixed by adding `"reset"`/`"sessionTimeoutSeconds"`
+  as two more config-bag keys both the resolver and a flow author can set, same shape as every
+  other key in that bag.
+- [x] A session is torn down on flow completion, failure **and** cancellation. A leaked session holds a device hostage, which on a shared device farm blocks a whole team.
+  Already true, structurally, before this task: `FlowEngine.Execute`'s `try`/`finally` calls
+  `Teardown` for every used module regardless of how the `try` exits (return, exception,
+  cancellation) — `GracefulShutdownTests.cs` already proves this generically, and it applies to
+  `MobileModule` the same as any other `IAutomationModule`. Nothing Mobile-specific to add here.
+- [x] Session reuse across steps within one flow is automatic; emulator cold-start cost is paid once.
+  Already true, structurally, before this task: sessions are keyed by `FlowRunId` in a
+  `ConcurrentDictionary`, one `Setup()` call per flow run regardless of step count. Not exercisable
+  end-to-end in this environment (`Setup()` always fails before storing a session without a live
+  Appium server — the same wall MOB-T1 hit), so this is a structural/code-reading confirmation, not
+  a passing integration test; flagged, not invented around.
+  **MOB-T3's own real addition here:** a session now also carries its creation time and the
+  profile's `SessionTimeout`, so a stale session can be told apart from a healthy one (see next item).
+- [x] A configurable session timeout, after which the session is force-released and the run fails with a clear message.
+  `Run()` checks `MobileSession.IsExpired` before dispatching any action; an expired session is
+  `Quit()`-ed, removed, and the step fails naming the exact timeout — never a bare timeout message,
+  same MOB-T1 standard. `TimeProvider` (optional constructor param, defaults to `TimeProvider.System`)
+  makes this clock-injectable; every existing construction site (`new MobileModule()`) keeps
+  compiling and behaving identically. The force-release path itself isn't exercisable end-to-end
+  without a live session (same wall as above) — the timeout *arithmetic* is proven directly instead,
+  via `BuildProfile`'s parsing (see the gate below).
+- [ ] A test proves isolation: flow A writes state, flow B with Fast reset sees a clean app.
+  **Not provable in this environment, flagged rather than invented:** real app-state isolation is
+  a property of a real device/emulator honoring Appium's reset capabilities, not of this module's
+  own code — there is no live Appium server/device here to write state to in the first place (same
+  constraint this spec's own "Infrastructure reality" section names explicitly). What *is* proven:
+  the correct capability is sent for each strategy (`ResetCapabilitiesFor`'s own test). Left open
+  for whoever has a real device farm or emulator to run `demo/mobile_login.json` against it.
+
+✔ `dotnet test --filter "FullyQualifiedName~MobileSession"` → 18/18 passing (new), plus the existing
+8 `MobileAppiumClientTests` re-verified unbroken (`FullyQualifiedName~Mobile` → 23/23). Full solution:
+`dotnet build -warnaserror` clean (0 warnings); full suite green.
 
 Time-box: 4 h.
 

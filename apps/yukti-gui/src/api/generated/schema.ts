@@ -674,6 +674,180 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/device-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceProfileSummaryResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateDeviceProfileRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CreatedDeviceProfileResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-profiles/{profileId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profileId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceProfileResponse"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profileId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateDeviceProfileRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profileId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-profiles/{profileId}/test-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profileId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceProfileTestResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/flows": {
         parameters: {
             query?: never;
@@ -1988,6 +2162,22 @@ export interface components {
             /** Format: uuid */
             projectId?: string | null;
         };
+        CreateDeviceProfileRequest: {
+            name?: string | null;
+            platform?: components["schemas"]["MobilePlatform"];
+            platformVersion?: string | null;
+            deviceName?: string | null;
+            app?: string | null;
+            appiumUrl?: string | null;
+            endpointKind?: components["schemas"]["DeviceEndpointKind"];
+            farmCredentialRef?: string | null;
+            reset?: components["schemas"]["ResetStrategy"];
+            /** Format: int32 */
+            sessionTimeoutSeconds?: number | null;
+            extraCapabilities?: {
+                [key: string]: unknown;
+            } | null;
+        };
         CreateFlowRequest: {
             name?: string | null;
             description?: string | null;
@@ -2028,6 +2218,10 @@ export interface components {
             /** Format: uuid */
             requestId?: string;
         };
+        CreatedDeviceProfileResponse: {
+            /** Format: uuid */
+            profileId?: string;
+        };
         CreatedFlowResponse: {
             /** Format: uuid */
             flowId?: string;
@@ -2051,6 +2245,47 @@ export interface components {
         CreatedUserResponse: {
             /** Format: uuid */
             userId?: string;
+        };
+        /**
+         * Format: int32
+         * @enum {integer}
+         */
+        DeviceEndpointKind: 0 | 1 | 2;
+        DeviceProfileResponse: {
+            /** Format: uuid */
+            id?: string;
+            name?: string | null;
+            platform?: components["schemas"]["MobilePlatform"];
+            platformVersion?: string | null;
+            deviceName?: string | null;
+            app?: string | null;
+            appiumUrl?: string | null;
+            endpointKind?: components["schemas"]["DeviceEndpointKind"];
+            farmCredentialRef?: string | null;
+            reset?: components["schemas"]["ResetStrategy"];
+            /** Format: int32 */
+            sessionTimeoutSeconds?: number;
+            extraCapabilities?: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: int32 */
+            version?: number;
+        };
+        DeviceProfileSummaryResponse: {
+            /** Format: uuid */
+            id?: string;
+            name?: string | null;
+            platform?: components["schemas"]["MobilePlatform"];
+            deviceName?: string | null;
+            endpointKind?: components["schemas"]["DeviceEndpointKind"];
+            /** Format: int32 */
+            version?: number;
+        };
+        DeviceProfileTestResponse: {
+            success?: boolean;
+            error?: string | null;
+            /** Format: byte */
+            screenshot?: string | null;
         };
         FlowId: {
             /** Format: uuid */
@@ -2207,6 +2442,11 @@ export interface components {
             email?: string | null;
             password?: string | null;
         };
+        /**
+         * Format: int32
+         * @enum {integer}
+         */
+        MobilePlatform: 0 | 1;
         ModuleResponse: {
             kind?: string | null;
             displayName?: string | null;
@@ -2277,6 +2517,11 @@ export interface components {
             flowName?: string | null;
             stepName?: string | null;
         };
+        /**
+         * Format: int32
+         * @enum {integer}
+         */
+        ResetStrategy: 0 | 1 | 2;
         RetryAttemptResponse: {
             /** Format: int32 */
             attemptNumber?: number;
@@ -2394,6 +2639,22 @@ export interface components {
             } | null;
             body?: unknown;
             assertions?: unknown;
+        };
+        UpdateDeviceProfileRequest: {
+            name?: string | null;
+            platform?: components["schemas"]["MobilePlatform"];
+            platformVersion?: string | null;
+            deviceName?: string | null;
+            app?: string | null;
+            appiumUrl?: string | null;
+            endpointKind?: components["schemas"]["DeviceEndpointKind"];
+            farmCredentialRef?: string | null;
+            reset?: components["schemas"]["ResetStrategy"];
+            /** Format: int32 */
+            sessionTimeoutSeconds?: number;
+            extraCapabilities?: {
+                [key: string]: unknown;
+            } | null;
         };
         UpdateRequestTemplateRequest: {
             name?: string | null;

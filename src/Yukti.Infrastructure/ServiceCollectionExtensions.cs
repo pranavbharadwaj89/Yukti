@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Yukti.Application.Abstractions;
 using Yukti.Application.ApiTesting;
+using Yukti.Application.MobileTesting;
 using Yukti.Application.UiVocabulary;
 using Yukti.Domain.FlowAuthoring;
 
@@ -38,6 +39,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRequestTemplateUsageQuery, EfRequestTemplateUsageQuery>();
         services.AddScoped<IRequestTemplateSummaryQuery, EfRequestTemplateSummaryQuery>();
         services.AddScoped<IRequestTemplateExistsChecker, RequestTemplateExistsChecker>();
+        services.AddScoped<IDeviceProfileRepository, EfDeviceProfileRepository>();
+        services.AddScoped<IDeviceProfileSummaryQuery, EfDeviceProfileSummaryQuery>();
+        services.AddScoped<IDeviceProfileExistsChecker, DeviceProfileExistsChecker>();
         services.AddScoped<IObjectRepositoryRepository, EfObjectRepositoryRepository>();
         services.AddScoped<IObjectRepositoryElementQuery, EfObjectRepositoryElementQuery>();
         services.AddScoped<IRepositoryEntryExistsChecker, RepositoryEntryExistsChecker>();

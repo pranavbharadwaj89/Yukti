@@ -16,4 +16,5 @@ public enum Permission
     UserManage,
     ApiCollectionManage,
     RequestTemplateManage,
+    DeviceProfileManage,
 }

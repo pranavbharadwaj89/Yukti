@@ -1,6 +1,7 @@
 using Yukti.Domain.ApiTesting;
 using Yukti.Domain.Execution;
 using Yukti.Domain.FlowAuthoring;
+using Yukti.Domain.MobileTesting;
 using Yukti.Domain.ModulePlugin;
 using Yukti.Domain.ProjectManagement;
 using Yukti.Domain.SharedKernel;
@@ -85,6 +86,20 @@ public interface ITestEnvironmentRepository
     Task<TestEnvironment?> GetById(TestEnvironmentId id, CancellationToken ct);
     Task Save(TestEnvironment environment, CancellationToken ct);
     Task Delete(TestEnvironment environment, CancellationToken ct);
+}
+
+/// <summary>Mobile Testing Module Spec, MOB-T2: same disposable/editable-resource shape as
+/// IRequestTemplateRepository (no publish step, no version-family branching beyond DeviceProfile's
+/// own visible Version counter). GetByName exists here (unlike every repository above, which is
+/// GetById-only) because the spec's own governing rule is "a flow references a profile by name,
+/// never a raw capability blob" — FlowEngine.ResolveDeviceProfile and Flow.Publish's device-profile
+/// check both need lookup by name, mirroring EfRoleRepository.GetByName's existing shape.</summary>
+public interface IDeviceProfileRepository
+{
+    Task<DeviceProfile?> GetById(DeviceProfileId id, CancellationToken ct);
+    Task<DeviceProfile?> GetByName(string name, TenantId tenantId, CancellationToken ct);
+    Task Save(DeviceProfile profile, CancellationToken ct);
+    Task Delete(DeviceProfile profile, CancellationToken ct);
 }
 
 public interface IRoleRepository

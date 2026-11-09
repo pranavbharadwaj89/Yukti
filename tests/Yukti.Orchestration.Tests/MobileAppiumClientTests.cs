@@ -64,9 +64,9 @@ public sealed class MobileAppiumClientTests
     [Fact]
     public void ClassifySessionFailure_names_the_profile_and_endpoint_for_a_connection_failure()
     {
-        var profile = new DeviceProfile(
-            DeviceProfileId.New(), "pixel-7-android-14", MobilePlatform.Android, null, "pixel-7-android-14",
-            null, "http://localhost:4723", null, ResetStrategy.Fast, TimeSpan.FromMinutes(5), TenantId.New(), null);
+        var profile = DeviceProfile.Create(
+            "pixel-7-android-14", TenantId.New(), MobilePlatform.Android, null, "pixel-7-android-14",
+            null, "http://localhost:4723", DeviceEndpointKind.Local, null);
         var connectionFailure = new WebDriverArgumentException("wrapped", new System.Net.Sockets.SocketException());
 
         var result = MobileModule.ClassifySessionFailure(connectionFailure, profile);
@@ -77,9 +77,9 @@ public sealed class MobileAppiumClientTests
     [Fact]
     public void ClassifySessionFailure_falls_back_to_the_real_Appium_message_and_profile_name_for_a_non_connection_failure()
     {
-        var profile = new DeviceProfile(
-            DeviceProfileId.New(), "pixel-7-android-14", MobilePlatform.Android, null, "pixel-7-android-14",
-            null, "http://localhost:4723", null, ResetStrategy.Fast, TimeSpan.FromMinutes(5), TenantId.New(), null);
+        var profile = DeviceProfile.Create(
+            "pixel-7-android-14", TenantId.New(), MobilePlatform.Android, null, "pixel-7-android-14",
+            null, "http://localhost:4723", DeviceEndpointKind.Local, null);
         var sessionRejected = new InvalidOperationException("session not created: could not find a connected Android device.");
 
         var result = MobileModule.ClassifySessionFailure(sessionRejected, profile);
