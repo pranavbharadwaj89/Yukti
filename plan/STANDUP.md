@@ -2430,3 +2430,102 @@ Exit check: on track — all P0 Mobile work closed, pending the full-suite numbe
 Next: push `feature/MOB-T7-assertions`, open its PR (stacked on #95). Ask the owner whether to
 continue into P1 (MOB-T8, soft assertions, device farms, CI) or treat Mobile's P0 scope as done
 for now and move to something else.
+
+## 2026-11-09 ~14:15 IST — MOB-T8 (Mobile web and hybrid, P1)
+
+Done: Pushed `feature/MOB-T7-assertions`, opened PR #96 (stacked on #95/#94/#93/#92). Asked the
+owner whether to continue into P1 Mobile work, pivot to device farms/CI, or stop for review —
+owner chose "continue into P1 Mobile work."
+MOB-T8 turned out to be almost entirely a proof-and-document task, not a build task — both
+checklist bullets were already real:
+1. "Automating a website in a mobile browser via Appium": Appium's own recipe is a `browserName`
+   capability instead of `app`. Checked `MobileModule.BuildProfile`'s config-bag parsing
+   (MOB-T1) — any key not in its `reserved` set already flows straight into
+   `ExtraCapabilities`, which `Setup()` already feeds to Appium via
+   `AddAdditionalAppiumOption` for every entry. A flow author setting `mobile.browserName`
+   today already reaches Appium with zero new code. Proved it with a new test rather than
+   assumed it (`BuildProfile` with `browserName` set → `ExtraCapabilities["browserName"]`
+   equals it; a profile with `browserName` and no `app` at all still builds correctly).
+2. "A webview inside a native app, with context switching": MOB-T6's `switchContext` already
+   implements this generically, cross-platform — re-asserted through MOB-T8's own lens with one
+   test, not duplicated wholesale.
+Discovered and fixed a real, separate gap while here: `docs/specs/modules/mobile.md` still
+described the original TypeScript prototype (`webdriverio`-based) and had never been updated
+across the entire MOB-T1-T7 build-out — actively misleading. Rewrote it to document the real
+.NET module (all 23 actions across MOB-T1-T7), and added the checklist's own "worth noting
+honestly" line verbatim: Playwright's device emulation is faster/cheaper/less flaky for pure
+mobile-web testing; this module's path is for when a real device or a native-app webview is
+genuinely needed.
+Discovered, flagged, not built: MOB-T7's "Soft assertions (P1), consistent with the other
+modules" line assumes other modules already have soft assertions. Checked directly — zero hits
+anywhere in `src/`/`tests/` for anything soft-assertion-shaped. Not a Mobile gap at all; a
+cross-cutting one needing its own design decision (a way to mark an assertion non-fail-fast, a
+`FlowEngine`/`RetryFlakeHandler` change to collect instead of stopping, a report-model change)
+across every module with assertions. Logged as `plan/PLAN.md` DISC-26, unchecked, needing an
+explicit owner call before it's buildable anywhere — not quietly added to Mobile alone, which
+would make it *less* consistent with the other modules, the opposite of the checklist's own
+intent.
+New `tests/Yukti.Orchestration.Tests/MobileWebAndHybridTests.cs` (4 tests). No `✔` filter is
+named in the spec for this P1 task (unlike every P0 task); chose
+`FullyQualifiedName~MobileWebAndHybrid` and recorded that choice in `plan/PLAN.md` rather than
+leaving it implicit.
+Verified: chosen filter → 4/4; `dotnet build -warnaserror` → 0/0; `dotnet format
+--verify-no-changes` → clean; broader `~Mobile` → 91/91 (was 87, no regression in MOB-T1-T7);
+full solution `dotnet test` → Orchestration.Tests 410/410 (was 406, +4 new); Infrastructure.Tests'
+failures are the same pre-existing Postgres gap (DISC-15), confirmed unrelated.
+Closed MOB-T8 in `plan/PLAN.md`; added `plan/OPEN-QUESTIONS.md` Mobile items 10-11 (the
+already-real checklist items' own live-server gap, and DISC-26's cross-cutting nature). Branch
+`feature/MOB-T8-web-and-hybrid`, stacked on `feature/MOB-T7-assertions`.
+Discovered: the stale `docs/specs/modules/mobile.md` and DISC-26 (soft assertions) — both logged
+above, not silently fixed or silently skipped.
+Scope guards: did not build soft assertions for Mobile alone (DISC-26 needs an owner decision
+first, and building it only for Mobile would contradict the checklist's own "consistent with the
+other modules" intent since no other module has it either). Did not attempt device farms/CI —
+needs real external credentials this session doesn't have.
+Exit check: on track. All of Mobile's buildable P0+P1 scope is now closed; what remains
+(DISC-26, device farms, CI) all needs an owner decision or resources this session can't supply.
+Next: push `feature/MOB-T8-web-and-hybrid`, open its PR (stacked on #96). Report the full Mobile
+Testing Module status to the owner and ask about DISC-26 / device farms / CI / what's next.
+
+## 2026-11-09 ~14:45 IST — ADR-0010 (DISC-26 design)
+
+Done: Pushed `feature/MOB-T8-web-and-hybrid`, opened PR #97 (stacked on #96/.../#92). Reported
+the full Mobile Testing Module status (all P0+P1 closed across 6 PRs) plus the two open
+questions (DISC-26, device farms/CI). Owner asked to continue with DISC-26's design specifically.
+Used the `engineering:architecture` skill, then wrote `plan/adr/0010-soft-assertions.md` following
+this repo's own established ADR format (`plan/adr/0008-...`'s template), not the skill's generic
+one. Design: a per-step `Soft` flag on `FlowStep` (same tier as the existing `SaveAs`/
+`WhenCondition`, not a module `ActionSchema` param — found the exact natural slot by reading
+`Flow.ContinueOnFailure` (`Flow.cs:42`) and the fail-fast `break` it already guards in
+`FlowEngine.cs` (~line 442), then designed `Soft` as the per-step scoping that flag is missing).
+`StepResult` gets the same flag denormalized, same reasoning `StepName`/`Module`/`Action` already
+are. `FlowRun.Status`'s own failure computation (`_results.Any(r => r.Status ==
+StepStatus.Failed)`) needs zero change — correct by construction, not something to remember to
+update. Rejected three alternatives with reasons in the ADR: a per-module `ActionSchema` param
+(needs building three times, inconsistent by construction — the opposite of what "consistent
+with the other modules" is actually asking for), restricting to `assert*`-named actions (engine
+pattern-matching action names), a new `StepStatus.SoftFailed` value (breaks the existing
+derived-boolean-signal pattern `IsFlaky`/`UsedLocatorFallback` already uses). Flagged that
+`Flow.CreateNewVersion` must copy `Soft` forward explicitly, tied directly to DISC-24's existing
+open question about `ContinueOnFailure` itself not being copied forward today — the same mistake
+must not get made twice, independently.
+Sarvaghna's own commit-time review raised a genuinely good question on the first commit: should
+`Soft` apply even to a catastrophic/infrastructure failure (a crashed session), not just an
+assertion mismatch? Answered explicitly in a follow-up commit rather than left implicit:
+deliberately yes — `Setup`/`Teardown`/`RetryFlakeHandler` guarantees are unaffected by `Soft`, so
+a dead session still surfaces as fast uniform failures on later steps rather than a hang, and
+`RunStatus.Failed` is reached either way; the only cost is a noisier report.
+Opened as a standalone PR (#98) against `main`, not stacked on the Mobile sequence — this is
+cross-cutting (Api/Web/Mobile alike), not Mobile-specific, so a reviewer shouldn't have to go
+through 6 Mobile PRs to see it. Verified the frontend step editor actually has existing `when`/
+`saveAs` controls before claiming a `Soft` checkbox would sit alongside them (grepped
+`flow-authoring/*.tsx` rather than assumed). Updated `plan/PLAN.md`'s DISC-26 and
+`plan/OPEN-QUESTIONS.md` item 11 with the ADR/PR reference.
+Discovered: nothing new — this was a design task on an already-discovered gap.
+Scope guards: design only, no production code — explicit per the ADR's own Status (Proposed,
+pending owner approval) and this session's own commitment not to build a cross-cutting change
+without sign-off first.
+Exit check: on track.
+Next: owner reviews/approves (or redirects) ADR-0010. If approved, the real implementation
+(domain + EF migration + API + CLI + frontend + report UI) is its own PLAN.md task, not
+assumed to follow automatically.

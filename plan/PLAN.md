@@ -1877,3 +1877,52 @@ work here, don't assume they still hold.
   pre-existing Postgres-not-running-on-this-machine gap (DISC-15), confirmed unrelated.
   Next: MOB-T8 (Mobile web and hybrid, P1) or the Device Farms/CI sections — per the spec's own
   task order, MOB-T1 through MOB-T7 (all P0) are now closed.
+
+  **MOB-T8 (Mobile web and hybrid, P1) closed 2026-11-09 — almost entirely a proof-and-document
+  task, not a build task.** Both checklist bullets were already real before this task touched
+  any production code: (1) "automating a website in a mobile browser via Appium" — Appium's own
+  recipe is a `browserName` capability instead of `app`, and `MobileModule.BuildProfile`'s
+  config-bag parsing (MOB-T1) already passes any unreserved key straight into
+  `ExtraCapabilities`, which `Setup()` already feeds to Appium — a flow author setting
+  `mobile.browserName` today already reaches Appium with **zero new code**, proven by a new test
+  rather than assumed; (2) "a webview inside a native app, with context switching" — MOB-T6's
+  `switchContext` action already implements this generically, cross-platform. Rewrote
+  `docs/specs/modules/mobile.md` (discovered stale: it still described the original TypeScript
+  prototype, `webdriverio`-based, never updated across the entire MOB-T1-T7 build-out) to
+  document the real .NET module, all 23 actions, and the checklist's own "worth noting honestly"
+  line verbatim (Playwright's device emulation is faster/cheaper/less flaky for pure mobile-web;
+  reach for this module's path only for a real device or a native-app webview).
+  **Discovered, not built here — flagged for an owner decision, not silently skipped:** MOB-T7's
+  "Soft assertions (P1), consistent with the other modules" line assumes other modules already
+  have this. Checked directly (`grep -rli "softassert" src/ tests/`): **no module in this
+  codebase has soft assertions at all** — not WebModule, not ApiModule, nowhere. Building it for
+  Mobile alone would be a brand-new cross-cutting mechanism (a way to mark a step's assertions as
+  non-fail-fast, FlowEngine/RetryFlakeHandler changes to collect rather than stop, a report-model
+  change to show multiple results per step) touching every module, the opposite of "consistent
+  with the other modules" — a real design decision needing its own task/ADR, not a quiet
+  Mobile-only addition. Recorded as `DISC-26` below.
+  ✔ No filter is named in the spec for this P1 task; `FullyQualifiedName~MobileWebAndHybrid`
+  (this session's own choice, recorded here rather than left implicit) → 4/4 passing.
+  `dotnet build -warnaserror` → 0 warnings, 0 errors. `dotnet format --verify-no-changes` →
+  clean. Broader `~Mobile` → 91/91 (was 87, no regression in MOB-T1-T7). Full solution
+  `dotnet test` → Orchestration.Tests 410/410 (was 406, +4 new); Infrastructure.Tests' failures
+  are the same pre-existing Postgres gap (DISC-15), confirmed unrelated.
+  Next: owner decision on DISC-26 (soft assertions, cross-cutting, needs its own task); the
+  Device Farms/CI sections of the spec need real external credentials (BrowserStack/Sauce Labs
+  accounts, CI runner changes) this session doesn't have — flagged, not attempted speculatively.
+
+- [ ] DISC-26 No module in this codebase implements soft assertions, despite MOB-T7's own
+  checklist line assuming they already exist ("Soft assertions (P1), consistent with the other
+  modules"). Confirmed by direct search (`grep -rli "softassert" src/ tests/` — zero hits
+  anywhere). This is cross-cutting, not Mobile-specific: a real implementation needs a domain-
+  level way to mark an assertion as non-fail-fast, a `FlowEngine`/`RetryFlakeHandler` change to
+  collect rather than stop on the first failure, and a report-model change to show multiple
+  assertion results within one step — touching every module that has assertions (Api, Web,
+  Mobile), not something to add quietly inside one module alone. Needs an explicit owner
+  decision (build it as its own cross-cutting task/ADR, or defer) before any module's "soft
+  assertions" line can honestly be ticked.
+  **Design proposed 2026-11-09:** `plan/adr/0010-soft-assertions.md`, PR #98 against `main`
+  (standalone — not stacked on the Mobile sequence, since this is cross-cutting, not
+  Mobile-specific). **Status: Accepted — owner approved 2026-11-09.** Not yet implemented; the
+  real implementation (domain + EF migration + API + CLI + frontend + report UI) is its own
+  task, not assumed to follow automatically from this design approval.
