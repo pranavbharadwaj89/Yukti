@@ -57,6 +57,11 @@ public static class AppiumLocatorResolver
         var specsInOrder = new List<LocatorSpec> { locator.Primary };
         specsInOrder.AddRange(locator.Fallbacks);
 
+        // One overall deadline for the whole primary+fallback chain, not `timeout` per attempt --
+        // otherwise a locator with several fallbacks could take specsInOrder.Count * timeout in
+        // the worst case instead of the caller's configured budget.
+        var deadline = DateTime.UtcNow + timeout;
+
         var attempts = new List<string>();
         for (var i = 0; i < specsInOrder.Count; i++)
         {
@@ -74,7 +79,14 @@ public static class AppiumLocatorResolver
                 continue;
             }
 
-            var matches = await PollForMatches(driver, scope, by, timeout, ct);
+            var remaining = deadline - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                attempts.Add($"{spec.Strategy}:'{spec.Value}' — not attempted, overall timeout already elapsed");
+                continue;
+            }
+
+            var matches = await PollForMatches(driver, scope, by, remaining, ct);
             var target = locator.Nth is int n ? (n >= 0 && n < matches.Count ? matches[n] : null) : matches.FirstOrDefault();
 
             if (target is not null)
