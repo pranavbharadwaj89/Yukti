@@ -175,32 +175,40 @@ function DeviceProfileDialog({
 }) {
   const isEdit = profile !== null;
   const [name, setName] = useState(profile?.name ?? "");
-  const [platform, setPlatform] = useState(profile?.platform ?? 0);
+  // Typed as the request DTOs' own literal unions (0 | 1, 0 | 1 | 2), not plain `number` --
+  // `DeviceProfileResponse`'s fields are the wider `number` (generated from an int column), so a
+  // profile's value is cast at the one point it enters the form instead of widening the state
+  // itself and failing the save request's own structural type check at the call site.
+  const [platform, setPlatform] = useState<0 | 1>((profile?.platform ?? 0) as 0 | 1);
   const [platformVersion, setPlatformVersion] = useState(profile?.platformVersion ?? "");
   const [deviceName, setDeviceName] = useState(profile?.deviceName ?? "");
   const [app, setApp] = useState(profile?.app ?? "");
   const [appiumUrl, setAppiumUrl] = useState(profile?.appiumUrl ?? "http://localhost:4723");
-  const [endpointKind, setEndpointKind] = useState(profile?.endpointKind ?? 0);
+  const [endpointKind, setEndpointKind] = useState<0 | 1 | 2>((profile?.endpointKind ?? 0) as 0 | 1 | 2);
   const [farmCredentialRef, setFarmCredentialRef] = useState(profile?.farmCredentialRef ?? "");
-  const [reset, setReset] = useState(profile?.reset ?? 1);
+  const [reset, setReset] = useState<0 | 1 | 2>((profile?.reset ?? 1) as 0 | 1 | 2);
   const [sessionTimeoutSeconds, setSessionTimeoutSeconds] = useState((profile?.sessionTimeoutSeconds ?? 300).toString());
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
 
-  // Re-seeds the form every time a different profile is opened for edit (or the create dialog
-  // is reopened) — same reset-on-identity-change RequestTemplateDialog already needs.
-  const [seededFor, setSeededFor] = useState(profile?.id ?? "create");
-  if ((profile?.id ?? "create") !== seededFor) {
-    setSeededFor(profile?.id ?? "create");
+  // Re-seeds the form every time the dialog opens -- for edit, when a different profile is
+  // opened; for create, every reopen, not just the first -- otherwise `profile` stays `null`
+  // across every "New profile" open/close cycle and dirty, unsaved values from a prior open
+  // leak into the next one. `closed` is a key no real profile id or "create" can ever collide
+  // with, so closing always forces the next open to reseed.
+  const seedKey = open ? (profile?.id ?? "create") : "closed";
+  const [seededFor, setSeededFor] = useState(seedKey);
+  if (seedKey !== seededFor) {
+    setSeededFor(seedKey);
     setName(profile?.name ?? "");
-    setPlatform(profile?.platform ?? 0);
+    setPlatform((profile?.platform ?? 0) as 0 | 1);
     setPlatformVersion(profile?.platformVersion ?? "");
     setDeviceName(profile?.deviceName ?? "");
     setApp(profile?.app ?? "");
     setAppiumUrl(profile?.appiumUrl ?? "http://localhost:4723");
-    setEndpointKind(profile?.endpointKind ?? 0);
+    setEndpointKind((profile?.endpointKind ?? 0) as 0 | 1 | 2);
     setFarmCredentialRef(profile?.farmCredentialRef ?? "");
-    setReset(profile?.reset ?? 1);
+    setReset((profile?.reset ?? 1) as 0 | 1 | 2);
     setSessionTimeoutSeconds((profile?.sessionTimeoutSeconds ?? 300).toString());
   }
 
@@ -216,7 +224,9 @@ function DeviceProfileDialog({
         endpointKind,
         farmCredentialRef: farmCredentialRef.trim() || null,
         reset,
-        extraCapabilities: null,
+        // Editing has no field for this yet -- preserve whatever is already on the profile
+        // (e.g. set via the API directly) instead of silently wiping it on every save.
+        extraCapabilities: isEdit ? profile?.extraCapabilities ?? null : null,
       };
       if (isEdit && profile) {
         await deviceProfilesApi.update(profile.id, { ...req, sessionTimeoutSeconds: Number(sessionTimeoutSeconds) || 300 });
@@ -248,7 +258,7 @@ function DeviceProfileDialog({
         <Input placeholder="Profile name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
 
         <div className="flex gap-3">
-          <select className={selectClassName} value={platform} onChange={(e) => setPlatform(Number(e.target.value))} aria-label="Platform">
+          <select className={selectClassName} value={platform} onChange={(e) => setPlatform(Number(e.target.value) as 0 | 1)} aria-label="Platform">
             <option value={0}>Android</option>
             <option value={1}>iOS</option>
           </select>
@@ -260,12 +270,12 @@ function DeviceProfileDialog({
         <Input placeholder="Appium endpoint URL" value={appiumUrl} onChange={(e) => setAppiumUrl(e.target.value)} required />
 
         <div className="flex gap-3">
-          <select className={selectClassName} value={endpointKind} onChange={(e) => setEndpointKind(Number(e.target.value))} aria-label="Endpoint kind">
+          <select className={selectClassName} value={endpointKind} onChange={(e) => setEndpointKind(Number(e.target.value) as 0 | 1 | 2)} aria-label="Endpoint kind">
             <option value={0}>Local</option>
             <option value={1}>Self-hosted</option>
             <option value={2}>Device farm</option>
           </select>
-          <select className={selectClassName} value={reset} onChange={(e) => setReset(Number(e.target.value))} aria-label="Reset strategy">
+          <select className={selectClassName} value={reset} onChange={(e) => setReset(Number(e.target.value) as 0 | 1 | 2)} aria-label="Reset strategy">
             <option value={0}>Full reset</option>
             <option value={1}>Fast reset</option>
             <option value={2}>No reset</option>
