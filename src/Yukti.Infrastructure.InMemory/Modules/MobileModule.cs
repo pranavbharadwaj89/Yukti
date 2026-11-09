@@ -277,6 +277,104 @@ public sealed class MobileModule : IAutomationModule
                 new ParamSpec { Name = "context", Type = ParamType.String, Required = true, Description = "Native or Webview." },
             }
         },
+        new ActionSchema
+        {
+            ActionName = "assertHidden",
+            Description = "Asserts an element matching a selector is NOT displayed. A missing or hidden element both read as not-visible.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertText",
+            Description = "Asserts a selector's text content: equals, contains, or matches a regex.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Text (or, in 'matches' mode, a regex pattern) the element's text is compared against." },
+                new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "equals (default), contains, or matches (regex)." },
+                new ParamSpec { Name = "exact", Type = ParamType.Boolean, Required = false, DefaultValue = false, Description = "By default whitespace is normalized before comparing; true compares the raw text instead." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertAttribute",
+            Description = "Asserts one of an element's attributes: equals, contains, or matches a regex.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+                new ParamSpec { Name = "attr", Type = ParamType.String, Required = true, Description = "The attribute name to read." },
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Value (or, in 'matches' mode, a regex pattern) to compare against." },
+                new ParamSpec { Name = "mode", Type = ParamType.String, Required = false, Description = "equals (default), contains, or matches (regex)." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertEnabled",
+            Description = "Asserts an element matching a selector is enabled.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertChecked",
+            Description = "Asserts a checkable element's (checkbox, radio, switch) checked/selected state.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+                new ParamSpec { Name = "checked", Type = ParamType.Boolean, Required = false, DefaultValue = true, Description = "true (default) asserts it's checked; false asserts it's unchecked." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertCount",
+            Description = "Asserts how many elements match a selector.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = "A selector that may legitimately match several elements. " + MobileSelectorParamDescription },
+                new ParamSpec { Name = "expected", Type = ParamType.Number, Required = true, Description = "The expected number of matches." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertAppInstalled",
+            Description = "Asserts an app is installed on the device.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "bundleId", Type = ParamType.String, Required = true, Description = "The app's bundle id (iOS) or package name (Android)." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertCurrentActivity",
+            Description = "Asserts the current foreground Activity. Android only.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "The expected Activity name, e.g. '.MainActivity'." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertOrientation",
+            Description = "Asserts the device/simulator's current screen orientation.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "expected", Type = ParamType.String, Required = true, Description = "Portrait or Landscape." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "assertKeyboardShown",
+            Description = "Asserts whether the on-screen software keyboard is currently shown.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "shown", Type = ParamType.Boolean, Required = false, DefaultValue = true, Description = "true (default) asserts the keyboard is shown; false asserts it is not." },
+            }
+        },
     };
 
     /// <summary>MOB-T4: "XPath carries an explicit warning in the UI: on mobile it is genuinely
@@ -636,7 +734,135 @@ public sealed class MobileModule : IAutomationModule
                         }
                         return visible
                             ? StepOutcome.Passed($"{name} is visible.")
-                            : StepOutcome.Failed($"{name} is not visible.");
+                            : await MobileAssertionFailed(driver, $"{name} is not visible.", ct);
+                    }
+                case "assertHidden":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        bool visible;
+                        string name;
+                        try
+                        {
+                            var (target, _, resolvedName) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                            visible = target.Displayed;
+                            name = resolvedName;
+                        }
+                        catch
+                        {
+                            visible = false;
+                            name = DescribeSelectorParam(raw);
+                        }
+                        return !visible
+                            ? StepOutcome.Passed($"{name} is hidden.")
+                            : await MobileAssertionFailed(driver, $"Expected {name} to be hidden, but it is visible.", ct);
+                    }
+                case "assertText":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var expected = RequireString(parameters, "expected");
+                        var mode = parameters.GetValueOrDefault("mode") as string;
+                        var exact = parameters.GetValueOrDefault("exact") as bool? ?? false;
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        var actual = NormalizeText(target.Text ?? "", exact);
+                        return TextMatches(actual, expected, mode)
+                            ? StepOutcome.Passed($"Text of {name} matched.", locatorResolution: info)
+                            : await MobileAssertionFailed(driver, $"Expected {name} text to {mode ?? "equal"} \"{expected}\", got \"{actual}\".", ct);
+                    }
+                case "assertAttribute":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var attr = RequireString(parameters, "attr");
+                        var expected = RequireString(parameters, "expected");
+                        var mode = parameters.GetValueOrDefault("mode") as string;
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        var actual = target.GetAttribute(attr);
+                        if (actual is null)
+                            return await MobileAssertionFailed(driver, $"Element '{name}' has no '{attr}' attribute.", ct);
+                        return TextMatches(actual, expected, mode)
+                            ? StepOutcome.Passed($"Attribute '{attr}' of {name} matched.", locatorResolution: info)
+                            : await MobileAssertionFailed(driver, $"Expected {name} attribute '{attr}' to {mode ?? "equal"} \"{expected}\", got \"{actual}\".", ct);
+                    }
+                case "assertEnabled":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        var enabled = target.Enabled;
+                        return enabled
+                            ? StepOutcome.Passed($"{name} is enabled.", locatorResolution: info)
+                            : await MobileAssertionFailed(driver, $"Expected {name} to be enabled, but it was disabled.", ct);
+                    }
+                case "assertChecked":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var wantChecked = parameters.GetValueOrDefault("checked") as bool? ?? true;
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        var isChecked = target.Selected;
+                        return isChecked == wantChecked
+                            ? StepOutcome.Passed($"{name} is {(wantChecked ? "checked" : "unchecked")}.", locatorResolution: info)
+                            : await MobileAssertionFailed(driver, $"Expected {name} to be {(wantChecked ? "checked" : "unchecked")}, but it was {(isChecked ? "checked" : "unchecked")}.", ct);
+                    }
+                case "assertCount":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var expectedCount = RequireInt(parameters, "expected");
+
+                        int actualCount;
+                        string name;
+                        if (raw is string selector)
+                        {
+                            actualCount = ResolveElements(driver, selector).Count;
+                            name = selector;
+                        }
+                        else
+                        {
+                            // Legitimately expects several matches, same reasoning as WebModule's
+                            // own assertCount -- builds the bare By directly via the pure,
+                            // already-public AppiumLocatorResolver.Build, never through the
+                            // single-element ResolveLocatorTarget path.
+                            var locator = raw as Locator ?? LocatorParamMapper.Parse(raw);
+                            var by = AppiumLocatorResolver.Build(locator.Primary, session.Platform);
+                            actualCount = driver.FindElements(by).Count;
+                            name = locator.Description ?? "locator";
+                        }
+
+                        return actualCount == expectedCount
+                            ? StepOutcome.Passed($"{name} count equals {expectedCount}.")
+                            : await MobileAssertionFailed(driver, $"Expected {name} count to equal {expectedCount}, got {actualCount}.", ct);
+                    }
+                case "assertAppInstalled":
+                    {
+                        var bundleId = RequireString(parameters, "bundleId");
+                        var installed = driver.IsAppInstalled(bundleId);
+                        return installed
+                            ? StepOutcome.Passed($"App {bundleId} is installed.")
+                            : StepOutcome.Failed($"Expected app {bundleId} to be installed, but it is not.");
+                    }
+                case "assertCurrentActivity":
+                    {
+                        var expected = RequireString(parameters, "expected");
+                        if (driver is not AndroidDriver android)
+                            throw new MobileDeviceCommandNotSupportedException(
+                                "assertCurrentActivity is Android-only -- iOS has no equivalent concept of an Activity.");
+                        var actual = android.CurrentActivity;
+                        return actual == expected
+                            ? StepOutcome.Passed($"Current activity is {actual}.")
+                            : StepOutcome.Failed($"Expected current activity {expected}, got {actual}.");
+                    }
+                case "assertOrientation":
+                    {
+                        var expected = RequireEnum<Orientation>(parameters, "expected");
+                        var actual = driver.Orientation == ScreenOrientation.Landscape ? Orientation.Landscape : Orientation.Portrait;
+                        return actual == expected
+                            ? StepOutcome.Passed($"Orientation is {actual}.")
+                            : StepOutcome.Failed($"Expected orientation {expected}, got {actual}.");
+                    }
+                case "assertKeyboardShown":
+                    {
+                        var wantShown = parameters.GetValueOrDefault("shown") as bool? ?? true;
+                        var shown = driver.IsKeyboardShown();
+                        return shown == wantShown
+                            ? StepOutcome.Passed($"Keyboard is {(wantShown ? "shown" : "not shown")}.")
+                            : StepOutcome.Failed($"Expected keyboard to be {(wantShown ? "shown" : "not shown")}, but it was {(shown ? "shown" : "not shown")}.");
                     }
                 case "rotate":
                     {
@@ -826,6 +1052,35 @@ public sealed class MobileModule : IAutomationModule
     // without pulling in a full selector-strategy DSL.
     private static IWebElement ResolveElement(AppiumDriver driver, string selector) =>
         selector.StartsWith('/') ? driver.FindElement(By.XPath(selector)) : driver.FindElement(By.Id(selector));
+
+    /// <summary>MOB-T7's own "assertCount" needs every match, not the first -- the legacy
+    /// plain-string counterpart to <see cref="ResolveElement"/>.</summary>
+    private static IReadOnlyCollection<IWebElement> ResolveElements(AppiumDriver driver, string selector) =>
+        selector.StartsWith('/') ? driver.FindElements(By.XPath(selector)) : driver.FindElements(By.Id(selector));
+
+    /// <summary>MOB-T7: "every failure reports expected, actual, the locator, a screenshot and
+    /// the UI hierarchy" -- the screenshot+hierarchy half (the expected/actual/locator half is
+    /// each assertion's own failure message), mirroring WebModule's own AssertionFailed but with
+    /// both diagnostics MOB-T4 already built for a selector-not-found failure, reused here for
+    /// any assertion failure.</summary>
+    private static async Task<StepOutcome> MobileAssertionFailed(AppiumDriver driver, string message, CancellationToken ct)
+    {
+        var diagnostics = await TryCaptureLocatorFailureDiagnostics(driver, ct);
+        return StepOutcome.Failed(message, diagnostics);
+    }
+
+    /// <summary>MOB-T7: the one comparison every text/attribute assertion shares -- equals
+    /// (default), contains (substring), or matches (regex). Mirrors WebModule's own TextMatches.</summary>
+    private static bool TextMatches(string actual, string expected, string? mode) => mode switch
+    {
+        "contains" => actual.Contains(expected, StringComparison.Ordinal),
+        "matches" => System.Text.RegularExpressions.Regex.IsMatch(actual, expected),
+        null or "equals" => actual == expected,
+        _ => throw new ArgumentException($"Unknown assertion mode '{mode}'. Supported: equals (default), contains, matches."),
+    };
+
+    private static string NormalizeText(string raw, bool exact) =>
+        exact ? raw : System.Text.RegularExpressions.Regex.Replace(raw.Trim(), @"\s+", " ");
 
     private static string RequireString(IReadOnlyDictionary<string, object?> parameters, string name) =>
         parameters.GetValueOrDefault(name) as string
