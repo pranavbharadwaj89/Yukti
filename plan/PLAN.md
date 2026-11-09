@@ -1754,3 +1754,41 @@ work here, don't assume they still hold.
   inspecting the failures directly (all `Npgsql`/connection-refused, all in `TenantIsolationTests`).
   Next: MOB-T5 (Gestures) — tap/double-tap/long-press/swipe/scroll/pinch/drag-and-drop against the
   `Gesture` vocabulary already declared in the spec.
+
+  **MOB-T5 (Gestures) closed 2026-11-09 — a genuine from-scratch build, unlike MOB-T4.** Every
+  `Gesture` type the spec's domain model names (`Tap`, `DoubleTap`, `LongPress`, `Swipe`,
+  `SwipeBetween`, `ScrollTo`, `Pinch`, `DragAndDropMobile`) now exists as a real record in
+  `src/Yukti.Domain/MobileTesting/Gesture.cs`, reusing `LocatorRef` from the shared vocabulary
+  (no new locator concept, same rule MOB-T4 followed) and a new `RelativePoint` (X/Y as [0,1]
+  fractions, never absolute pixels — the checklist's own "coordinate-based gestures are relative"
+  requirement). `AppiumGestureExecutor` (new, `Infrastructure.InMemory`) implements every one via
+  the W3C Actions API — split the same way `AppiumLocatorResolver` splits `Build`/`ResolveAsync`
+  (MOB-T4): `ToAbsolute`/`DirectionToPoints`/`ValidateScale` are pure, directly testable;
+  `Tap`/`DoubleTap`/`LongPress`/`SwipeBetween`/`Pinch`/`DragAndDrop` need a live driver, same
+  standing constraint as every other driver-bound call in this module. The original "tap" action
+  (MOB-T1) moved off `IWebElement.Click()` onto the same pointer-sequence mechanism every other
+  gesture here uses — zero change to the action's name, params, or observable behavior.
+  `MobileModule` gained 6 new actions (`doubleTap`, `longPress`, `swipeBetween`, `scrollTo`,
+  `pinch`, `dragAndDrop`) and extended `swipe` additively: the original `fromX/fromY/toX/toY`
+  absolute-pixel path is unchanged (zero behavioural change for an existing flow), with a new
+  `direction`/`distance`/`within` path alongside it. `scrollTo`'s bounded-attempts loop
+  (`AppiumGestureExecutor.TryUntilAsync`) is properly async all the way through, never blocking a
+  thread on an awaitable's result — caught and fixed during this task itself, before Sarvaghna's
+  own pre-commit review could (the exact sync-over-async pattern D2-T5's review rejected once
+  already). A gesture on a missing
+  element reuses MOB-T4's own `MobileSelectorNotFoundException`/screenshot+hierarchy diagnostics
+  path for free, since every selector-shaped gesture param resolves through the same
+  `ResolveLocatorTarget`.
+  **Left open, flagged not invented (same constraint as MOB-T1/T3/T4):** no live Appium
+  server/device exists in this environment, so the driver-bound half of every gesture isn't
+  exercised end-to-end here — what's proven instead is the full pure math/control-flow core
+  (coordinate conversion, direction-to-points, the bounded-scroll loop including cancellation,
+  scale validation) plus the action schema shape. Recorded as `plan/OPEN-QUESTIONS.md` Mobile
+  item 7.
+  ✔ `dotnet test --filter "FullyQualifiedName~MobileGesture"` → 19/19 passing.
+  `dotnet build -warnaserror` → 0 warnings, 0 errors. `dotnet format --verify-no-changes` → clean.
+  Broader `~Mobile` → 56/56 (was 37, no regression in MOB-T1-T4's own tests). Full solution
+  `dotnet test` → Orchestration.Tests 375/375; Infrastructure.Tests' failures are the same
+  pre-existing Postgres-not-running-on-this-machine gap (DISC-15), confirmed unrelated.
+  Next: MOB-T6 (Device control) — every `DeviceCommand` from the domain model, per the spec's own
+  task order.

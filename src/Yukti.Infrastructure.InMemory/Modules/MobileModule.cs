@@ -3,7 +3,6 @@ using OpenQA.Selenium;
 using OpenQA.Selenium.Appium;
 using OpenQA.Selenium.Appium.Android;
 using OpenQA.Selenium.Appium.iOS;
-using OpenQA.Selenium.Interactions;
 using Yukti.Contracts;
 using Yukti.Domain.Execution;
 using Yukti.Domain.MobileTesting;
@@ -85,13 +84,86 @@ public sealed class MobileModule : IAutomationModule
         new ActionSchema
         {
             ActionName = "swipe",
-            Description = "Synthesizes a touch swipe gesture from one point to another.",
+            Description = "Synthesizes a touch swipe gesture. Prefer direction + distance (screen-size " +
+                "independent); fall back to the explicit fromX/fromY/toX/toY pixel coordinates only for " +
+                "a swipe a direction can't express.",
             Parameters = new[]
             {
-                new ParamSpec { Name = "fromX", Type = ParamType.Number, Required = true, Description = "Starting X coordinate of the swipe, in device pixels." },
-                new ParamSpec { Name = "fromY", Type = ParamType.Number, Required = true, Description = "Starting Y coordinate of the swipe, in device pixels." },
-                new ParamSpec { Name = "toX", Type = ParamType.Number, Required = true, Description = "Ending X coordinate of the swipe, in device pixels." },
-                new ParamSpec { Name = "toY", Type = ParamType.Number, Required = true, Description = "Ending Y coordinate of the swipe, in device pixels." },
+                new ParamSpec { Name = "direction", Type = ParamType.String, Required = false, Description = "Up, Down, Left, or Right. Mutually exclusive with fromX/fromY/toX/toY." },
+                new ParamSpec { Name = "distance", Type = ParamType.Number, Required = false, DefaultValue = 0.5, Description = "Fraction (0-1) of the scoped region's own dimension to swipe, centered. Default 0.5." },
+                new ParamSpec { Name = "within", Type = ParamType.String, Required = false, Description = "Optional selector scoping the swipe to an element's bounds instead of the whole screen. " + MobileSelectorParamDescription },
+                new ParamSpec { Name = "fromX", Type = ParamType.Number, Required = false, Description = "Legacy: starting X coordinate of the swipe, in device pixels." },
+                new ParamSpec { Name = "fromY", Type = ParamType.Number, Required = false, Description = "Legacy: starting Y coordinate of the swipe, in device pixels." },
+                new ParamSpec { Name = "toX", Type = ParamType.Number, Required = false, Description = "Legacy: ending X coordinate of the swipe, in device pixels." },
+                new ParamSpec { Name = "toY", Type = ParamType.Number, Required = false, Description = "Legacy: ending Y coordinate of the swipe, in device pixels." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "swipeBetween",
+            Description = "Synthesizes a touch swipe between two explicit points, for a swipe no direction " +
+                "can express. Points are fractions (0-1) of the scoped region, not pixels, so a flow isn't " +
+                "tied to one screen size.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "fromX", Type = ParamType.Number, Required = true, Description = "Starting X, a fraction (0-1) of the scoped region's width." },
+                new ParamSpec { Name = "fromY", Type = ParamType.Number, Required = true, Description = "Starting Y, a fraction (0-1) of the scoped region's height." },
+                new ParamSpec { Name = "toX", Type = ParamType.Number, Required = true, Description = "Ending X, a fraction (0-1) of the scoped region's width." },
+                new ParamSpec { Name = "toY", Type = ParamType.Number, Required = true, Description = "Ending Y, a fraction (0-1) of the scoped region's height." },
+                new ParamSpec { Name = "within", Type = ParamType.String, Required = false, Description = "Optional selector scoping the two points to an element's bounds instead of the whole screen. " + MobileSelectorParamDescription },
+                new ParamSpec { Name = "durationMs", Type = ParamType.Number, Required = false, DefaultValue = 300, Description = "How long the swipe takes, in milliseconds. Default 300." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "doubleTap",
+            Description = "Double-taps the first element matching a selector.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "longPress",
+            Description = "Presses and holds the first element matching a selector.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+                new ParamSpec { Name = "durationMs", Type = ParamType.Number, Required = false, DefaultValue = 1000, Description = "How long to hold, in milliseconds. Default 1000." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "scrollTo",
+            Description = "Scrolls until an element matching a selector becomes visible, up to a bounded " +
+                "number of attempts -- an element that never appears fails in seconds, not forever.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+                new ParamSpec { Name = "container", Type = ParamType.String, Required = false, Description = "Optional selector scoping the scroll gesture to a scrollable element instead of the whole screen. " + MobileSelectorParamDescription },
+                new ParamSpec { Name = "direction", Type = ParamType.String, Required = false, DefaultValue = "Down", Description = "Up, Down, Left, or Right. Default Down." },
+                new ParamSpec { Name = "maxAttempts", Type = ParamType.Number, Required = false, DefaultValue = 10, Description = "Maximum number of scroll gestures to try before failing. Default 10." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "pinch",
+            Description = "A two-finger pinch on the first element matching a selector.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+                new ParamSpec { Name = "scale", Type = ParamType.Number, Required = true, Description = "Strictly positive. > 1 spreads fingers apart (zoom in); < 1 brings them together (zoom out)." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "dragAndDrop",
+            Description = "Drags the element matching 'from' to the element matching 'to'.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "from", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
+                new ParamSpec { Name = "to", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
             }
         },
         new ActionSchema
@@ -319,7 +391,7 @@ public sealed class MobileModule : IAutomationModule
                     {
                         var raw = RequireSelectorParam(parameters);
                         var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
-                        target.Click();
+                        AppiumGestureExecutor.Tap(driver, target);
                         return StepOutcome.Passed($"Tapped {name}", locatorResolution: info);
                     }
                 case "type":
@@ -330,21 +402,119 @@ public sealed class MobileModule : IAutomationModule
                         target.SendKeys(value);
                         return StepOutcome.Passed($"Typed into {name}", locatorResolution: info);
                     }
+                case "doubleTap":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        AppiumGestureExecutor.DoubleTap(driver, target);
+                        return StepOutcome.Passed($"Double-tapped {name}", locatorResolution: info);
+                    }
+                case "longPress":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var durationMs = OptionalInt(parameters, "durationMs") ?? 1000;
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        AppiumGestureExecutor.LongPress(driver, target, TimeSpan.FromMilliseconds(durationMs));
+                        return StepOutcome.Passed($"Long-pressed {name}", locatorResolution: info);
+                    }
                 case "swipe":
                     {
-                        var fromX = RequireInt(parameters, "fromX");
-                        var fromY = RequireInt(parameters, "fromY");
-                        var toX = RequireInt(parameters, "toX");
-                        var toY = RequireInt(parameters, "toY");
+                        // Legacy absolute-pixel path, unchanged since MOB-T1 -- zero behavioural
+                        // change for an existing flow that already sets all four.
+                        if (parameters.ContainsKey("fromX") || parameters.ContainsKey("fromY")
+                            || parameters.ContainsKey("toX") || parameters.ContainsKey("toY"))
+                        {
+                            var fromX = RequireInt(parameters, "fromX");
+                            var fromY = RequireInt(parameters, "fromY");
+                            var toX = RequireInt(parameters, "toX");
+                            var toY = RequireInt(parameters, "toY");
+                            AppiumGestureExecutor.SwipeBetween(driver, fromX, fromY, toX, toY);
+                            return StepOutcome.Passed($"Swiped ({fromX},{fromY}) -> ({toX},{toY})");
+                        }
 
-                        var finger = new PointerInputDevice(PointerKind.Touch);
-                        var sequence = new ActionSequence(finger, 0);
-                        sequence.AddAction(finger.CreatePointerMove(CoordinateOrigin.Viewport, fromX, fromY, TimeSpan.Zero));
-                        sequence.AddAction(finger.CreatePointerDown(MouseButton.Left));
-                        sequence.AddAction(finger.CreatePointerMove(CoordinateOrigin.Viewport, toX, toY, TimeSpan.FromMilliseconds(300)));
-                        sequence.AddAction(finger.CreatePointerUp(MouseButton.Left));
-                        driver.PerformActions(new List<ActionSequence> { sequence });
-                        return StepOutcome.Passed($"Swiped ({fromX},{fromY}) -> ({toX},{toY})");
+                        var direction = RequireDirection(parameters);
+                        var distance = OptionalDouble(parameters, "distance") ?? 0.5;
+                        var (originX, originY, width, height, scopeInfo, scopeName) =
+                            await ResolveSwipeRegion(driver, parameters, "within", session.Platform, ct);
+                        var (fromRel, toRel) = AppiumGestureExecutor.DirectionToPoints(direction, distance);
+                        var (absFromX, absFromY) = AppiumGestureExecutor.ToAbsolute(fromRel, originX, originY, width, height);
+                        var (absToX, absToY) = AppiumGestureExecutor.ToAbsolute(toRel, originX, originY, width, height);
+                        AppiumGestureExecutor.SwipeBetween(driver, absFromX, absFromY, absToX, absToY);
+                        return StepOutcome.Passed($"Swiped {direction}{scopeName}", locatorResolution: scopeInfo);
+                    }
+                case "swipeBetween":
+                    {
+                        var fromX = RequireDouble(parameters, "fromX");
+                        var fromY = RequireDouble(parameters, "fromY");
+                        var toX = RequireDouble(parameters, "toX");
+                        var toY = RequireDouble(parameters, "toY");
+                        var durationMs = OptionalInt(parameters, "durationMs") ?? 300;
+                        var (originX, originY, width, height, scopeInfo, scopeName) =
+                            await ResolveSwipeRegion(driver, parameters, "within", session.Platform, ct);
+                        var (absFromX, absFromY) = AppiumGestureExecutor.ToAbsolute(new RelativePoint(fromX, fromY), originX, originY, width, height);
+                        var (absToX, absToY) = AppiumGestureExecutor.ToAbsolute(new RelativePoint(toX, toY), originX, originY, width, height);
+                        AppiumGestureExecutor.SwipeBetween(driver, absFromX, absFromY, absToX, absToY, TimeSpan.FromMilliseconds(durationMs));
+                        return StepOutcome.Passed($"Swiped ({fromX},{fromY}) -> ({toX},{toY}){scopeName}", locatorResolution: scopeInfo);
+                    }
+                case "scrollTo":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var direction = OptionalDirection(parameters) ?? SwipeDirection.Down;
+                        var maxAttempts = OptionalInt(parameters, "maxAttempts") ?? 10;
+                        var (originX, originY, width, height, _, _) =
+                            await ResolveSwipeRegion(driver, parameters, "container", session.Platform, ct);
+
+                        (IWebElement Target, LocatorResolutionInfo? Info, string Name)? found = null;
+                        async Task<bool> TryResolve()
+                        {
+                            try
+                            {
+                                found = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                                return found.Value.Target.Displayed;
+                            }
+                            catch (MobileSelectorNotFoundException)
+                            {
+                                found = null;
+                                return false;
+                            }
+                        }
+                        Task ScrollOnce()
+                        {
+                            var (fromRel, toRel) = AppiumGestureExecutor.DirectionToPoints(direction, 0.5);
+                            var (fx, fy) = AppiumGestureExecutor.ToAbsolute(fromRel, originX, originY, width, height);
+                            var (tx, ty) = AppiumGestureExecutor.ToAbsolute(toRel, originX, originY, width, height);
+                            AppiumGestureExecutor.SwipeBetween(driver, fx, fy, tx, ty);
+                            return Task.CompletedTask;
+                        }
+
+                        var visible = await AppiumGestureExecutor.TryUntilAsync(TryResolve, ScrollOnce, maxAttempts, ct);
+                        if (!visible || found is null)
+                            throw new MobileSelectorNotFoundException(
+                                $"No element matched after scrolling {direction} up to {maxAttempts} time(s).");
+                        return StepOutcome.Passed($"Scrolled to {found.Value.Name}", locatorResolution: found.Value.Info);
+                    }
+                case "pinch":
+                    {
+                        var raw = RequireSelectorParam(parameters);
+                        var scale = RequireDouble(parameters, "scale");
+                        AppiumGestureExecutor.ValidateScale(scale);
+                        var (target, info, name) = await ResolveLocatorTarget(driver, raw, session.Platform, ct);
+                        var (centerX, centerY) = AppiumGestureExecutor.ElementCenter(target);
+                        var startOffset = Math.Max(1, Math.Min(target.Size.Width, target.Size.Height) / 4);
+                        var endOffset = (int)Math.Round(startOffset * scale);
+                        AppiumGestureExecutor.Pinch(driver, centerX, centerY, startOffset, endOffset);
+                        return StepOutcome.Passed($"Pinched {name} by {scale}x", locatorResolution: info);
+                    }
+                case "dragAndDrop":
+                    {
+                        var fromRaw = RequireLocatorParam(parameters, "from");
+                        var toRaw = RequireLocatorParam(parameters, "to");
+                        var (fromTarget, fromInfo, fromName) = await ResolveLocatorTarget(driver, fromRaw, session.Platform, ct);
+                        var (toTarget, _, toName) = await ResolveLocatorTarget(driver, toRaw, session.Platform, ct);
+                        var (fx, fy) = AppiumGestureExecutor.ElementCenter(fromTarget);
+                        var (tx, ty) = AppiumGestureExecutor.ElementCenter(toTarget);
+                        AppiumGestureExecutor.DragAndDrop(driver, fx, fy, tx, ty);
+                        return StepOutcome.Passed($"Dragged {fromName} to {toName}", locatorResolution: fromInfo);
                     }
                 case "assertVisible":
                     {
@@ -480,4 +650,49 @@ public sealed class MobileModule : IAutomationModule
         parameters.TryGetValue(name, out var value) && value is not null
             ? Convert.ToInt32(value)
             : throw new ArgumentException($"mobile action requires a '{name}' parameter.");
+
+    private static double RequireDouble(IReadOnlyDictionary<string, object?> parameters, string name) =>
+        parameters.TryGetValue(name, out var value) && value is not null
+            ? Convert.ToDouble(value)
+            : throw new ArgumentException($"mobile action requires a '{name}' parameter.");
+
+    private static double? OptionalDouble(IReadOnlyDictionary<string, object?> parameters, string name) =>
+        parameters.GetValueOrDefault(name) is { } value ? Convert.ToDouble(value) : null;
+
+    private static int? OptionalInt(IReadOnlyDictionary<string, object?> parameters, string name) =>
+        parameters.GetValueOrDefault(name) is { } value ? Convert.ToInt32(value) : null;
+
+    /// <summary>MOB-T5: a gesture param shaped like a selector (<c>from</c>, <c>to</c>) but not
+    /// named "selector" -- same resolution rules (plain string / Object Repository reference /
+    /// inline locator object), just a different param name.</summary>
+    private static object RequireLocatorParam(IReadOnlyDictionary<string, object?> parameters, string name) =>
+        parameters.GetValueOrDefault(name)
+            ?? throw new ArgumentException($"mobile.{name} is required.");
+
+    private static SwipeDirection RequireDirection(IReadOnlyDictionary<string, object?> parameters) =>
+        OptionalDirection(parameters)
+            ?? throw new ArgumentException("mobile.swipe requires either a 'direction', or all four of fromX/fromY/toX/toY.");
+
+    private static SwipeDirection? OptionalDirection(IReadOnlyDictionary<string, object?> parameters) =>
+        parameters.GetValueOrDefault("direction") is string raw
+            ? Enum.TryParse<SwipeDirection>(raw, ignoreCase: true, out var direction)
+                ? direction
+                : throw new ArgumentException($"'{raw}' is not a recognized swipe direction. Supported: Up, Down, Left, Right.")
+            : null;
+
+    /// <summary>MOB-T5: the region a relative swipe/scroll is measured against -- an element's
+    /// own bounds when <paramref name="paramName"/> (<c>within</c> or <c>container</c>) is set,
+    /// otherwise the whole screen (<c>driver.Manage().Window.Size</c>, origin (0,0)).</summary>
+    private static async Task<(int OriginX, int OriginY, int Width, int Height, LocatorResolutionInfo? Info, string ScopeSuffix)> ResolveSwipeRegion(
+        AppiumDriver driver, IReadOnlyDictionary<string, object?> parameters, string paramName, MobilePlatform platform, CancellationToken ct)
+    {
+        if (parameters.GetValueOrDefault(paramName) is { } raw)
+        {
+            var (target, info, name) = await ResolveLocatorTarget(driver, raw, platform, ct);
+            return (target.Location.X, target.Location.Y, target.Size.Width, target.Size.Height, info, $" within {name}");
+        }
+
+        var screen = driver.Manage().Window.Size;
+        return (0, 0, screen.Width, screen.Height, null, "");
+    }
 }
