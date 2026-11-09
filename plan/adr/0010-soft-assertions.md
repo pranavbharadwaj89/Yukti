@@ -1,10 +1,10 @@
 # ADR-0010: Soft assertions — a per-step `Soft` flag, not a per-module param
 
-Status: Proposed
+Status: Accepted
 Date: 2026-11-09
-Owner approval: **pending** — this is a new design proposal, not something a spec already
-decided. Recorded as an ADR per CLAUDE.md §4/§8's own rule (cross-cutting changes need an ADR and
-owner approval before implementation starts), raised from DISC-26 (`plan/PLAN.md`), discovered
+Owner approval: **approved 2026-11-09**, directly in conversation, after review (PR #98;
+Sarvaghna's own two-pass review on the PR raised one non-blocking note — soft vs. catastrophic
+failures — addressed in-ADR before approval). Raised from DISC-26 (`plan/PLAN.md`), discovered
 while closing MOB-T7 (Mobile Testing Module Spec).
 
 ## Context
