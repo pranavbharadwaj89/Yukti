@@ -2286,3 +2286,46 @@ pre-existing defects in code this session was already touching, not new scope.
 Exit check: on track.
 Next: MOB-T5 (Gestures) — tap/double-tap/long-press/swipe/scroll/pinch/drag-and-drop against the
 `Gesture` vocabulary already declared in the spec, per the spec's own task order.
+
+## 2026-11-09 ~12:15 IST — MOB-T5 (Gestures)
+
+Done: Unlike MOB-T4, this was a genuine from-scratch build — the `Gesture` domain model and
+`AppiumGestureExecutor` didn't exist at all before this session (confirmed: `find
+src/Yukti.Domain -iname "*Gesture*"` returned nothing). Built `src/Yukti.Domain/MobileTesting/
+Gesture.cs` with every Gesture type the spec's domain model names (`Tap`, `DoubleTap`,
+`LongPress`, `Swipe`, `SwipeBetween`, `ScrollTo`, `Pinch`, `DragAndDropMobile`), reusing
+`LocatorRef` (no new locator concept) and a new `RelativePoint` (0..1 fractions, never pixels).
+`AppiumGestureExecutor` (new) implements every one via the W3C Actions API, split the same way
+MOB-T4's `AppiumLocatorResolver` splits pure math from driver calls: `ToAbsolute`/
+`DirectionToPoints`/`ValidateScale` are pure; the actual pointer-moving calls need a live driver
+(same standing constraint as every prior Mobile task). Wired 6 new `MobileModule` actions
+(`doubleTap`, `longPress`, `swipeBetween`, `scrollTo`, `pinch`, `dragAndDrop`), extended `swipe`
+additively (legacy absolute fromX/fromY/toX/toY path untouched; new direction/distance/within
+path alongside it), and moved the original "tap" action off `IWebElement.Click()` onto the same
+pointer-sequence mechanism, with zero change to its name/params/behavior.
+Discovered and fixed, by myself, before any review caught it: my first draft of `scrollTo`'s
+bounded-attempts loop blocked a thread on the async `ResolveLocatorTarget`'s own result inside a
+sync `Func<bool>` — exactly the sync-over-async pattern D2-T5's own pre-commit review rejected
+once already (per this file's own 2026-10-12 entry). Caught it myself while writing the
+code, before building or committing: changed `AppiumGestureExecutor.TryUntil` to
+`TryUntilAsync(Func<Task<bool>>, Func<Task>, int, CancellationToken)`, properly async all the way,
+and added a cancellation regression test to prove it actually stops instead of scrolling forever.
+New `tests/Yukti.Orchestration.Tests/MobileGestureTests.cs` (19 tests): every Gesture type
+constructs; `DirectionToPoints` for all 4 directions plus edge-clamping; `ToAbsolute` (center,
+offset-origin, out-of-range clamping); `TryUntilAsync` (already-satisfied, satisfied-after-N,
+exhausts maxAttempts, respects cancellation); scale validation; and the full action-schema shape
+for all 6 new actions plus the extended `swipe`.
+Verified rather than assumed: the task's own `✔` filter (`FullyQualifiedName~MobileGesture`) →
+19/19; `dotnet build -warnaserror` → 0/0; `dotnet format --verify-no-changes` → clean; broader
+`~Mobile` → 56/56 (was 37, no regression in MOB-T1-T4); full solution `dotnet test` →
+Orchestration.Tests 375/375, Infrastructure.Tests' failures are the same pre-existing Postgres
+gap (DISC-15), confirmed unrelated by inspecting the stack traces.
+Closed MOB-T5 in `plan/PLAN.md` with full evidence; added `plan/OPEN-QUESTIONS.md` Mobile item 7
+for the driver-bound half of every gesture not being exercisable end-to-end here (same standing
+constraint as items 1, 3, 5, 6). Branch `feature/MOB-T5-gestures`, stacked on
+`feature/MOB-T4-mobile-locators` (itself stacked on #93/#92).
+Discovered: none new beyond the sync-over-async catch above.
+Scope guards: none.
+Exit check: on track.
+Next: push `feature/MOB-T5-gestures`, open its PR (stacked on #93), then MOB-T6 (Device control)
+per the spec's own task order.

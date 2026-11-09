@@ -197,6 +197,15 @@ full accounting of what existed vs. what MOB-T1 actually added.
    orchestration level (`FlowEngine.ResolveLocatorRef`, engine-neutral, exercised with a real
    repository entry and `EchoModule` as a param-echoing probe, no live driver needed). *Needs: the
    same real Appium server + emulator/device as items 1, 3 and 5.*
+7. 🔵 **MOB-T5's gestures — the driver-bound half of every `Gesture` (everything in
+   `AppiumGestureExecutor` that actually moves a pointer: `Tap`, `DoubleTap`, `LongPress`,
+   `SwipeBetween`, `Pinch`, `DragAndDrop`) isn't exercised end-to-end here, the same standing
+   constraint as items 1, 3, 5 and 6.** What's proven instead: the full pure math/control-flow
+   core these all build on — relative-to-absolute coordinate conversion, direction-to-points
+   (including clamping at the edges), the `ScrollTo` bounded-attempts loop (including
+   cancellation, so it provably doesn't scroll forever), and pinch-scale validation — plus the
+   action schema shape for all 6 new actions. *Needs: the same real Appium server + emulator/
+   device as every item above.*
 
 ---
 
