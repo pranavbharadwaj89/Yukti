@@ -124,3 +124,9 @@ public readonly record struct RepositoryId(Guid Value)
     public static RepositoryId New() => new(Guid.NewGuid());
     public override string ToString() => Value.ToString();
 }
+
+public readonly record struct DeviceProfileId(Guid Value)
+{
+    public static DeviceProfileId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString();
+}

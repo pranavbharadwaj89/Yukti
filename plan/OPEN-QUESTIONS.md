@@ -145,6 +145,46 @@ module is done end to end.
 
 ---
 
+## Mobile Testing Module (`plan/specs/MOBILE-TESTING-MODULE.md`)
+
+MOB-T1 (Appium client) closed 2026-11-07, as a completion pass on an already-existing,
+already-wired-in (but untested) `MobileModule` — see `plan/PLAN.md`'s own DISC-25 entry for the
+full accounting of what existed vs. what MOB-T1 actually added.
+
+1. 🟡 **iOS/Mac — kept open, deliberately, per your own instruction.** The spec's own "Blocking
+   iOS" question (Mac available, or a device farm?) was explicitly left unanswered: *"Why this
+   should be an environment dependent?? ... I think this should run on the simulator only for
+   now ... As of now android would do, for XCode we shall see."* Noted plainly, not glossed over:
+   Appium's iOS support (XCUITest) is a real Apple platform constraint, not a Yukti design
+   choice — Xcode runs only on macOS, so iOS automation (simulator or real device) needs a Mac
+   somewhere in the chain regardless of how Yukti itself is built. That's unrelated to whether
+   Yukti's own client code is cross-platform (it is — `MobileModule` doesn't care what OS it
+   runs on; `IOSDriver`/`AndroidDriver` are just classes). *Needs: nothing right now — correctly
+   left open. Revisit when iOS work is actually requested (the spec's own escalation trigger #3:
+   "iOS work is requested and no Mac is available — this is a hard stop, not a workaround").*
+2. 🟡 **Simulator/emulator only, not real devices, for now.** Per your own instruction: *"I think
+   this should run on the simulator only for now. Thats how we do it."* `MobileModule` itself
+   doesn't distinguish emulator/simulator from a real device — that's purely a matter of which
+   `deviceName`/capabilities a `DeviceProfile` names — so nothing in MOB-T1 enforces or needs to
+   enforce this; it's a policy for which profiles get created later (MOB-T2), not a code
+   constraint today.
+3. 🔵 **Finer connection-failure categories ("no device matching profile", "app not found at")
+   are not distinguishable from a generic "Appium rejected the session" without a real Appium
+   server's actual error text to pattern-match against** — none is available in this
+   environment (confirmed: no live Appium/device, per your own "build against mocks for now").
+   *Default, already built:* the real Appium error message and the profile name are always
+   included in the fallback case, so nothing is hidden — it's just not sub-categorized further.
+   *Needs: a real Appium server (local, or a device farm trial) to capture real error text
+   against, so the classifier's fallback case can be split into the spec's finer categories with
+   confidence instead of guessing at message patterns that might not match what Appium actually
+   says.*
+4. 🔵 DISC-25 (`plan/PLAN.md`) — the pre-existing `MobileModule`/dependency discovery itself:
+   `Appium.WebDriver` was already a dependency (6.0.1, upgraded to 8.2.0 this task, ADR-0009),
+   and the module was already live in the real app with zero tests. Not a question, just
+   flagged here so it's visible alongside everything else.
+
+---
+
 ## How to use this doc
 
 Answer inline (quote the number, e.g. "Web-2: here's the suite ..."), or just tell me "proceed
