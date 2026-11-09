@@ -175,6 +175,108 @@ public sealed class MobileModule : IAutomationModule
                 new ParamSpec { Name = "selector", Type = ParamType.String, Required = true, Description = MobileSelectorParamDescription },
             }
         },
+        new ActionSchema
+        {
+            ActionName = "rotate",
+            Description = "Rotates the device/simulator to a given screen orientation.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "to", Type = ParamType.String, Required = true, Description = "Portrait or Landscape." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "toggleWifi",
+            Description = "Turns the device's Wi-Fi on or off. Android only -- iOS has no Appium equivalent.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "on", Type = ParamType.Boolean, Required = true, Description = "true to turn Wi-Fi on, false to turn it off." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "toggleAirplaneMode",
+            Description = "Turns the device's airplane mode on or off. Android only -- iOS has no Appium equivalent.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "on", Type = ParamType.Boolean, Required = true, Description = "true to enable airplane mode, false to disable it." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "pressDeviceKey",
+            Description = "Presses a hardware/OS-level device key. Back and Enter are Android-only; Home works on both.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "key", Type = ParamType.String, Required = true, Description = "Back, Home, or Enter." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "hideKeyboard",
+            Description = "Dismisses the on-screen software keyboard, if shown.",
+            Parameters = Array.Empty<ParamSpec>(),
+        },
+        new ActionSchema
+        {
+            ActionName = "openNotifications",
+            Description = "Opens the system notification shade. Android only -- iOS has no equivalent.",
+            Parameters = Array.Empty<ParamSpec>(),
+        },
+        new ActionSchema
+        {
+            ActionName = "backgroundApp",
+            Description = "Sends the app to the background for a given duration, then brings it back.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "durationMs", Type = ParamType.Number, Required = true, Description = "How long to background the app, in milliseconds." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "handlePermissionDialog",
+            Description = "Accepts or dismisses an OS-level permission prompt (location, camera, notifications, ...).",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "action", Type = ParamType.String, Required = true, Description = "Allow or Deny." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "installApp",
+            Description = "Installs an app from a local path (on the Appium server's own machine) or a URL the server fetches it from.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "location", Type = ParamType.String, Required = true, Description = "A local file path or URL to the app package (.apk/.ipa/.app)." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "removeApp",
+            Description = "Uninstalls an app by its bundle/package identifier.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "bundleId", Type = ParamType.String, Required = true, Description = "The app's bundle id (iOS) or package name (Android)." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "resetApp",
+            Description = "Terminates and relaunches an app, clearing its in-memory state without reinstalling it.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "appId", Type = ParamType.String, Required = true, Description = "The app's bundle id (iOS) or package name (Android) to reset." },
+            }
+        },
+        new ActionSchema
+        {
+            ActionName = "switchContext",
+            Description = "Switches between the app's native UI and a webview, for hybrid apps.",
+            Parameters = new[]
+            {
+                new ParamSpec { Name = "context", Type = ParamType.String, Required = true, Description = "Native or Webview." },
+            }
+        },
     };
 
     /// <summary>MOB-T4: "XPath carries an explicit warning in the UI: on mobile it is genuinely
@@ -536,6 +638,89 @@ public sealed class MobileModule : IAutomationModule
                             ? StepOutcome.Passed($"{name} is visible.")
                             : StepOutcome.Failed($"{name} is not visible.");
                     }
+                case "rotate":
+                    {
+                        var to = RequireEnum<Orientation>(parameters, "to");
+                        EnsureSupported(new Rotate(to), session.Platform);
+                        AppiumDeviceCommandExecutor.Rotate(driver, to);
+                        return StepOutcome.Passed($"Rotated to {to}.");
+                    }
+                case "toggleWifi":
+                    {
+                        var on = RequireBool(parameters, "on");
+                        EnsureSupported(new ToggleWifi(on), session.Platform);
+                        AppiumDeviceCommandExecutor.ToggleWifi(driver, on);
+                        return StepOutcome.Passed($"Wi-Fi turned {(on ? "on" : "off")}.");
+                    }
+                case "toggleAirplaneMode":
+                    {
+                        var on = RequireBool(parameters, "on");
+                        EnsureSupported(new ToggleAirplaneMode(on), session.Platform);
+                        AppiumDeviceCommandExecutor.ToggleAirplaneMode(driver, on);
+                        return StepOutcome.Passed($"Airplane mode turned {(on ? "on" : "off")}.");
+                    }
+                case "pressDeviceKey":
+                    {
+                        var key = RequireEnum<DeviceKey>(parameters, "key");
+                        EnsureSupported(new PressDeviceKey(key), session.Platform);
+                        AppiumDeviceCommandExecutor.PressDeviceKey(driver, key, session.Platform);
+                        return StepOutcome.Passed($"Pressed {key}.");
+                    }
+                case "hideKeyboard":
+                    {
+                        EnsureSupported(new HideKeyboard(), session.Platform);
+                        AppiumDeviceCommandExecutor.HideKeyboard(driver);
+                        return StepOutcome.Passed("Keyboard hidden.");
+                    }
+                case "openNotifications":
+                    {
+                        EnsureSupported(new OpenNotifications(), session.Platform);
+                        AppiumDeviceCommandExecutor.OpenNotifications(driver);
+                        return StepOutcome.Passed("Notification shade opened.");
+                    }
+                case "backgroundApp":
+                    {
+                        var durationMs = RequireInt(parameters, "durationMs");
+                        var duration = TimeSpan.FromMilliseconds(durationMs);
+                        EnsureSupported(new BackgroundApp(duration), session.Platform);
+                        AppiumDeviceCommandExecutor.BackgroundApp(driver, duration);
+                        return StepOutcome.Passed($"Backgrounded the app for {durationMs}ms.");
+                    }
+                case "handlePermissionDialog":
+                    {
+                        var permissionAction = RequireEnum<PermissionAction>(parameters, "action");
+                        EnsureSupported(new HandlePermissionDialog(permissionAction), session.Platform);
+                        AppiumDeviceCommandExecutor.HandlePermissionDialog(driver, permissionAction);
+                        return StepOutcome.Passed($"Permission dialog: {permissionAction}.");
+                    }
+                case "installApp":
+                    {
+                        var location = RequireString(parameters, "location");
+                        EnsureSupported(new InstallApp(new AppSource(location)), session.Platform);
+                        AppiumDeviceCommandExecutor.InstallApp(driver, location);
+                        return StepOutcome.Passed($"Installed app from {location}.");
+                    }
+                case "removeApp":
+                    {
+                        var bundleId = RequireString(parameters, "bundleId");
+                        EnsureSupported(new RemoveApp(bundleId), session.Platform);
+                        AppiumDeviceCommandExecutor.RemoveApp(driver, bundleId);
+                        return StepOutcome.Passed($"Removed app {bundleId}.");
+                    }
+                case "resetApp":
+                    {
+                        var appId = RequireString(parameters, "appId");
+                        EnsureSupported(new ResetApp(), session.Platform);
+                        AppiumDeviceCommandExecutor.ResetApp(driver, appId);
+                        return StepOutcome.Passed($"Reset app {appId}.");
+                    }
+                case "switchContext":
+                    {
+                        var context = RequireEnum<MobileContext>(parameters, "context");
+                        EnsureSupported(new SwitchContext(context), session.Platform);
+                        AppiumDeviceCommandExecutor.SwitchContext(driver, context);
+                        return StepOutcome.Passed($"Switched to {context} context.");
+                    }
                 default:
                     return StepOutcome.Failed($"Unknown mobile action \"{action}\".");
             }
@@ -695,4 +880,31 @@ public sealed class MobileModule : IAutomationModule
         var screen = driver.Manage().Window.Size;
         return (0, 0, screen.Width, screen.Height, null, "");
     }
+
+    /// <summary>MOB-T6: the single call site every new device-control action routes through
+    /// before attempting anything -- "commands unsupported on a platform fail clearly," checked
+    /// up front via <see cref="AppiumDeviceCommandExecutor.IsSupported"/>, never discovered as a
+    /// confusing driver-level error after the fact.</summary>
+    private static void EnsureSupported(DeviceCommand command, MobilePlatform platform)
+    {
+        var (supported, reason) = AppiumDeviceCommandExecutor.IsSupported(command, platform);
+        if (!supported)
+            throw new MobileDeviceCommandNotSupportedException(reason!);
+    }
+
+    private static bool RequireBool(IReadOnlyDictionary<string, object?> parameters, string name) =>
+        parameters.GetValueOrDefault(name) switch
+        {
+            bool b => b,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            null => throw new ArgumentException($"mobile action requires a '{name}' parameter."),
+            var other => throw new ArgumentException($"mobile.{name} must be a boolean, got '{other}'."),
+        };
+
+    private static TEnum RequireEnum<TEnum>(IReadOnlyDictionary<string, object?> parameters, string name) where TEnum : struct, Enum =>
+        parameters.GetValueOrDefault(name) as string is { } raw
+            ? Enum.TryParse<TEnum>(raw, ignoreCase: true, out var value)
+                ? value
+                : throw new ArgumentException($"'{raw}' is not a recognized {typeof(TEnum).Name}. Supported: " + string.Join(", ", Enum.GetNames<TEnum>()) + ".")
+            : throw new ArgumentException($"mobile action requires a '{name}' parameter.");
 }

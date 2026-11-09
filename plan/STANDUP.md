@@ -2329,3 +2329,54 @@ Scope guards: none.
 Exit check: on track.
 Next: push `feature/MOB-T5-gestures`, open its PR (stacked on #93), then MOB-T6 (Device control)
 per the spec's own task order.
+
+## 2026-11-09 ~13:00 IST — MOB-T6 (Device control)
+
+Done: Pushed `feature/MOB-T5-gestures`, opened PR #94 (stacked on #93/#92). Started MOB-T6
+(Device control) — another genuine from-scratch build, same as MOB-T5. Before writing any
+driver-bound call, checked the installed `Appium.WebDriver` 8.2.0 package's own XML doc
+comments (and, where those were silent, the DLL's raw UTF-16 strings for the real W3C/MJSONWP
+command names it implements) rather than guess at method names — found real, confirmed answers
+for every command: `ToggleWifi`/`ToggleAirplaneMode` have no typed wrapper in this client at all
+(the enum `ConnectionType` exists but nothing calls it) and route through Appium's documented
+`mobile: setConnectivity` extension, Android-only; `PressDeviceKey` uses
+`AndroidDriver.PressKeyCode` + the real `AndroidKeyCode` enum for Android, `mobile: pressButton`
+for iOS Home only; `OpenNotifications` is a real Android-only typed method; `Rotate`/
+`HideKeyboard`/`BackgroundApp`/`InstallApp`/`RemoveApp`/`SwitchContext` all have real
+cross-platform `AppiumDriver` base-class members; `HandlePermissionDialog` uses the documented
+cross-platform `mobile: acceptAlert`/`mobile: dismissAlert` extensions; `ResetApp` has no typed
+wrapper either (deprecated by Appium itself) and is built from `TerminateApp`+`ActivateApp`,
+needing an explicit `appId` param since there's no "current app" concept tracked anywhere in this
+module.
+Built `src/Yukti.Domain/MobileTesting/DeviceCommand.cs` (all 12 types) and
+`AppiumDeviceCommandExecutor` (new), split the same way as MOB-T4/T5: `IsSupported` is pure and
+is the real mechanism behind "commands unsupported on a platform fail clearly." Wired 12 new
+`MobileModule` actions, each routing through a single `EnsureSupported` check before attempting
+anything. Hit and fixed a real compile error during this task, not from any review: naming the
+executor's own static methods identically to the domain record types (`ToggleWifi`,
+`ToggleAirplaneMode`, `OpenNotifications`) made bare-name type patterns in `IsSupported`'s switch
+ambiguous with the method group (CS0428) — fixed by fully qualifying those three patterns with
+the namespace.
+Also flagged, not silently done: the spec's own `AppContext` enum name became `MobileContext` --
+`System.AppContext` is a real BCL static class in scope everywhere via the implicit `System`
+using, so the spec's literal name would make every unqualified `AppContext` reference ambiguous
+(CS0104) anywhere this namespace is touched. A necessity, not a preference.
+New `tests/Yukti.Orchestration.Tests/MobileDeviceCommandTests.cs` (21 tests): every DeviceCommand
+type constructs; the full `IsSupported` matrix for every command/platform pair the checklist
+names (Wifi/Airplane/Back/Enter/Notifications all Android-only with a named reason; Home and
+every cross-platform command supported on both); every "not supported" case has a real,
+non-empty reason; and the action schema shape for all 12 new actions.
+Verified: the task's own `✔` filter (`FullyQualifiedName~DeviceCommand`) → 21/21; `dotnet build
+-warnaserror` → 0/0; `dotnet format --verify-no-changes` → clean; broader `~Mobile` → 77/77 (was
+56, no regression in MOB-T1-T5); full solution `dotnet test` → Orchestration.Tests 396/396 (was
+375, +21 new); Infrastructure.Tests' failures are the same pre-existing Postgres gap (DISC-15),
+confirmed unrelated.
+Closed MOB-T6 in `plan/PLAN.md`; added `plan/OPEN-QUESTIONS.md` Mobile item 8 (driver-bound
+execution + SwitchContext's own hybrid-fixture-app need, same standing constraint as every prior
+item). Branch `feature/MOB-T6-device-control`, stacked on `feature/MOB-T5-gestures`.
+Discovered: the CS0428 method/type name collision above — logged inline, not a separate DISC
+entry (found and fixed within this same task, not a gap left for later).
+Scope guards: none.
+Exit check: on track.
+Next: push `feature/MOB-T6-device-control`, open its PR (stacked on #94), then MOB-T7
+(Assertions) per the spec's own task order.
