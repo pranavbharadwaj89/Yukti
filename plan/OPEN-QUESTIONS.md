@@ -206,6 +206,14 @@ full accounting of what existed vs. what MOB-T1 actually added.
    cancellation, so it provably doesn't scroll forever), and pinch-scale validation — plus the
    action schema shape for all 6 new actions. *Needs: the same real Appium server + emulator/
    device as every item above.*
+8. 🔵 **MOB-T6's device commands — every driver-bound call in `AppiumDeviceCommandExecutor`
+   isn't exercised end-to-end here, the same standing constraint as every item above.** What's
+   proven instead: the full `IsSupported` decision matrix for every command/platform pair the
+   checklist names (including that a "not supported" case always names a real reason, never a
+   bare false). `SwitchContext`'s own checklist line — "with a test against a hybrid fixture
+   app" — additionally needs a real hybrid app with an actual webview context to switch into, not
+   just a live Appium server; the same resource gap as items 1, 3, 5, 6 and 7, one level further
+   (a fixture *app*, not just a server/device).
 
 ---
 

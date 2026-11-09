@@ -1792,3 +1792,50 @@ work here, don't assume they still hold.
   pre-existing Postgres-not-running-on-this-machine gap (DISC-15), confirmed unrelated.
   Next: MOB-T6 (Device control) — every `DeviceCommand` from the domain model, per the spec's own
   task order.
+
+  **MOB-T6 (Device control) closed 2026-11-09 — another from-scratch build.** Every
+  `DeviceCommand` the spec's domain model names (`Rotate`, `ToggleWifi`, `ToggleAirplaneMode`,
+  `PressDeviceKey`, `HideKeyboard`, `OpenNotifications`, `BackgroundApp`,
+  `HandlePermissionDialog`, `InstallApp`, `RemoveApp`, `ResetApp`, `SwitchContext`) now exists in
+  `src/Yukti.Domain/MobileTesting/DeviceCommand.cs`. **One deliberate naming deviation, flagged
+  not silent:** the spec's own `AppContext` became `MobileContext` — `System.AppContext` is a
+  real BCL static class in scope via the implicit `System` using everywhere, so a same-named enum
+  would make every unqualified `AppContext` reference a CS0104 ambiguity in any file touching this
+  namespace. A necessity, not a style call.
+  `AppiumDeviceCommandExecutor` (new) splits the same way MOB-T4/T5's own executors do: `IsSupported`
+  is pure and is the real engine behind the spec's own bar — "commands unsupported on a platform
+  fail clearly... a silent no-op makes a test pass while proving nothing." Checked against the
+  installed `Appium.WebDriver` 8.2.0 package's own XML docs before writing any call (not guessed):
+  `ToggleWifi`/`ToggleAirplaneMode` have no typed wrapper in this client version at all and route
+  through Appium's own documented `mobile: setConnectivity` extension, Android-only (UiAutomator2;
+  no XCUITest equivalent — iOS fails clearly, naming why); `PressDeviceKey` is Android-typed
+  (`AndroidDriver.PressKeyCode` + the real `AndroidKeyCode` enum) for Back/Enter (no iOS
+  equivalent — fails clearly) and cross-platform for Home (Android keycode, iOS via the documented
+  `mobile: pressButton` extension); `OpenNotifications` is Android-only
+  (`AndroidDriver.OpenNotifications()`, no iOS equivalent); `Rotate`/`HideKeyboard`/`BackgroundApp`/
+  `InstallApp`/`RemoveApp`/`SwitchContext` use real cross-platform `AppiumDriver` base-class
+  members (`Orientation`, `HideKeyboard()`, `BackgroundApp(TimeSpan)`, `InstallApp`/`RemoveApp`,
+  `Context`/`Contexts`); `HandlePermissionDialog` uses the documented cross-platform
+  `mobile: acceptAlert`/`mobile: dismissAlert` extensions; `ResetApp` has no typed wrapper in this
+  client either (Appium deprecated it years ago) and is built from `TerminateApp`+`ActivateApp`,
+  needing an explicit `appId` step param since there's no "current app" concept this module tracks.
+  `MobileModule` gained all 12 corresponding actions, each routing through a single
+  `EnsureSupported` call before attempting anything, so a platform-unsupported command is caught
+  before ever reaching the driver.
+  **Left open, flagged not invented (same constraint as every Mobile task so far):** no live
+  Appium server/device exists in this environment, so every driver-bound execution path isn't
+  exercised end-to-end here — what's proven instead is the full `IsSupported` decision matrix
+  (every command/platform pair the checklist cares about, including that every "not supported"
+  case names a real reason, never a bare false) plus the domain vocabulary and action schema
+  shape. `SwitchContext`'s own Native/Webview runtime behavior (picking an actual webview context,
+  or failing when none exists) also needs a live hybrid fixture app, per the checklist's own
+  "with a test against a hybrid fixture app" line — recorded as
+  `plan/OPEN-QUESTIONS.md` Mobile item 8 alongside the rest.
+  ✔ `dotnet test --filter "FullyQualifiedName~DeviceCommand"` → 21/21 passing.
+  `dotnet build -warnaserror` → 0 warnings, 0 errors. `dotnet format --verify-no-changes` → clean.
+  Broader `~Mobile` → 77/77 (was 56, no regression in MOB-T1-T5). Full solution `dotnet test` →
+  Orchestration.Tests 396/396 (was 375, +21 new); Infrastructure.Tests' failures are the same
+  pre-existing Postgres-not-running-on-this-machine gap (DISC-15), confirmed unrelated.
+  Next: MOB-T7 (Assertions) — the Web module's own assertion set plus mobile-specific ones
+  (`assertAppInstalled`, `assertCurrentActivity`, `assertOrientation`, `assertKeyboardShown`), per
+  the spec's own task order.
