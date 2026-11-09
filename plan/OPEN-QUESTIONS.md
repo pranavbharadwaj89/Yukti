@@ -219,6 +219,14 @@ full accounting of what existed vs. what MOB-T1 actually added.
    item above.** What's proven instead: every new action's schema shape, matching the
    checklist's own list exactly. Soft assertions (P1, the checklist's own lowest-priority line)
    not built — every P0 item in MOB-T7 took priority first, consistent with the slip policy.
+10. 🔵 **MOB-T8's two P1 checklist items were already real before this task touched any
+    production code** (`browserName` already flows through `BuildProfile`'s existing
+    `ExtraCapabilities` passthrough; `switchContext` to Webview already works, built in MOB-T6) —
+    proven by a new test, not re-built. The actual browser launch and webview context switch
+    still need a live Appium server to exercise end-to-end, same as every item above.
+11. 🟡 **DISC-26 (soft assertions) — not a "needs a live server" gap, a real missing feature
+    across every module.** See `plan/PLAN.md`'s DISC-26 for the full accounting; needs an owner
+    decision before it's buildable anywhere, Mobile included.
 
 ---
 
