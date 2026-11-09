@@ -1839,3 +1839,41 @@ work here, don't assume they still hold.
   Next: MOB-T7 (Assertions) — the Web module's own assertion set plus mobile-specific ones
   (`assertAppInstalled`, `assertCurrentActivity`, `assertOrientation`, `assertKeyboardShown`), per
   the spec's own task order.
+
+  **MOB-T7 (Assertions) closed 2026-11-09.** Mirrors WebModule's own set exactly: `assertText`,
+  `assertAttribute` (both via a new `TextMatches`/`NormalizeText` pair in `MobileModule`,
+  deliberately a private mirror of WebModule's own equals/contains/matches/normalize logic, not
+  a cross-module extraction — this codebase already tolerates this level of per-module
+  duplication, e.g. neither module shares `AssertionEvaluator`, and extracting one now would
+  touch already-shipped v0.1.0 `WebModule.cs` for a benefit MOB-T7 doesn't need), `assertEnabled`
+  (`IWebElement.Enabled`), `assertChecked` (`IWebElement.Selected`), `assertCount` (reuses
+  MOB-T4's already-public `AppiumLocatorResolver.Build` directly for the locator-object path,
+  same "count needs every match, not one" reasoning WebModule's own assertCount uses), and
+  `assertHidden` (`assertVisible`'s own negation). `assertVisible` itself — already built in
+  MOB-T1/T4 — now routes its failure through the same new `MobileAssertionFailed` helper every
+  other assertion here uses, since MOB-T7's own "every failure reports... a screenshot and the
+  UI hierarchy" bar applies to it too, not just the new ones; a minimal fix to close a real gap
+  the checklist itself names, not scope creep. `MobileAssertionFailed` reuses MOB-T4's own
+  `TryCaptureLocatorFailureDiagnostics` (screenshot + UI hierarchy XML) for every assertion
+  failure, matching the checklist's exact bar — the "expected/actual/the locator" part is each
+  assertion's own failure message text, same as WebModule's own split.
+  Mobile-specific, all checked against the installed `Appium.WebDriver` 8.2.0 package's own API
+  before writing any call: `assertAppInstalled` (`AppiumDriver.IsAppInstalled`, cross-platform),
+  `assertCurrentActivity` (`AndroidDriver.CurrentActivity`, Android-only per the checklist's own
+  parenthetical — fails clearly naming why on iOS, the same `MobileDeviceCommandNotSupportedException`
+  MOB-T6 introduced, reused here since the shape of the failure is identical), `assertOrientation`
+  (`AppiumDriver.Orientation` getter, the same property MOB-T6's `Rotate` already sets),
+  `assertKeyboardShown` (`AppiumDriver.IsKeyboardShown()`, cross-platform).
+  **Left open, flagged not invented (same constraint as every Mobile task so far):** no live
+  Appium server/device exists in this environment, so none of these actions' actual comparison
+  logic against a real element is exercisable end-to-end here — what's proven instead is every
+  new action's schema shape, matching the checklist's own list exactly. Soft assertions (P1) not
+  built — the checklist marks this P1, every other P0 item in MOB-T7 took priority, consistent
+  with the slip policy's own P1-stretch-first rule.
+  ✔ `dotnet test --filter "FullyQualifiedName~MobileAssertion"` → 10/10 passing.
+  `dotnet build -warnaserror` → 0 warnings, 0 errors. `dotnet format --verify-no-changes` → clean.
+  Broader `~Mobile` → 87/87 (was 77, no regression in MOB-T1-T6). Full solution `dotnet test` →
+  Orchestration.Tests 406/406 (was 396, +10 new); Infrastructure.Tests' failures are the same
+  pre-existing Postgres-not-running-on-this-machine gap (DISC-15), confirmed unrelated.
+  Next: MOB-T8 (Mobile web and hybrid, P1) or the Device Farms/CI sections — per the spec's own
+  task order, MOB-T1 through MOB-T7 (all P0) are now closed.

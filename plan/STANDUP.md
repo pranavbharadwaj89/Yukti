@@ -2380,3 +2380,53 @@ Scope guards: none.
 Exit check: on track.
 Next: push `feature/MOB-T6-device-control`, open its PR (stacked on #94), then MOB-T7
 (Assertions) per the spec's own task order.
+
+## 2026-11-09 ~13:45 IST — MOB-T7 (Assertions), MOB-T1-T7 all P0 now closed
+
+Done: Pushed `feature/MOB-T6-device-control`, opened PR #95 (stacked on #94/#93/#92). Built
+MOB-T7 (Assertions) — mirrors WebModule's own set: `assertText`/`assertAttribute` (new
+`TextMatches`/`NormalizeText` pair in `MobileModule`, a deliberate private mirror of WebModule's
+own equals/contains/matches/normalize logic rather than a cross-module extraction — chose not to
+touch already-shipped v0.1.0 `WebModule.cs` for a DRY benefit MOB-T7 doesn't need, consistent
+with this codebase already tolerating this level of per-module duplication elsewhere),
+`assertEnabled` (`IWebElement.Enabled`), `assertChecked` (`IWebElement.Selected`), `assertCount`
+(reuses MOB-T4's already-public `AppiumLocatorResolver.Build` directly, same "count needs every
+match" reasoning WebModule's own assertCount uses), `assertHidden` (assertVisible's negation).
+Also upgraded the pre-existing `assertVisible` (MOB-T1/T4) to route through the new
+`MobileAssertionFailed` helper — MOB-T7's own "every failure reports... a screenshot and the UI
+hierarchy" bar applies to it too, a minimal fix for a gap the checklist itself names, not scope
+creep.
+Mobile-specific: `assertAppInstalled` (`AppiumDriver.IsAppInstalled`), `assertCurrentActivity`
+(`AndroidDriver.CurrentActivity`, Android-only, fails clearly on iOS reusing MOB-T6's
+`MobileDeviceCommandNotSupportedException`), `assertOrientation` (`AppiumDriver.Orientation`
+getter), `assertKeyboardShown` (`AppiumDriver.IsKeyboardShown()`) — every one checked against
+the installed `Appium.WebDriver` 8.2.0 package's own API before writing the call, same discipline
+as MOB-T6.
+Caught and fixed my own placeholder-code mistake mid-task, before build: while reasoning through
+the Android-only cast pattern for `assertCurrentActivity`, I'd left in nonsense placeholder code
+(a deliberately-throwing ternary, `return StepOutcome.Failed("unreachable")`) as a scratch marker
+for "come back and finish this" — caught it on the next read-through, before ever building, and
+replaced it with the real `AndroidDriver` cast + comparison.
+New `tests/Yukti.Orchestration.Tests/MobileAssertionTests.cs` (10 tests): every new/updated
+action's schema shape, matching the checklist's own list exactly (no live Appium server means
+the actual comparison logic isn't exercisable end-to-end, the same standing constraint as every
+prior Mobile task — consistent with this repo's own explicit precedent of never introducing
+`InternalsVisibleTo` just to unit-test a module's private comparison helpers, confirmed by
+checking: zero existing uses anywhere in this repo).
+Verified: the task's own `✔` filter (`FullyQualifiedName~MobileAssertion`) → 10/10; `dotnet build
+-warnaserror` → 0/0; `dotnet format --verify-no-changes` → clean; broader `~Mobile` → 87/87 (was
+77, no regression in MOB-T1-T6); full solution `dotnet test` → Orchestration.Tests 406/406 (was
+396, +10 new); Infrastructure.Tests' failures are the same pre-existing Postgres gap (DISC-15),
+confirmed unrelated.
+Closed MOB-T7 in `plan/PLAN.md` — **all 7 P0 Mobile tasks (MOB-T1 through MOB-T7) are now
+closed.** Added `plan/OPEN-QUESTIONS.md` Mobile item 9 (driver-bound comparison logic +
+soft-assertions-are-P1, same pattern as every prior item). Branch `feature/MOB-T7-assertions`,
+stacked on `feature/MOB-T6-device-control`.
+Discovered: the placeholder-code catch above — logged inline, caught before build, never shipped.
+Scope guards: MOB-T8 (Mobile web/hybrid) and soft assertions are both explicitly P1 — not started,
+per the slip policy's own "P1 stretch" ordering; everything else in the spec's P0 task list is
+done.
+Exit check: on track — all P0 Mobile work closed, pending the full-suite numbers below.
+Next: push `feature/MOB-T7-assertions`, open its PR (stacked on #95). Ask the owner whether to
+continue into P1 (MOB-T8, soft assertions, device farms, CI) or treat Mobile's P0 scope as done
+for now and move to something else.

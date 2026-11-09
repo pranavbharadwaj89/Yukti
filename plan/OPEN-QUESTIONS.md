@@ -214,6 +214,11 @@ full accounting of what existed vs. what MOB-T1 actually added.
    app" — additionally needs a real hybrid app with an actual webview context to switch into, not
    just a live Appium server; the same resource gap as items 1, 3, 5, 6 and 7, one level further
    (a fixture *app*, not just a server/device).
+9. 🔵 **MOB-T7's assertions — none of the 11 new/updated actions' actual comparison logic
+   against a real element is exercisable end-to-end here, the same standing constraint as every
+   item above.** What's proven instead: every new action's schema shape, matching the
+   checklist's own list exactly. Soft assertions (P1, the checklist's own lowest-priority line)
+   not built — every P0 item in MOB-T7 took priority first, consistent with the slip policy.
 
 ---
 
