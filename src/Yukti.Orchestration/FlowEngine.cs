@@ -99,6 +99,11 @@ public sealed class FlowEngine
             ["app"] = profile.App,
             ["appiumUrl"] = profile.AppiumUrl,
             ["farmCredentialRef"] = profile.FarmCredentialRef,
+            // MOB-T3: without these two, MobileModule.BuildProfile would silently fall back to
+            // Fast/5-minutes regardless of what the resolved profile actually says -- the whole
+            // point of resolving by name is that the profile's own settings reach Setup().
+            ["reset"] = profile.Reset.ToString(),
+            ["sessionTimeoutSeconds"] = profile.SessionTimeout.TotalSeconds,
         };
         foreach (var (key, value) in profile.ExtraCapabilities)
             mergedMobile[key] = value;

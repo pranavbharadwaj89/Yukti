@@ -36,7 +36,19 @@ namespace Yukti.Infrastructure.InMemory.Modules;
 /// </summary>
 public sealed class MobileModule : IAutomationModule
 {
-    private readonly ConcurrentDictionary<FlowRunId, AppiumDriver> _sessions = new();
+    /// <summary>MOB-T3: a session's own creation time + its profile's SessionTimeout, so Run()
+    /// can tell a stale session from a healthy one without a timer -- checked lazily, on the
+    /// next action against it, same "no background machinery" shape RetryFlakeHandler's own
+    /// per-call checks already use.</summary>
+    private sealed record MobileSession(AppiumDriver Driver, DateTimeOffset CreatedAt, TimeSpan Timeout)
+    {
+        public bool IsExpired(DateTimeOffset now) => now - CreatedAt > Timeout;
+    }
+
+    private readonly ConcurrentDictionary<FlowRunId, MobileSession> _sessions = new();
+    private readonly TimeProvider _clock;
+
+    public MobileModule(TimeProvider? clock = null) => _clock = clock ?? TimeProvider.System;
 
     public ModuleKind Kind => ModuleKind.Mobile;
     public string ContractVersion => "1.0.0";
@@ -97,13 +109,19 @@ public sealed class MobileModule : IAutomationModule
         options.AutomationName = profile.Platform == MobilePlatform.Ios ? "XCUITest" : "UiAutomator2";
         if (profile.App is not null) options.App = profile.App;
 
-        if (profile.ExtraCapabilities is not null)
+        // MOB-T3: the profile's own Reset strategy maps onto Appium's own noReset/fullReset
+        // capabilities -- Full reinstalls (fullReset), None reuses state deliberately (noReset),
+        // Fast (the default) takes neither flag, which is Appium's own ordinary per-session reset
+        // behaviour. See ResetCapabilitiesFor's own doc comment for why this mapping, not a
+        // hand-rolled uninstall/clear-data sequence.
+        var (noReset, fullReset) = ResetCapabilitiesFor(profile.Reset);
+        options.AddAdditionalAppiumOption("noReset", noReset);
+        options.AddAdditionalAppiumOption("fullReset", fullReset);
+
+        foreach (var (key, value) in profile.ExtraCapabilities)
         {
-            foreach (var (key, value) in profile.ExtraCapabilities)
-            {
-                if (value is not null)
-                    options.AddAdditionalAppiumOption(key, value);
-            }
+            if (value is not null)
+                options.AddAdditionalAppiumOption(key, value);
         }
 
         var remoteAddress = new Uri(profile.AppiumUrl);
@@ -120,8 +138,26 @@ public sealed class MobileModule : IAutomationModule
             throw ClassifySessionFailure(ex, profile);
         }
 
-        _sessions[ctx.RunId] = driver;
+        _sessions[ctx.RunId] = new MobileSession(driver, _clock.GetUtcNow(), profile.SessionTimeout);
     }
+
+    /// <summary>
+    /// MOB-T3: "Three reset strategies, set per profile: Full (reinstall the app -- slowest,
+    /// cleanest), Fast (clear app data between flows -- the default), None (reuse state
+    /// deliberately, for flows that chain)." Appium's own W3C capabilities already express
+    /// exactly this spectrum for both Android (UiAutomator2) and iOS (XCUITest) drivers:
+    /// `fullReset: true` uninstalls and reinstalls the app (Full); `noReset: true` skips any
+    /// reset entirely (None); neither flag set is each driver's own ordinary per-session reset
+    /// (Fast) -- never a hand-rolled uninstall/clear-data sequence this module would have to
+    /// reimplement and keep correct per platform. Public and pure for direct unit testing
+    /// without a live Appium server, same reasoning as <see cref="ClassifySessionFailure"/>.
+    /// </summary>
+    public static (bool NoReset, bool FullReset) ResetCapabilitiesFor(ResetStrategy reset) => reset switch
+    {
+        ResetStrategy.Full => (NoReset: false, FullReset: true),
+        ResetStrategy.None => (NoReset: true, FullReset: false),
+        _ => (NoReset: false, FullReset: false), // Fast
+    };
 
     /// <summary>
     /// Builds a typed <see cref="DeviceProfile"/> from the flow's own "mobile" config bag.
@@ -131,8 +167,12 @@ public sealed class MobileModule : IAutomationModule
     /// the platform default; keeping it configurable here would just be a way to misconfigure.
     /// farmCredentialRef, if present, is resolved now (not left as a literal) -- a step/profile
     /// author names which credential to use, never the credential itself.
+    /// MOB-T3: public (not just <see cref="ClassifySessionFailure"/>) for the same reason --
+    /// Setup() always fails without a live Appium server in this environment, so "reset"/
+    /// "sessionTimeoutSeconds" parsing from the config bag needs to be directly testable without
+    /// one too.
     /// </summary>
-    private static async Task<DeviceProfile> BuildProfile(IReadOnlyDictionary<string, object?> config, TenantId tenantId, ExecutionContext ctx, CancellationToken ct)
+    public static async Task<DeviceProfile> BuildProfile(IReadOnlyDictionary<string, object?> config, TenantId tenantId, ExecutionContext ctx, CancellationToken ct)
     {
         var platformName = config.GetValueOrDefault("platformName") as string
             ?? throw new ArgumentException("mobile config requires 'platformName'.");
@@ -143,7 +183,23 @@ public sealed class MobileModule : IAutomationModule
         var appiumUrl = config.GetValueOrDefault("appiumUrl") as string ?? "http://localhost:4723";
         var farmCredentialRef = config.GetValueOrDefault("farmCredentialRef") as string;
 
-        var reserved = new HashSet<string> { "platformName", "deviceName", "app", "appiumUrl", "farmCredentialRef", "automationName" };
+        // MOB-T3: "reset"/"sessionTimeoutSeconds" are how FlowEngine.ResolveDeviceProfile (MOB-T2)
+        // carries a resolved, persisted profile's own Reset/SessionTimeout through this same
+        // literal-config bag -- without these two keys, a resolved profile's reset strategy would
+        // silently never reach Setup(), always falling back to Fast/5-minutes regardless of what
+        // the profile actually says. A flow author can also set either literally, same as every
+        // other key here.
+        var reset = config.GetValueOrDefault("reset") is string resetRaw
+            && Enum.TryParse<ResetStrategy>(resetRaw, ignoreCase: true, out var parsedReset)
+            ? parsedReset : ResetStrategy.Fast;
+        var sessionTimeout = config.GetValueOrDefault("sessionTimeoutSeconds") is { } rawTimeout
+            ? TimeSpan.FromSeconds(Convert.ToDouble(rawTimeout)) : TimeSpan.FromMinutes(5);
+
+        var reserved = new HashSet<string>
+        {
+            "platformName", "deviceName", "app", "appiumUrl", "farmCredentialRef", "automationName",
+            "reset", "sessionTimeoutSeconds",
+        };
         var extraCapabilities = config.Where(kv => !reserved.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
 
         // Resolved now, placed into ExtraCapabilities under a fixed key -- never logged, never
@@ -167,7 +223,7 @@ public sealed class MobileModule : IAutomationModule
         return DeviceProfile.Create(
             deviceName, tenantId, platform, platformVersion: null, deviceName, app, appiumUrl,
             farmCredentialRef is not null ? DeviceEndpointKind.Farm : DeviceEndpointKind.Local,
-            farmCredentialRef, ResetStrategy.Fast, TimeSpan.FromMinutes(5), extraCapabilities);
+            farmCredentialRef, reset, sessionTimeout, extraCapabilities);
     }
 
     /// <summary>
@@ -209,16 +265,32 @@ public sealed class MobileModule : IAutomationModule
 
     public Task Teardown(ExecutionContext ctx, CancellationToken ct)
     {
-        if (_sessions.TryRemove(ctx.RunId, out var driver))
-            driver.Quit();
+        if (_sessions.TryRemove(ctx.RunId, out var session))
+            session.Driver.Quit();
         return Task.CompletedTask;
     }
 
     public async Task<StepOutcome> Run(string action, IReadOnlyDictionary<string, object?> parameters, ExecutionContext ctx, CancellationToken ct)
     {
-        if (!_sessions.TryGetValue(ctx.RunId, out var driver))
+        if (!_sessions.TryGetValue(ctx.RunId, out var session))
             return StepOutcome.Failed("MobileModule not set up — call setup() first.");
 
+        // MOB-T3: "a configurable session timeout, after which the session is force-released
+        // and the run fails with a clear message." Checked lazily here, on the next action
+        // against an already-expired session, rather than a background timer -- a session a
+        // flow never touches again costs nothing to expire, and FlowEngine's own Teardown call
+        // still runs normally afterward (TryRemove here already took it out, so Teardown's own
+        // TryRemove is a safe no-op, same shape as every other "nothing to tear down" case).
+        if (session.IsExpired(_clock.GetUtcNow()))
+        {
+            _sessions.TryRemove(ctx.RunId, out _);
+            try { session.Driver.Quit(); } catch { /* best-effort release of an already-stale session */ }
+            return StepOutcome.Failed(
+                $"Mobile session exceeded its {session.Timeout} timeout and was force-released. " +
+                "Increase the device profile's session timeout, or reduce how long the flow runs before this step.");
+        }
+
+        var driver = session.Driver;
         try
         {
             switch (action)

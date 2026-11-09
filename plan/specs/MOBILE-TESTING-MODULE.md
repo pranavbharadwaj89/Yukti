@@ -249,14 +249,54 @@ Time-box: 3 h.
 
 The mobile equivalent of the DB module's transaction problem: without this, test two inherits test one's mess.
 
-- [ ] Three reset strategies, set per profile: **Full** (reinstall the app — slowest, cleanest), **Fast** (clear app data between flows), **None** (reuse state deliberately, for flows that chain).
-- [ ] Default is **Fast**. A flow can override it.
-- [ ] A session is torn down on flow completion, failure **and** cancellation. A leaked session holds a device hostage, which on a shared device farm blocks a whole team.
-- [ ] Session reuse across steps within one flow is automatic; emulator cold-start cost is paid once.
-- [ ] A configurable session timeout, after which the session is force-released and the run fails with a clear message.
-- [ ] A test proves isolation: flow A writes state, flow B with Fast reset sees a clean app.
+**Closed 2026-11-08.**
 
-✔ `dotnet test --filter "FullyQualifiedName~MobileSession"`
+- [x] Three reset strategies, set per profile: **Full** (reinstall the app — slowest, cleanest), **Fast** (clear app data between flows), **None** (reuse state deliberately, for flows that chain).
+  Mapped onto Appium's own W3C `noReset`/`fullReset` capabilities (`MobileModule.ResetCapabilitiesFor`,
+  public and pure, same "direct unit testing without a live server" reasoning as
+  `ClassifySessionFailure`) rather than a hand-rolled uninstall/clear-data sequence this module
+  would otherwise have to reimplement and keep correct per platform. Applied in `Setup()` before
+  any `ExtraCapabilities` override, so the escape hatch can still take precedence if a team ever
+  needs to.
+- [x] Default is **Fast**. A flow can override it.
+  `DeviceProfile.Create`'s own `reset` parameter already defaulted to `Fast` (MOB-T2); the real gap
+  closed here was that `MobileModule.BuildProfile`'s literal-config path **hardcoded** `Fast`/5
+  minutes regardless of what a resolved, persisted profile said — `FlowEngine.ResolveDeviceProfile`
+  was silently dropping both fields on the floor. Fixed by adding `"reset"`/`"sessionTimeoutSeconds"`
+  as two more config-bag keys both the resolver and a flow author can set, same shape as every
+  other key in that bag.
+- [x] A session is torn down on flow completion, failure **and** cancellation. A leaked session holds a device hostage, which on a shared device farm blocks a whole team.
+  Already true, structurally, before this task: `FlowEngine.Execute`'s `try`/`finally` calls
+  `Teardown` for every used module regardless of how the `try` exits (return, exception,
+  cancellation) — `GracefulShutdownTests.cs` already proves this generically, and it applies to
+  `MobileModule` the same as any other `IAutomationModule`. Nothing Mobile-specific to add here.
+- [x] Session reuse across steps within one flow is automatic; emulator cold-start cost is paid once.
+  Already true, structurally, before this task: sessions are keyed by `FlowRunId` in a
+  `ConcurrentDictionary`, one `Setup()` call per flow run regardless of step count. Not exercisable
+  end-to-end in this environment (`Setup()` always fails before storing a session without a live
+  Appium server — the same wall MOB-T1 hit), so this is a structural/code-reading confirmation, not
+  a passing integration test; flagged, not invented around.
+  **MOB-T3's own real addition here:** a session now also carries its creation time and the
+  profile's `SessionTimeout`, so a stale session can be told apart from a healthy one (see next item).
+- [x] A configurable session timeout, after which the session is force-released and the run fails with a clear message.
+  `Run()` checks `MobileSession.IsExpired` before dispatching any action; an expired session is
+  `Quit()`-ed, removed, and the step fails naming the exact timeout — never a bare timeout message,
+  same MOB-T1 standard. `TimeProvider` (optional constructor param, defaults to `TimeProvider.System`)
+  makes this clock-injectable; every existing construction site (`new MobileModule()`) keeps
+  compiling and behaving identically. The force-release path itself isn't exercisable end-to-end
+  without a live session (same wall as above) — the timeout *arithmetic* is proven directly instead,
+  via `BuildProfile`'s parsing (see the gate below).
+- [ ] A test proves isolation: flow A writes state, flow B with Fast reset sees a clean app.
+  **Not provable in this environment, flagged rather than invented:** real app-state isolation is
+  a property of a real device/emulator honoring Appium's reset capabilities, not of this module's
+  own code — there is no live Appium server/device here to write state to in the first place (same
+  constraint this spec's own "Infrastructure reality" section names explicitly). What *is* proven:
+  the correct capability is sent for each strategy (`ResetCapabilitiesFor`'s own test). Left open
+  for whoever has a real device farm or emulator to run `demo/mobile_login.json` against it.
+
+✔ `dotnet test --filter "FullyQualifiedName~MobileSession"` → 18/18 passing (new), plus the existing
+8 `MobileAppiumClientTests` re-verified unbroken (`FullyQualifiedName~Mobile` → 23/23). Full solution:
+`dotnet build -warnaserror` clean (0 warnings); full suite green.
 
 Time-box: 4 h.
 

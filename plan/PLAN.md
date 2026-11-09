@@ -1689,3 +1689,30 @@ work here, don't assume they still hold.
   `MobileModule.Teardown`/session reuse (`DeviceProfile.Reset` exists from MOB-T2, not yet read by
   the module), session timeout, isolation test (flow A writes state, flow B with Fast reset sees a
   clean app).
+
+  **MOB-T3 (Session lifecycle and app state) closed 2026-11-08.** Each `ResetStrategy` now maps
+  onto Appium's own `noReset`/`fullReset` W3C capabilities (`MobileModule.ResetCapabilitiesFor`,
+  public/pure, same direct-testability reasoning as `ClassifySessionFailure`) — Full -> `fullReset`,
+  None -> `noReset`, Fast (default) -> neither, applied in `Setup()` before the `ExtraCapabilities`
+  escape hatch so a team can still override it. Found and fixed a real gap while wiring this up:
+  `MobileModule.BuildProfile`'s literal-config path **hardcoded** `Fast`/5 minutes, so
+  `FlowEngine.ResolveDeviceProfile` (MOB-T2) was silently dropping a resolved profile's own
+  `Reset`/`SessionTimeout` on the floor — fixed by adding `"reset"`/`"sessionTimeoutSeconds"` as
+  two more keys both the resolver and a flow author can set in that same config bag, reserved so
+  neither leaks into `ExtraCapabilities`.
+  Session timeout: a session now carries its own creation time + the profile's `SessionTimeout`
+  (`TimeProvider`, optional constructor param defaulting to `TimeProvider.System` — every existing
+  `new MobileModule()` call site keeps compiling unchanged); `Run()` force-releases and fails
+  naming the exact timeout, never a bare one, before dispatching any expired session's action.
+  Teardown-on-every-path and session-reuse-across-steps were **already true structurally**
+  before this task (FlowEngine's own `try`/`finally`, `GracefulShutdownTests.cs`'s existing
+  generic proof; sessions already keyed by `FlowRunId`) — nothing Mobile-specific needed there.
+  **Left open, flagged not invented:** the isolation test itself ("flow A writes state, flow B
+  with Fast reset sees a clean app") needs a real Appium server/device this environment doesn't
+  have — see `plan/OPEN-QUESTIONS.md` item 5 under Mobile.
+  ✔ `dotnet test --filter "FullyQualifiedName~MobileSession"` → 18/18 passing (new);
+  `FullyQualifiedName~Mobile` → 23/23 (incl. all pre-existing MOB-T1 tests, unbroken). Full
+  solution: `dotnet build -warnaserror` clean (0 warnings).
+  Next: MOB-T4 (Mobile locators) — `AccessibilityId`/`ResourceId`/`IosPredicate`/`IosClassChain`/
+  `ClassName` strategies against the shared `LocatorStrategy` vocabulary (WEB-T1), fallback
+  resolution, Object Repository integration, XPath performance warning.
