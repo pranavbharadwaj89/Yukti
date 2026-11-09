@@ -2223,3 +2223,309 @@ never fixed, only removed from CI's view. Fixing that is the real prerequisite f
 Git Agent back, not just re-adding the files.
 
 Next: Mobile Testing Module — owner has confirmed intent to start it after this PR is green.
+
+## 2026-11-09 ~11:30 IST — MOB-T4 (Mobile locators)
+
+Done: Re-verified the true baseline before touching anything — found MOB-T4's implementation
+already written but uncommitted in the working tree, sitting on `feature/MOB-T3-session-lifecycle`
+(whose own commit, MOB-T3, is already pushed as PR #92, still open/unmerged). Checked it against
+`plan/specs/MOBILE-TESTING-MODULE.md`'s own MOB-T4 checklist line by line (all 6 items: shared
+`Locator` type against Appium, all 7 strategies, XPath warning, flagged-pass fallback, `Within`/
+`Nth` chaining, shared Object-Repository entry, screenshot+UI-hierarchy failure diagnostics) —
+genuinely complete, not partial. Verified rather than assumed: `dotnet build -warnaserror` → 0/0;
+`dotnet format --verify-no-changes` → clean; the task's own `✔` filter
+(`FullyQualifiedName~MobileLocator`) → 14/14; broader `~Mobile` → 37/37 (no regression in MOB-T1/
+T2/T3's own tests); full solution `dotnet test` → Orchestration.Tests 356/356, Infrastructure.Tests'
+13 failures are the pre-existing, already-documented Postgres-not-running-on-this-machine gap
+(DISC-15) — confirmed by reading the stack traces directly (`Npgsql`/connection-refused, all in
+`TenantIsolationTests`), not assumed unrelated. Cut a proper branch,
+`feature/MOB-T4-mobile-locators`, stacked on `feature/MOB-T3-session-lifecycle` (same pattern
+D5-T4 used stacking on D5-T3 while it was still unmerged), since the work had been sitting on the
+wrong branch with no task-scoped name. Closed MOB-T4 in `plan/PLAN.md` with full evidence; added
+`plan/OPEN-QUESTIONS.md` Mobile item 6 for the one real limitation (no live Appium server/device
+in this environment, so `ResolveAsync`'s full fallback/`Within`/`Nth` orchestration against a real
+driver isn't exercised end-to-end — same standing constraint as MOB-T1/T2/T3, not new).
+Discovered: none new — this session's job was verifying and landing already-written work, not
+building from scratch.
+Scope guards: none.
+Exit check: on track. Committing this branch and opening a PR (stacked on #92), per the work loop
+— owner reviews and merges.
+Next: push `feature/MOB-T4-mobile-locators`, open its PR against `feature/MOB-T3-session-lifecycle`.
+Then MOB-T5 (Gestures) is next per the spec's own task order.
+
+Done: Pushed `feature/MOB-T4-mobile-locators`, opened PR #93 against `feature/MOB-T3-session-lifecycle`
+(stacked on the still-open #92). Sarvaghna's own push-time review on #93 flagged two real,
+pre-existing bugs in MOB-T2's Device Profiles dialog (`device-profiles-page.tsx`, out of MOB-T4's
+scope): (1) the "New profile" dialog is permanently mounted with `profile` always `null`, so its
+reseed check — keyed only on profile identity — never re-fires on a second open, so dirty, typed-
+and-abandoned values from a prior open leaked into the next; (2) the save payload hardcoded
+`extraCapabilities: null` on every save, silently wiping anything set on a profile outside this
+dialog on every edit. Owner said get them fixed and keep going. Switched to
+`feature/MOB-T3-session-lifecycle` (where the file actually lives, part of #92) and fixed both:
+(1) folded `open` into the reseed key (`seedKey = open ? (profile?.id ?? "create") : "closed"`),
+so closing always forces the next open to reseed; (2) preserve `profile?.extraCapabilities` on
+update instead of hardcoding `null` (create still has none to preserve). While verifying the fix,
+`npm run typecheck` surfaced a third, real, pre-existing failure unrelated to either bug:
+`platform`/`endpointKind`/`reset` were seeded from `DeviceProfileResponse`'s wider `number` fields
+into state TypeScript inferred as plain `number`, which the save request DTOs' own literal unions
+(`0 | 1`, `0 | 1 | 2`) rejected — confirmed pre-existing by stashing the fix and re-running
+typecheck against unmodified MOB-T3 code, same two errors, same lines. Fixed by casting at the one
+point each value enters the form instead of widening the DTOs. New
+`device-profiles-page.test.tsx` (WCAG check + both regressions + the create-still-null case,
+mirroring `request-templates-page.test.tsx`'s pattern) — 4/4 passing. Full verification before
+committing: `npm run typecheck` clean, `npm run lint` clean (only pre-existing warnings elsewhere),
+full frontend `npx vitest run --pool=threads` → 263/263 (26/26 files), `npm run build` succeeds.
+Committed and pushed to `feature/MOB-T3-session-lifecycle` (updates #92). Rebased
+`feature/MOB-T4-mobile-locators` onto the updated MOB-T3 tip (clean, no conflicts), re-verified
+`dotnet build -warnaserror` → 0/0, force-pushed (safe: sole pusher, moments after the original
+push) so #93's diff stays limited to MOB-T4's own commits.
+Discovered: the typecheck failure above — logged inline, not a separate DISC entry (it's a direct
+consequence of the same dialog, found while fixing it, not an unrelated gap).
+Scope guards: none — both review findings and the typecheck failure they led to are real,
+pre-existing defects in code this session was already touching, not new scope.
+Exit check: on track.
+Next: MOB-T5 (Gestures) — tap/double-tap/long-press/swipe/scroll/pinch/drag-and-drop against the
+`Gesture` vocabulary already declared in the spec, per the spec's own task order.
+
+## 2026-11-09 ~12:15 IST — MOB-T5 (Gestures)
+
+Done: Unlike MOB-T4, this was a genuine from-scratch build — the `Gesture` domain model and
+`AppiumGestureExecutor` didn't exist at all before this session (confirmed: `find
+src/Yukti.Domain -iname "*Gesture*"` returned nothing). Built `src/Yukti.Domain/MobileTesting/
+Gesture.cs` with every Gesture type the spec's domain model names (`Tap`, `DoubleTap`,
+`LongPress`, `Swipe`, `SwipeBetween`, `ScrollTo`, `Pinch`, `DragAndDropMobile`), reusing
+`LocatorRef` (no new locator concept) and a new `RelativePoint` (0..1 fractions, never pixels).
+`AppiumGestureExecutor` (new) implements every one via the W3C Actions API, split the same way
+MOB-T4's `AppiumLocatorResolver` splits pure math from driver calls: `ToAbsolute`/
+`DirectionToPoints`/`ValidateScale` are pure; the actual pointer-moving calls need a live driver
+(same standing constraint as every prior Mobile task). Wired 6 new `MobileModule` actions
+(`doubleTap`, `longPress`, `swipeBetween`, `scrollTo`, `pinch`, `dragAndDrop`), extended `swipe`
+additively (legacy absolute fromX/fromY/toX/toY path untouched; new direction/distance/within
+path alongside it), and moved the original "tap" action off `IWebElement.Click()` onto the same
+pointer-sequence mechanism, with zero change to its name/params/behavior.
+Discovered and fixed, by myself, before any review caught it: my first draft of `scrollTo`'s
+bounded-attempts loop blocked a thread on the async `ResolveLocatorTarget`'s own result inside a
+sync `Func<bool>` — exactly the sync-over-async pattern D2-T5's own pre-commit review rejected
+once already (per this file's own 2026-10-12 entry). Caught it myself while writing the
+code, before building or committing: changed `AppiumGestureExecutor.TryUntil` to
+`TryUntilAsync(Func<Task<bool>>, Func<Task>, int, CancellationToken)`, properly async all the way,
+and added a cancellation regression test to prove it actually stops instead of scrolling forever.
+New `tests/Yukti.Orchestration.Tests/MobileGestureTests.cs` (19 tests): every Gesture type
+constructs; `DirectionToPoints` for all 4 directions plus edge-clamping; `ToAbsolute` (center,
+offset-origin, out-of-range clamping); `TryUntilAsync` (already-satisfied, satisfied-after-N,
+exhausts maxAttempts, respects cancellation); scale validation; and the full action-schema shape
+for all 6 new actions plus the extended `swipe`.
+Verified rather than assumed: the task's own `✔` filter (`FullyQualifiedName~MobileGesture`) →
+19/19; `dotnet build -warnaserror` → 0/0; `dotnet format --verify-no-changes` → clean; broader
+`~Mobile` → 56/56 (was 37, no regression in MOB-T1-T4); full solution `dotnet test` →
+Orchestration.Tests 375/375, Infrastructure.Tests' failures are the same pre-existing Postgres
+gap (DISC-15), confirmed unrelated by inspecting the stack traces.
+Closed MOB-T5 in `plan/PLAN.md` with full evidence; added `plan/OPEN-QUESTIONS.md` Mobile item 7
+for the driver-bound half of every gesture not being exercisable end-to-end here (same standing
+constraint as items 1, 3, 5, 6). Branch `feature/MOB-T5-gestures`, stacked on
+`feature/MOB-T4-mobile-locators` (itself stacked on #93/#92).
+Discovered: none new beyond the sync-over-async catch above.
+Scope guards: none.
+Exit check: on track.
+Next: push `feature/MOB-T5-gestures`, open its PR (stacked on #93), then MOB-T6 (Device control)
+per the spec's own task order.
+
+## 2026-11-09 ~13:00 IST — MOB-T6 (Device control)
+
+Done: Pushed `feature/MOB-T5-gestures`, opened PR #94 (stacked on #93/#92). Started MOB-T6
+(Device control) — another genuine from-scratch build, same as MOB-T5. Before writing any
+driver-bound call, checked the installed `Appium.WebDriver` 8.2.0 package's own XML doc
+comments (and, where those were silent, the DLL's raw UTF-16 strings for the real W3C/MJSONWP
+command names it implements) rather than guess at method names — found real, confirmed answers
+for every command: `ToggleWifi`/`ToggleAirplaneMode` have no typed wrapper in this client at all
+(the enum `ConnectionType` exists but nothing calls it) and route through Appium's documented
+`mobile: setConnectivity` extension, Android-only; `PressDeviceKey` uses
+`AndroidDriver.PressKeyCode` + the real `AndroidKeyCode` enum for Android, `mobile: pressButton`
+for iOS Home only; `OpenNotifications` is a real Android-only typed method; `Rotate`/
+`HideKeyboard`/`BackgroundApp`/`InstallApp`/`RemoveApp`/`SwitchContext` all have real
+cross-platform `AppiumDriver` base-class members; `HandlePermissionDialog` uses the documented
+cross-platform `mobile: acceptAlert`/`mobile: dismissAlert` extensions; `ResetApp` has no typed
+wrapper either (deprecated by Appium itself) and is built from `TerminateApp`+`ActivateApp`,
+needing an explicit `appId` param since there's no "current app" concept tracked anywhere in this
+module.
+Built `src/Yukti.Domain/MobileTesting/DeviceCommand.cs` (all 12 types) and
+`AppiumDeviceCommandExecutor` (new), split the same way as MOB-T4/T5: `IsSupported` is pure and
+is the real mechanism behind "commands unsupported on a platform fail clearly." Wired 12 new
+`MobileModule` actions, each routing through a single `EnsureSupported` check before attempting
+anything. Hit and fixed a real compile error during this task, not from any review: naming the
+executor's own static methods identically to the domain record types (`ToggleWifi`,
+`ToggleAirplaneMode`, `OpenNotifications`) made bare-name type patterns in `IsSupported`'s switch
+ambiguous with the method group (CS0428) — fixed by fully qualifying those three patterns with
+the namespace.
+Also flagged, not silently done: the spec's own `AppContext` enum name became `MobileContext` --
+`System.AppContext` is a real BCL static class in scope everywhere via the implicit `System`
+using, so the spec's literal name would make every unqualified `AppContext` reference ambiguous
+(CS0104) anywhere this namespace is touched. A necessity, not a preference.
+New `tests/Yukti.Orchestration.Tests/MobileDeviceCommandTests.cs` (21 tests): every DeviceCommand
+type constructs; the full `IsSupported` matrix for every command/platform pair the checklist
+names (Wifi/Airplane/Back/Enter/Notifications all Android-only with a named reason; Home and
+every cross-platform command supported on both); every "not supported" case has a real,
+non-empty reason; and the action schema shape for all 12 new actions.
+Verified: the task's own `✔` filter (`FullyQualifiedName~DeviceCommand`) → 21/21; `dotnet build
+-warnaserror` → 0/0; `dotnet format --verify-no-changes` → clean; broader `~Mobile` → 77/77 (was
+56, no regression in MOB-T1-T5); full solution `dotnet test` → Orchestration.Tests 396/396 (was
+375, +21 new); Infrastructure.Tests' failures are the same pre-existing Postgres gap (DISC-15),
+confirmed unrelated.
+Closed MOB-T6 in `plan/PLAN.md`; added `plan/OPEN-QUESTIONS.md` Mobile item 8 (driver-bound
+execution + SwitchContext's own hybrid-fixture-app need, same standing constraint as every prior
+item). Branch `feature/MOB-T6-device-control`, stacked on `feature/MOB-T5-gestures`.
+Discovered: the CS0428 method/type name collision above — logged inline, not a separate DISC
+entry (found and fixed within this same task, not a gap left for later).
+Scope guards: none.
+Exit check: on track.
+Next: push `feature/MOB-T6-device-control`, open its PR (stacked on #94), then MOB-T7
+(Assertions) per the spec's own task order.
+
+## 2026-11-09 ~13:45 IST — MOB-T7 (Assertions), MOB-T1-T7 all P0 now closed
+
+Done: Pushed `feature/MOB-T6-device-control`, opened PR #95 (stacked on #94/#93/#92). Built
+MOB-T7 (Assertions) — mirrors WebModule's own set: `assertText`/`assertAttribute` (new
+`TextMatches`/`NormalizeText` pair in `MobileModule`, a deliberate private mirror of WebModule's
+own equals/contains/matches/normalize logic rather than a cross-module extraction — chose not to
+touch already-shipped v0.1.0 `WebModule.cs` for a DRY benefit MOB-T7 doesn't need, consistent
+with this codebase already tolerating this level of per-module duplication elsewhere),
+`assertEnabled` (`IWebElement.Enabled`), `assertChecked` (`IWebElement.Selected`), `assertCount`
+(reuses MOB-T4's already-public `AppiumLocatorResolver.Build` directly, same "count needs every
+match" reasoning WebModule's own assertCount uses), `assertHidden` (assertVisible's negation).
+Also upgraded the pre-existing `assertVisible` (MOB-T1/T4) to route through the new
+`MobileAssertionFailed` helper — MOB-T7's own "every failure reports... a screenshot and the UI
+hierarchy" bar applies to it too, a minimal fix for a gap the checklist itself names, not scope
+creep.
+Mobile-specific: `assertAppInstalled` (`AppiumDriver.IsAppInstalled`), `assertCurrentActivity`
+(`AndroidDriver.CurrentActivity`, Android-only, fails clearly on iOS reusing MOB-T6's
+`MobileDeviceCommandNotSupportedException`), `assertOrientation` (`AppiumDriver.Orientation`
+getter), `assertKeyboardShown` (`AppiumDriver.IsKeyboardShown()`) — every one checked against
+the installed `Appium.WebDriver` 8.2.0 package's own API before writing the call, same discipline
+as MOB-T6.
+Caught and fixed my own placeholder-code mistake mid-task, before build: while reasoning through
+the Android-only cast pattern for `assertCurrentActivity`, I'd left in nonsense placeholder code
+(a deliberately-throwing ternary, `return StepOutcome.Failed("unreachable")`) as a scratch marker
+for "come back and finish this" — caught it on the next read-through, before ever building, and
+replaced it with the real `AndroidDriver` cast + comparison.
+New `tests/Yukti.Orchestration.Tests/MobileAssertionTests.cs` (10 tests): every new/updated
+action's schema shape, matching the checklist's own list exactly (no live Appium server means
+the actual comparison logic isn't exercisable end-to-end, the same standing constraint as every
+prior Mobile task — consistent with this repo's own explicit precedent of never introducing
+`InternalsVisibleTo` just to unit-test a module's private comparison helpers, confirmed by
+checking: zero existing uses anywhere in this repo).
+Verified: the task's own `✔` filter (`FullyQualifiedName~MobileAssertion`) → 10/10; `dotnet build
+-warnaserror` → 0/0; `dotnet format --verify-no-changes` → clean; broader `~Mobile` → 87/87 (was
+77, no regression in MOB-T1-T6); full solution `dotnet test` → Orchestration.Tests 406/406 (was
+396, +10 new); Infrastructure.Tests' failures are the same pre-existing Postgres gap (DISC-15),
+confirmed unrelated.
+Closed MOB-T7 in `plan/PLAN.md` — **all 7 P0 Mobile tasks (MOB-T1 through MOB-T7) are now
+closed.** Added `plan/OPEN-QUESTIONS.md` Mobile item 9 (driver-bound comparison logic +
+soft-assertions-are-P1, same pattern as every prior item). Branch `feature/MOB-T7-assertions`,
+stacked on `feature/MOB-T6-device-control`.
+Discovered: the placeholder-code catch above — logged inline, caught before build, never shipped.
+Scope guards: MOB-T8 (Mobile web/hybrid) and soft assertions are both explicitly P1 — not started,
+per the slip policy's own "P1 stretch" ordering; everything else in the spec's P0 task list is
+done.
+Exit check: on track — all P0 Mobile work closed, pending the full-suite numbers below.
+Next: push `feature/MOB-T7-assertions`, open its PR (stacked on #95). Ask the owner whether to
+continue into P1 (MOB-T8, soft assertions, device farms, CI) or treat Mobile's P0 scope as done
+for now and move to something else.
+
+## 2026-11-09 ~14:15 IST — MOB-T8 (Mobile web and hybrid, P1)
+
+Done: Pushed `feature/MOB-T7-assertions`, opened PR #96 (stacked on #95/#94/#93/#92). Asked the
+owner whether to continue into P1 Mobile work, pivot to device farms/CI, or stop for review —
+owner chose "continue into P1 Mobile work."
+MOB-T8 turned out to be almost entirely a proof-and-document task, not a build task — both
+checklist bullets were already real:
+1. "Automating a website in a mobile browser via Appium": Appium's own recipe is a `browserName`
+   capability instead of `app`. Checked `MobileModule.BuildProfile`'s config-bag parsing
+   (MOB-T1) — any key not in its `reserved` set already flows straight into
+   `ExtraCapabilities`, which `Setup()` already feeds to Appium via
+   `AddAdditionalAppiumOption` for every entry. A flow author setting `mobile.browserName`
+   today already reaches Appium with zero new code. Proved it with a new test rather than
+   assumed it (`BuildProfile` with `browserName` set → `ExtraCapabilities["browserName"]`
+   equals it; a profile with `browserName` and no `app` at all still builds correctly).
+2. "A webview inside a native app, with context switching": MOB-T6's `switchContext` already
+   implements this generically, cross-platform — re-asserted through MOB-T8's own lens with one
+   test, not duplicated wholesale.
+Discovered and fixed a real, separate gap while here: `docs/specs/modules/mobile.md` still
+described the original TypeScript prototype (`webdriverio`-based) and had never been updated
+across the entire MOB-T1-T7 build-out — actively misleading. Rewrote it to document the real
+.NET module (all 23 actions across MOB-T1-T7), and added the checklist's own "worth noting
+honestly" line verbatim: Playwright's device emulation is faster/cheaper/less flaky for pure
+mobile-web testing; this module's path is for when a real device or a native-app webview is
+genuinely needed.
+Discovered, flagged, not built: MOB-T7's "Soft assertions (P1), consistent with the other
+modules" line assumes other modules already have soft assertions. Checked directly — zero hits
+anywhere in `src/`/`tests/` for anything soft-assertion-shaped. Not a Mobile gap at all; a
+cross-cutting one needing its own design decision (a way to mark an assertion non-fail-fast, a
+`FlowEngine`/`RetryFlakeHandler` change to collect instead of stopping, a report-model change)
+across every module with assertions. Logged as `plan/PLAN.md` DISC-26, unchecked, needing an
+explicit owner call before it's buildable anywhere — not quietly added to Mobile alone, which
+would make it *less* consistent with the other modules, the opposite of the checklist's own
+intent.
+New `tests/Yukti.Orchestration.Tests/MobileWebAndHybridTests.cs` (4 tests). No `✔` filter is
+named in the spec for this P1 task (unlike every P0 task); chose
+`FullyQualifiedName~MobileWebAndHybrid` and recorded that choice in `plan/PLAN.md` rather than
+leaving it implicit.
+Verified: chosen filter → 4/4; `dotnet build -warnaserror` → 0/0; `dotnet format
+--verify-no-changes` → clean; broader `~Mobile` → 91/91 (was 87, no regression in MOB-T1-T7);
+full solution `dotnet test` → Orchestration.Tests 410/410 (was 406, +4 new); Infrastructure.Tests'
+failures are the same pre-existing Postgres gap (DISC-15), confirmed unrelated.
+Closed MOB-T8 in `plan/PLAN.md`; added `plan/OPEN-QUESTIONS.md` Mobile items 10-11 (the
+already-real checklist items' own live-server gap, and DISC-26's cross-cutting nature). Branch
+`feature/MOB-T8-web-and-hybrid`, stacked on `feature/MOB-T7-assertions`.
+Discovered: the stale `docs/specs/modules/mobile.md` and DISC-26 (soft assertions) — both logged
+above, not silently fixed or silently skipped.
+Scope guards: did not build soft assertions for Mobile alone (DISC-26 needs an owner decision
+first, and building it only for Mobile would contradict the checklist's own "consistent with the
+other modules" intent since no other module has it either). Did not attempt device farms/CI —
+needs real external credentials this session doesn't have.
+Exit check: on track. All of Mobile's buildable P0+P1 scope is now closed; what remains
+(DISC-26, device farms, CI) all needs an owner decision or resources this session can't supply.
+Next: push `feature/MOB-T8-web-and-hybrid`, open its PR (stacked on #96). Report the full Mobile
+Testing Module status to the owner and ask about DISC-26 / device farms / CI / what's next.
+
+## 2026-11-09 ~14:45 IST — ADR-0010 (DISC-26 design)
+
+Done: Pushed `feature/MOB-T8-web-and-hybrid`, opened PR #97 (stacked on #96/.../#92). Reported
+the full Mobile Testing Module status (all P0+P1 closed across 6 PRs) plus the two open
+questions (DISC-26, device farms/CI). Owner asked to continue with DISC-26's design specifically.
+Used the `engineering:architecture` skill, then wrote `plan/adr/0010-soft-assertions.md` following
+this repo's own established ADR format (`plan/adr/0008-...`'s template), not the skill's generic
+one. Design: a per-step `Soft` flag on `FlowStep` (same tier as the existing `SaveAs`/
+`WhenCondition`, not a module `ActionSchema` param — found the exact natural slot by reading
+`Flow.ContinueOnFailure` (`Flow.cs:42`) and the fail-fast `break` it already guards in
+`FlowEngine.cs` (~line 442), then designed `Soft` as the per-step scoping that flag is missing).
+`StepResult` gets the same flag denormalized, same reasoning `StepName`/`Module`/`Action` already
+are. `FlowRun.Status`'s own failure computation (`_results.Any(r => r.Status ==
+StepStatus.Failed)`) needs zero change — correct by construction, not something to remember to
+update. Rejected three alternatives with reasons in the ADR: a per-module `ActionSchema` param
+(needs building three times, inconsistent by construction — the opposite of what "consistent
+with the other modules" is actually asking for), restricting to `assert*`-named actions (engine
+pattern-matching action names), a new `StepStatus.SoftFailed` value (breaks the existing
+derived-boolean-signal pattern `IsFlaky`/`UsedLocatorFallback` already uses). Flagged that
+`Flow.CreateNewVersion` must copy `Soft` forward explicitly, tied directly to DISC-24's existing
+open question about `ContinueOnFailure` itself not being copied forward today — the same mistake
+must not get made twice, independently.
+Sarvaghna's own commit-time review raised a genuinely good question on the first commit: should
+`Soft` apply even to a catastrophic/infrastructure failure (a crashed session), not just an
+assertion mismatch? Answered explicitly in a follow-up commit rather than left implicit:
+deliberately yes — `Setup`/`Teardown`/`RetryFlakeHandler` guarantees are unaffected by `Soft`, so
+a dead session still surfaces as fast uniform failures on later steps rather than a hang, and
+`RunStatus.Failed` is reached either way; the only cost is a noisier report.
+Opened as a standalone PR (#98) against `main`, not stacked on the Mobile sequence — this is
+cross-cutting (Api/Web/Mobile alike), not Mobile-specific, so a reviewer shouldn't have to go
+through 6 Mobile PRs to see it. Verified the frontend step editor actually has existing `when`/
+`saveAs` controls before claiming a `Soft` checkbox would sit alongside them (grepped
+`flow-authoring/*.tsx` rather than assumed). Updated `plan/PLAN.md`'s DISC-26 and
+`plan/OPEN-QUESTIONS.md` item 11 with the ADR/PR reference.
+Discovered: nothing new — this was a design task on an already-discovered gap.
+Scope guards: design only, no production code — explicit per the ADR's own Status (Proposed,
+pending owner approval) and this session's own commitment not to build a cross-cutting change
+without sign-off first.
+Exit check: on track.
+Next: owner reviews/approves (or redirects) ADR-0010. If approved, the real implementation
+(domain + EF migration + API + CLI + frontend + report UI) is its own PLAN.md task, not
+assumed to follow automatically.

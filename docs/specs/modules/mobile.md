@@ -4,76 +4,129 @@
 
 ## Status
 
-TS prototype only (`src/modules/mobile/MobileModule.ts`). No .NET port
-exists yet.
+Real .NET implementation, built against `Appium.WebDriver` 8.2.0
+(`src/Yukti.Infrastructure.InMemory/Modules/MobileModule.cs`). All 7 P0 tasks in
+`plan/specs/MOBILE-TESTING-MODULE.md` (MOB-T1 through MOB-T7 — client, device profiles, session
+lifecycle, locators, gestures, device control, assertions) are closed. This file previously
+described the original TypeScript prototype (`webdriverio`-based) and had not been updated
+through that entire build-out — rewritten here to match the real module, not the prototype that
+preceded it.
 
 ## Purpose
 
-Mobile UI automation (iOS/Android) via WebdriverIO's Appium service —
-taps, typing, swipes, and visibility assertions against a real
-device/emulator or a device farm (BrowserStack App Automate, Sauce Labs)
-reachable via the same Appium protocol.
+Mobile UI automation (iOS/Android) via Appium — taps, gestures, device-level commands, and
+assertions against a real device/emulator/simulator or a device farm (BrowserStack App Automate,
+Sauce Labs) reachable via the same Appium protocol.
 
 ## Dependencies
 
-- `webdriverio`, `appium` — peer dependencies, not bundled.
-- Requires a running Appium server (`appium &`) plus an attached
-  device/emulator/simulator. This module does not start Appium itself; it
-  only connects to a URL.
+- `Appium.WebDriver` (NuGet), upgraded 6.0.1 → 8.2.0 (ADR-0009).
+- Requires a running Appium server plus an attached device/emulator/simulator. This module does
+  not start Appium itself; it only connects to a URL (`appiumUrl`).
 
-## Constructor
+## Configuration
 
-```ts
-new MobileModule(capabilities: MobileCapabilities, appiumUrl = "http://localhost:4723")
-```
+A flow's `mobile` variable (a literal config bag) or a persisted, admin-configured `DeviceProfile`
+looked up by name (`FlowEngine.ResolveDeviceProfile`, MOB-T2):
 
-`MobileCapabilities` (required, no defaults — caller must supply):
-
-| Field | Type |
-|---|---|
-| `platformName` | `"iOS" \| "Android"` |
-| `appium:deviceName` | string |
-| `appium:app` | string (path or bundle id) |
-| `appium:automationName` | `"XCUITest" \| "UiAutomator2"` |
-| *(any other key)* | passed through as-is (`[key: string]: unknown`) |
-
-Config is entirely constructor-supplied — there is no per-action override
-of capabilities, and no way to switch device/platform mid-flow (one
-`MobileModule` instance equals one fixed device target for the whole run).
+| Key | Required | Notes |
+|---|---|---|
+| `platformName` | yes | `"iOS"` or `"Android"`. |
+| `deviceName` | yes | |
+| `app` | no | Path or bundle id. Omit entirely for mobile-web testing (see below). |
+| `appiumUrl` | no | Defaults to `http://localhost:4723`. |
+| `farmCredentialRef` | no | Resolved via the real `{{secrets}}`/`ICredentialResolver` pipeline, never a literal key. |
+| `reset` | no | `Full` \| `Fast` (default) \| `None` — maps to Appium's own `fullReset`/`noReset` capabilities (MOB-T3). |
+| `sessionTimeoutSeconds` | no | Default 300. |
+| *(any other key)* | no | Passed through as-is to Appium's capabilities (`AddAdditionalAppiumOption`) — this is also how `browserName` (mobile web, see below) reaches Appium, with no dedicated field. |
 
 ## Lifecycle
 
-- `setup()`: dynamically imports `webdriverio`, parses `appiumUrl` into
-  hostname/port, opens a `remote()` session with the given capabilities.
-- `teardown()`: `driver.deleteSession()`.
-- If `setup()` wasn't called, every action fails with `"MobileModule not
-  set up — call setup() first"`.
+- `Setup()`: builds a typed `DeviceProfile` from the config bag, opens an `AndroidDriver`/
+  `IOSDriver` session. Connection failures are specific (`ClassifySessionFailure`) — never a bare
+  timeout.
+- `Run()`: force-releases a session that has exceeded its `sessionTimeoutSeconds` before
+  dispatching any action against it (MOB-T3).
+- `Teardown()`: `driver.Quit()`, guaranteed even when a step throws (`FlowEngine`'s own
+  `try`/`finally`).
 
 ## Actions
 
+**Element interaction** — `selector` accepts a plain string, an inline locator object
+(`{primary, fallbacks, description, within, nth}`), or an Object Repository reference; every
+strategy in the shared `LocatorStrategy` vocabulary except the Web-only ones (`Css`, `TestId`,
+`Role`, `Label`, `Placeholder`) is supported (`AppiumLocatorResolver`, MOB-T4):
+
 | Action | Params | Behavior |
 |---|---|---|
-| `tap` | `selector: string` | `driver.$(selector).click()` |
-| `type` | `selector: string`, `value: string` | `driver.$(selector).setValue(value)` |
-| `swipe` | `fromX, fromY, toX, toY: number` | Synthesizes a W3C pointer-action gesture: move -> pointerDown -> move (300ms) -> pointerUp |
-| `assertVisible` | `selector: string` | `el.isDisplayed()`, swallowing errors as `false` (i.e. "not found" and "found but hidden" both read as not-visible) |
+| `tap` | `selector` | Taps via the W3C Actions API (MOB-T5). |
+| `type` | `selector`, `value` | Sets the element's value. |
+| `doubleTap` | `selector` | |
+| `longPress` | `selector`, `durationMs` (default 1000) | |
+| `swipe` | `direction`+`distance`+`within` (relative, screen-size independent) **or** legacy `fromX/fromY/toX/toY` (absolute pixels) | |
+| `swipeBetween` | `fromX/fromY/toX/toY` (relative, 0-1), `within`, `durationMs` | The explicit-coordinate escape hatch a direction can't express. |
+| `scrollTo` | `selector`, `container`, `direction` (default Down), `maxAttempts` (default 10) | Bounded — fails in seconds, never scrolls forever. |
+| `pinch` | `selector`, `scale` (> 1 zoom in, < 1 zoom out) | Real two-finger multi-touch (MOB-T5). |
+| `dragAndDrop` | `from`, `to` | |
 
-Any other action: `{status: "failed", error: "Unknown mobile action \"<action>\""}`.
+**Device control** (MOB-T6 — every command checked against unsupported-platform cases first,
+never a silent no-op):
 
-## Output shape
+| Action | Params | Platform |
+|---|---|---|
+| `rotate` | `to` (Portrait/Landscape) | Both |
+| `toggleWifi` | `on` | Android only |
+| `toggleAirplaneMode` | `on` | Android only |
+| `pressDeviceKey` | `key` (Back/Home/Enter) | Home: both; Back/Enter: Android only |
+| `hideKeyboard` | — | Both |
+| `openNotifications` | — | Android only |
+| `backgroundApp` | `durationMs` | Both |
+| `handlePermissionDialog` | `action` (Allow/Deny) | Both |
+| `installApp` | `location` (path or URL) | Both |
+| `removeApp` | `bundleId` | Both |
+| `resetApp` | `appId` | Both (terminate + reactivate — Appium itself deprecated a dedicated reset command) |
+| `switchContext` | `context` (Native/Webview) | Both |
 
-Same pattern as every other module: `{status: "passed", message}` on
-success; any thrown error is caught and returned as
-`{status: "failed", error: <message>}`.
+**Assertions** (MOB-T7 — every failure attaches a screenshot and the UI hierarchy XML):
 
-## Known constraints
+| Action | Mirrors Web module's | Params |
+|---|---|---|
+| `assertText` | `assertText` | `selector`, `expected`, `mode`, `exact` |
+| `assertAttribute` | `assertAttribute` | `selector`, `attr`, `expected`, `mode` |
+| `assertVisible` / `assertHidden` | `assertVisible` / `assertHidden` | `selector` |
+| `assertEnabled` | `assertEnabled` | `selector` |
+| `assertChecked` | `assertChecked` | `selector`, `checked` |
+| `assertCount` | `assertCount` | `selector`, `expected` |
+| `assertAppInstalled` | *(mobile-specific)* | `bundleId` |
+| `assertCurrentActivity` | *(mobile-specific, Android only)* | `expected` |
+| `assertOrientation` | *(mobile-specific)* | `expected` |
+| `assertKeyboardShown` | *(mobile-specific)* | `shown` |
 
-- No screenshot action (unlike Web and Desktop UI modules) — a gap
-  relative to its siblings.
-- `assertVisible`'s `.catch(() => false)` means a genuinely broken
-  selector and a hidden-but-present element are indistinguishable in the
-  result — no differentiated error message.
-- Single fixed device/session per module instance; testing across
-  multiple devices in one flow needs multiple `MobileModule` registrations
-  (not currently supported — the orchestrator's `register()` keys modules
-  by `kind`, one module per kind).
+Any other action: `StepOutcome.Failed("Unknown mobile action \"<action>\".")`.
+
+## Mobile web and hybrid apps (MOB-T8, P1)
+
+**Automating a website in a mobile browser:** set `browserName` (e.g. `"Chrome"` on Android,
+`"Safari"` on iOS) in the `mobile` config instead of `app` — Appium's own standard recipe for
+mobile-web testing. No dedicated field exists for this; it reaches Appium through the same
+pass-through `ExtraCapabilities` mechanism any unrecognized config key already uses.
+
+**A webview inside a native app:** use `switchContext` (`context: "Webview"`) once the app has
+navigated into one. `AppiumDeviceCommandExecutor.IsSupported` already treats this as supported on
+both platforms — nothing mobile-web-specific needed on top of the existing device-control action.
+
+**Worth stating plainly, not glossed over:** for *pure* mobile-web testing — a website, no native
+app involved at all — the Web module's own device emulation (Playwright, WEB-T8) is faster,
+cheaper, and less flaky than going through Appium and a real/simulated device. Reach for this
+module's mobile-web path when you genuinely need a *real* device, or a webview embedded inside a
+native app Playwright can't drive at all. Don't reach for the heavier tool by default.
+
+## What's real and tested vs. what's wired in but unverified in this environment
+
+Every pure/testable piece named above — the locator-strategy mapping, gesture coordinate math,
+the bounded scroll-attempts loop, the platform-support decision matrix, config-bag parsing — has
+a real xUnit test and no live Appium server dependency. Every driver-bound call (the actual
+tap/swipe/assertion/device-command execution against a real session) is built and wired in but
+**not exercised end-to-end in this environment** — no Appium server or device/emulator/simulator
+is available here. See `plan/OPEN-QUESTIONS.md`'s Mobile section for the full, itemized list of
+what that gap actually covers and what it would take to close each one.

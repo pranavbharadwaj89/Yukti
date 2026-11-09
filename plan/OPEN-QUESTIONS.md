@@ -189,6 +189,45 @@ full accounting of what existed vs. what MOB-T1 actually added.
    directly). *Needs: a real Appium server + emulator/device to run `demo/mobile_login.json`
    (or an equivalent two-flow isolation probe) against, the same resource every item above this
    one is also waiting on.*
+6. 🔵 **MOB-T4's `AppiumLocatorResolver.ResolveAsync` — the full primary/fallback/`Within`/`Nth`
+   orchestration against a real driver — isn't exercised end-to-end here, the same standing
+   constraint as items 1-5.** What's proven instead: `Build`, the pure strategy-to-`By` mapping
+   every strategy (and every fallback) goes through, is directly unit-tested for all 7 strategies
+   plus the Web-only-strategy rejection; the Object Repository integration is proven at the
+   orchestration level (`FlowEngine.ResolveLocatorRef`, engine-neutral, exercised with a real
+   repository entry and `EchoModule` as a param-echoing probe, no live driver needed). *Needs: the
+   same real Appium server + emulator/device as items 1, 3 and 5.*
+7. 🔵 **MOB-T5's gestures — the driver-bound half of every `Gesture` (everything in
+   `AppiumGestureExecutor` that actually moves a pointer: `Tap`, `DoubleTap`, `LongPress`,
+   `SwipeBetween`, `Pinch`, `DragAndDrop`) isn't exercised end-to-end here, the same standing
+   constraint as items 1, 3, 5 and 6.** What's proven instead: the full pure math/control-flow
+   core these all build on — relative-to-absolute coordinate conversion, direction-to-points
+   (including clamping at the edges), the `ScrollTo` bounded-attempts loop (including
+   cancellation, so it provably doesn't scroll forever), and pinch-scale validation — plus the
+   action schema shape for all 6 new actions. *Needs: the same real Appium server + emulator/
+   device as every item above.*
+8. 🔵 **MOB-T6's device commands — every driver-bound call in `AppiumDeviceCommandExecutor`
+   isn't exercised end-to-end here, the same standing constraint as every item above.** What's
+   proven instead: the full `IsSupported` decision matrix for every command/platform pair the
+   checklist names (including that a "not supported" case always names a real reason, never a
+   bare false). `SwitchContext`'s own checklist line — "with a test against a hybrid fixture
+   app" — additionally needs a real hybrid app with an actual webview context to switch into, not
+   just a live Appium server; the same resource gap as items 1, 3, 5, 6 and 7, one level further
+   (a fixture *app*, not just a server/device).
+9. 🔵 **MOB-T7's assertions — none of the 11 new/updated actions' actual comparison logic
+   against a real element is exercisable end-to-end here, the same standing constraint as every
+   item above.** What's proven instead: every new action's schema shape, matching the
+   checklist's own list exactly. Soft assertions (P1, the checklist's own lowest-priority line)
+   not built — every P0 item in MOB-T7 took priority first, consistent with the slip policy.
+10. 🔵 **MOB-T8's two P1 checklist items were already real before this task touched any
+    production code** (`browserName` already flows through `BuildProfile`'s existing
+    `ExtraCapabilities` passthrough; `switchContext` to Webview already works, built in MOB-T6) —
+    proven by a new test, not re-built. The actual browser launch and webview context switch
+    still need a live Appium server to exercise end-to-end, same as every item above.
+11. 🟡 **DISC-26 (soft assertions) — not a "needs a live server" gap, a real missing feature
+    across every module.** See `plan/PLAN.md`'s DISC-26 for the full accounting; needs an owner
+    decision before it's buildable anywhere, Mobile included. Design proposed:
+    `plan/adr/0010-soft-assertions.md` (PR #98, **Accepted — owner approved 2026-11-09**).
 
 ---
 
